@@ -1,0 +1,30 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/storkv-core",
+    "crates/storkv-proto",
+    "crates/storkv-server",
+    "crates/storkv-client",
+    "crates/storkv-tui",
+    "crates/storkv-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0"
+repository = "https://github.com/HardBoss07/storkv"
+
+[workspace.dependencies]
+storkv-core = { path = "crates/storkv-core" }
+storkv-proto = { path = "crates/storkv-proto" }
+storkv-client = { path = "crates/storkv-client" }
+bytes = "1"
+crc32c = "0.6"
+lz4_flex = "0.14"
+zstd = "0.14"
+thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+clap = { version = "4", features = ["derive"] }
+ratatui = "0.30"
+crossterm = "0.29"

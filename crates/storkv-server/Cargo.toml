@@ -1,0 +1,15 @@
+[package]
+name = "storkv-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "storkvd"
+path = "src/storkvd.rs"
+
+[dependencies]
+storkv-core.workspace = true
+storkv-proto.workspace = true
+tokio.workspace = true
+clap.workspace = true
