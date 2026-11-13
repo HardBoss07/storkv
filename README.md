@@ -11,7 +11,7 @@ StorKV embeds directly as a zero-overhead Rust library (`storkv-core`) or runs a
 ```text
 +-------------------------------------------------------------------------+
 |                           Client / Embedded API                         |
-|   Db::open()  |  ScopeHandle  |  MVCC Transaction (OCC)  |  Watch Stream |
+|   Db::open()  |  ScopeHandle  |  MVCC Transaction (OCC)  | Watch Stream |
 +------------------------------------+------------------------------------+
                                      |
             +------------------------+------------------------+
@@ -38,11 +38,11 @@ StorKV embeds directly as a zero-overhead Rust library (`storkv-core`) or runs a
                                      |
             +------------------------+------------------------+
             v                                                 v
-   +-----------------+                               +-----------------+
-   |  L0..L6 SSTables|                               |  L0..L6 SSTables|
-   | (Prefix Bloom + |                               |  (FIFO / TTL    |
-   |  LZ4 Blocks)    |                               |   Compaction)   |
-   +-----------------+                               +-----------------+
+   +------------------+                               +------------------+
+   |  L0..L6 SSTables |                              |  L0..L6 SSTables |
+   | (Prefix Bloom +  |                              |  (FIFO / TTL     |
+   |  LZ4 Blocks)     |                              |   Compaction)    |
+   +------------------+                               +------------------+
 ```
 
 ---

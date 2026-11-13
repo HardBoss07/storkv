@@ -20,15 +20,21 @@ StorKV is an embeddable and network-capable Log-Structured Merge-tree (LSM) key-
 - **Atomicity Across Scopes:** All scopes share a single segmented Write-Ahead Log (`wal/`). A `WriteBatch` or `Transaction` mutating keys across multiple scopes is serialized into a single checksummed WAL frame with one contiguous sequence range, guaranteeing all-or-nothing durability across scope boundaries.
 - **O(1) Scope & Range Drops:** Dropping a scope (`db.drop_scope("sessions")`) writes a `DropScope` record to the WAL and `MANIFEST`, immediately hiding all keys at `seq <= drop_seq` without scanning individual records. Compaction reclaims orphaned `.sst` files asynchronously.
 
-### 2.2 MVCC Snapshot Isolation & Optimistic Concurrency Control (OCC)
+### 2.2 MVCC Snapshot Isolation, OCC & Merge Resolution
 
 - **Monotonic Sequence Numbers:** The engine maintains a global atomic `u64` sequence counter (`last_visible_seq`). Every individual operation within a committed batch receives a strictly increasing sequence number.
-- **Lock-Free Snapshot Reads:** Calling `db.begin_tx()` or `db.snapshot()` captures `read_seq = last_visible_seq.load(Acquire)`. Readers observe all mutations with `seq <= read_seq` that have not expired (`expires_at_ms == 0 || expires_at_ms > now_ms`), never blocking concurrent writers or compactions.
+- **Lock-Free Snapshot Reads & Read-Your-Own-Writes:**
+  - Calling `db.begin_tx()` or `db.snapshot()` captures `read_seq = last_visible_seq.load(Acquire)`.
+  - `tx.get()` and `tx.scan()` first inspect the transaction's local `WriteSet` (so transactions observe their own uncommitted mutations), then merge results from the active `MemTable`, immutable `MemTable`s, and `SSTable`s at `seq <= read_seq`, filtering out entries where `expires_at_ms != 0 && expires_at_ms <= now_ms`.
 - **Optimistic Conflict Detection:**
-  - Transactions buffer writes locally in a thread-local `WriteSet` and record every accessed key `(scope_id, user_key)` in a `ReadSet`.
+  - Transactions buffer writes locally in a thread-local `WriteSet` and record every read key `(scope_id, user_key)` in a `ReadSet`.
   - At `tx.commit()`, the single-writer commit coordinator acquires the commit lock and verifies that for every key in `ReadSet`, the latest committed version in the engine has `latest_seq <= tx.read_seq`.
   - If any key in `ReadSet` was modified after `tx.read_seq`, `tx.commit()` aborts without writing to the WAL and returns `Err(StorKvError::WriteConflict)`.
   - Blind writes (`put`, `delete`, `merge` without prior reads) bypass conflict checks and serialize linearly in commit order.
+- **Read-Modify-Write (`MergeOperator`) Resolution:**
+  - `Merge` operations append a `MergeOperand` record without reading existing state first.
+  - During reads, the iterator collects contiguous `MergeOperand`s from newest to oldest until hitting a base `Value`, `Tombstone`, `RangeTombstone`, or key end, then invokes `MergeOperator::full_merge` to materialize the final value.
+  - During compaction, adjacent `MergeOperand`s strictly below `gc_safe_seq` are folded via `MergeOperator::partial_merge`.
 
 ### 2.3 WAL-Pinning Mitigation
 
@@ -51,7 +57,7 @@ gc_safe_seq = min(
 )
 ```
 
-Any overwritten or deleted version with `seq < gc_safe_seq` is dropped during compaction. Expired TTL entries (`expires_at_ms <= compaction_start_ms`) are purged unconditionally during compaction without emitting tombstones.
+Any overwritten or deleted version with `seq < gc_safe_seq` is dropped during compaction. Expired TTL entries (`expires_at_ms != 0 && expires_at_ms <= compaction_start_ms`) are purged unconditionally during compaction without emitting tombstones.
 
 ---
 
@@ -66,12 +72,16 @@ Every scope is configured via a `ScopeOptions` struct or built-in preset at crea
 | `Durability::StrictFsync`                | Leader thread in the Group Commit queue writes the batch to the active `.wal` file and calls `fdatasync()` before unblocking waiting writers.                         | **Zero acknowledged data loss** on `SIGKILL`, kernel panic, or sudden power cut.                           |
 | `Durability::Buffered { sync_interval }` | Writes batch bytes to the OS page cache (`write_all`) and acknowledges immediately. A background flusher calls `fdatasync()` every `sync_interval` (default `100ms`). | **Zero loss on process crash (`SIGKILL`)**; bounded loss up to `sync_interval` only on full OS/power loss. |
 
+- **Cross-Scope Durability Precedence:** When a single `WriteBatch` or `Transaction` mutates multiple scopes with differing durability modes, the batch executes with the strictest durability of all touched scopes (`Durability::StrictFsync` overrides `Durability::Buffered`).
+
 ### 3.2 Retention Modes (`Retention`)
 
 | Mode                                               | Compaction & Expiration Behavior                                                                                                                                                                | Target Workload                                              |
 | :------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------- |
 | `Retention::Permanent`                             | Keys never expire unless explicitly deleted or given a per-key TTL (`put_with_ttl`). Uses **Leveled Compaction** (`L1..L6`, 10x size ratio per level) to minimize read and space amplification. | User accounts, configuration, metadata, ledger state.        |
 | `Retention::Ttl { default_ttl, compaction_style }` | Assigns `default_ttl` to any `put` without an explicit TTL. Supports **FIFO / Time-Window Compaction** to drop entire expired SSTables in `O(1)` without rewriting keys.                        | Sessions, rate-limit counters, ephemeral caches, job queues. |
+
+- **TTL Clock Semantics:** Expiration timestamps (`expires_at_ms`) are stored as wall-clock Unix epoch milliseconds so TTLs remain deterministic across process restarts and checkpoint restores. Expired keys become invisible to reads immediately once `now_ms >= expires_at_ms`, independent of background compaction timing.
 
 ---
 
@@ -93,7 +103,7 @@ Every scope is configured via a `ScopeOptions` struct or built-in preset at crea
 
 StorKV guarantees a **Recovery Point Objective (RPO) <= 5 minutes** without halting reads or writes:
 
-1. **WAL Segment Rotation:** The active `.wal` file rotates automatically when it reaches `max_wal_segment_bytes` (`32 MiB`) or when `wal_seal_interval` (`300s` / 5 minutes) elapses since segment creation. Sealed WAL segments (`000001.wal`) are immutable and immediately eligible for incremental shipping to off-box object storage or backup targets.
+1. **WAL Segment Rotation:** The active `.wal` file rotates automatically when it reaches `max_wal_segment_bytes` (`32 MiB`) or when `wal_seal_interval` (`300s` / 5 minutes) elapses since segment creation. Sealed WAL segments (`0000000000000001.wal`) are immutable and immediately eligible for incremental shipping to off-box object storage or backup targets.
 2. **Zero-Copy MVCC Checkpoints (`db.checkpoint(dest_dir)`):**
    - Acquires a temporary snapshot pin at `last_visible_seq` so compaction cannot delete live SSTables.
    - Flushes active `MemTable`s or records the exact active WAL offset.

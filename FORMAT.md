@@ -2,26 +2,32 @@
 
 All multi-byte integers are encoded in **Little-Endian (`LE`)** byte order unless explicitly marked **Big-Endian (`BE`)** for lexicographical byte sorting. All checksums use **CRC32C (Castagnoli)** (`0x1EDC6F41` polynomial).
 
+### Global Size Limits
+
+- **`MAX_KEY_LEN`:** `65,535` bytes (`u16::MAX`)
+- **`MAX_VAL_LEN`:** `268,435,456` bytes (`256 MiB`)
+- **File Number Formatting:** `u64` file identifiers (`MANIFEST`, `.wal`, `.sst`) are formatted as **16-character lowercase hex** (`%016x`). `u32` `scope_id` directories are formatted as **8-character lowercase hex** (`%08x`).
+
 ---
 
 ## 1. Directory Layout
 
 ```text
 <db_root>/
-├── LOCK                        # 0-byte advisory flock() file
-├── CURRENT                     # ASCII filename of active manifest + '\n' (e.g. "MANIFEST-000001\n")
-├── MANIFEST-000001             # Append-only VersionEdit log
+├── LOCK                            # 0-byte advisory flock() file
+├── CURRENT                         # ASCII filename of active manifest + '\n'
+├── MANIFEST-0000000000000001       # Append-only VersionEdit log
 ├── wal/
-│   ├── 000001.wal              # Sealed WAL segment
-│   └── 000002.wal              # Active WAL segment
+│   ├── 0000000000000001.wal        # Sealed WAL segment
+│   └── 0000000000000002.wal        # Active WAL segment
 ├── scopes/
-│   ├── 00000000/               # Hex-encoded Scope ID (0 = "default")
-│   │   ├── 00000001.sst        # Immutable SSTable file
-│   │   └── 00000002.sst
-│   └── 00000001/               # Hex-encoded Scope ID (1 = e.g. "sessions")
-│       └── 00000003.sst
+│   ├── 00000000/                   # Hex-encoded Scope ID (0 = "default")
+│   │   ├── 0000000000000001.sst    # Immutable SSTable file
+│   │   └── 0000000000000002.sst
+│   └── 00000001/                   # Hex-encoded Scope ID (1 = e.g. "sessions")
+│       └── 0000000000000003.sst
 └── checkpoints/
-    └── <checkpoint_id>/        # Self-contained hard-linked point-in-time snapshot
+    └── <checkpoint_id>/            # Self-contained hard-linked point-in-time snapshot
 ```
 
 ---
@@ -41,7 +47,11 @@ Inside `MemTable`s and `SSTable` data blocks, every entry key is encoded as an *
 ```
 
 - **`inverted_tag` (`u64 BE`):** Computed as `!((seq << 8) | (value_type as u64))` and serialized in **Big-Endian**. Because higher `seq` values produce smaller bitwise-inverted values, raw byte comparison places the newest version of a key immediately first.
-  - `value_type` values: `0x01` = `Value`, `0x02` = `Tombstone`, `0x03` = `MergeOperand`.
+  - `value_type` values:
+    - `0x01` = `Value`
+    - `0x02` = `Tombstone` (point delete; value is empty)
+    - `0x03` = `MergeOperand`
+    - `0x04` = `RangeTombstone` (`user_key` is `start_key` inclusive; entry value holds `end_key` exclusive)
 - **`expires_at_ms` (`u64 LE`):** Unix epoch milliseconds at which the entry expires. `0` indicates no expiration (permanent).
 
 ---
@@ -81,14 +91,14 @@ Every committed `WriteBatch` or `Transaction` appends one contiguous frame start
 
 ### 3.3 WAL Operation Records (`WalOp`)
 
-Within `payload`, `op_count` operations are packed sequentially:
+Within `payload`, `op_count` operations are packed sequentially. Writers must reject any operation where `key_len > MAX_KEY_LEN` (`65,535`) or `val_len > MAX_VAL_LEN` (`256 MiB`) prior to WAL serialization.
 
 | Offset         | Size      | Type     | Field           | Description                                                                          |
 | :------------- | :-------- | :------- | :-------------- | :----------------------------------------------------------------------------------- |
 | `0`            | `1`       | `u8`     | `opcode`        | `0x01` Put, `0x02` Delete, `0x03` Merge, `0x04` DeleteRange, `0x05` DropScope        |
 | `1`            | `4`       | `u32 LE` | `scope_id`      | Target Scope ID                                                                      |
 | `5`            | `8`       | `u64 LE` | `expires_at_ms` | Expiration timestamp (`0` if permanent; `0` for non-Put ops)                         |
-| `13`           | `4`       | `u32 LE` | `key_len`       | Byte length of `key` (`0` for `DropScope`)                                           |
+| `13`           | `4`       | `u32 LE` | `key_len`       | Byte length of `key` (`0` for `DropScope`; must be `<= 65,535`)                      |
 | `17`           | `key_len` | `[u8]`   | `key`           | User key (or `start_key` for `DeleteRange`)                                          |
 | `17 + key_len` | `4`       | `u32 LE` | `val_len`       | Byte length of `val` (`0` for `Delete`/`DropScope`; `end_key_len` for `DeleteRange`) |
 | `21 + key_len` | `val_len` | `[u8]`   | `val`           | Value bytes (or `end_key` for `DeleteRange`)                                         |
@@ -122,16 +132,18 @@ SSTables are immutable files written sequentially from offset `0` to `EOF`.
 Used in the Index Block and Footer to locate blocks within the file:
 
 - `offset: u64 LE` (8 bytes): Byte offset from start of `.sst` file.
-- `size: u64 LE` (8 bytes): Uncompressed/stored payload size excluding the 5-byte Block Trailer.
+- `size: u64 LE` (8 bytes): **On-disk stored byte length** of the block payload (compressed size if compressed, raw size if uncompressed), excluding the 5-byte Block Trailer.
 
-### 4.2 Block Trailer (5 Bytes)
+### 4.2 Block Trailer & Compression Framing (5 Bytes)
 
 Appended immediately after every Data, Filter, Meta, and Index block:
 
 - `compression_type: u8` (`0x00` = None, `0x01` = LZ4, `0x02` = Zstd)
-- `crc32c: u32 LE` (Checksum over the block payload bytes + `compression_type` byte)
+- `crc32c: u32 LE` (Checksum over the stored block payload bytes + `compression_type` byte)
 
-### 4.3 Data Block Layout (Target 4,096 Bytes)
+When `compression_type != 0x00`, the stored block payload begins with `uncompressed_len: u32 LE` followed immediately by the compressed block bytes.
+
+### 4.3 Data Block Layout (Target 4,096 Bytes Uncompressed)
 
 Keys inside a Data Block use **Prefix Compression** with a restart point every `16` entries (`RESTART_INTERVAL = 16`) to enable binary search within blocks:
 
@@ -144,7 +156,7 @@ Keys inside a Data Block use **Prefix Compression** with a restart point every `
    ```
    _(At every restart point `i % 16 == 0`, `shared_prefix_len` is `0`, storing the full internal key.)_
 2. **Restart Array:**
-   - `restart_offsets: [u32 LE; num_restarts]` (Byte offsets within the block of each restart entry)
+   - `restart_offsets: [u32 LE; num_restarts]` (Byte offsets within the uncompressed block of each restart entry)
    - `num_restarts: u32 LE` (4 bytes)
 3. **5-Byte Block Trailer**
 
@@ -177,6 +189,8 @@ Contains one entry per Data Block, sorted by the Data Block's upper-bound intern
 - `last_internal_key: [u8; last_key_len]` (Greatest internal key present in that Data Block)
 - `block_handle: BlockHandle` (`16` bytes: `offset` + `size`)
 - Followed by **5-Byte Block Trailer**.
+
+_(Note: A version chain for the same `user_key` may span across adjacent Data Blocks. Index lookups must compare full `InternalKey`s including `inverted_tag`.)_
 
 ### 4.7 Fixed Footer (56 Bytes at `EOF - 56`)
 
