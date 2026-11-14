@@ -1,0 +1,89 @@
+use bytes::{BufMut, BytesMut};
+
+use super::types::{EditRecord, SstFileMeta};
+
+pub(super) fn encode_edit_record(record: &EditRecord, destination: &mut BytesMut) {
+    match record {
+        EditRecord::SetNextSequence(sequence_number) => {
+            destination.put_u8(0x01);
+            destination.put_u64_le(*sequence_number);
+        }
+        EditRecord::SetWalNumber(wal_number) => {
+            destination.put_u8(0x02);
+            destination.put_u64_le(*wal_number);
+        }
+        EditRecord::CreateScope {
+            scope_id,
+            durability,
+            sync_ms,
+            retention,
+            default_ttl_ms,
+            compaction_style,
+            name,
+        } => {
+            destination.put_u8(0x03);
+            destination.put_u32_le(*scope_id);
+            destination.put_u8(*durability);
+            destination.put_u32_le(*sync_ms);
+            destination.put_u8(*retention);
+            destination.put_u64_le(*default_ttl_ms);
+            destination.put_u8(*compaction_style);
+            put_name(destination, name);
+        }
+        EditRecord::DropScope { scope_id, drop_seq } => {
+            destination.put_u8(0x04);
+            destination.put_u32_le(*scope_id);
+            destination.put_u64_le(*drop_seq);
+        }
+        EditRecord::AddSstFile(metadata) => {
+            destination.put_u8(0x05);
+            encode_sst_file_meta(destination, metadata);
+        }
+        EditRecord::DeleteSstFile {
+            scope_id,
+            level,
+            file_num,
+        } => {
+            destination.put_u8(0x06);
+            destination.put_u32_le(*scope_id);
+            destination.put_u8(*level);
+            destination.put_u64_le(*file_num);
+        }
+        EditRecord::PinSnapshot {
+            seq,
+            created_at_ms,
+            name,
+        } => {
+            destination.put_u8(0x07);
+            destination.put_u64_le(*seq);
+            destination.put_u64_le(*created_at_ms);
+            put_name(destination, name);
+        }
+        EditRecord::UnpinSnapshot { name } => {
+            destination.put_u8(0x08);
+            put_name(destination, name);
+        }
+    }
+}
+
+fn put_name(destination: &mut BytesMut, name: &str) {
+    destination.put_u16_le(name.len() as u16);
+    destination.extend_from_slice(name.as_bytes());
+}
+
+fn encode_sst_file_meta(destination: &mut BytesMut, metadata: &SstFileMeta) {
+    destination.put_u32_le(metadata.scope_id);
+    destination.put_u8(metadata.level);
+    destination.put_u64_le(metadata.file_num);
+    destination.put_u64_le(metadata.file_size);
+    destination.put_u64_le(metadata.min_seq);
+    destination.put_u64_le(metadata.max_seq);
+    destination.put_u64_le(metadata.max_expires_at_ms);
+    put_bytes_field(destination, &metadata.min_key);
+    put_bytes_field(destination, &metadata.max_key);
+}
+
+fn put_bytes_field(destination: &mut BytesMut, field: &[u8]) {
+    destination.put_u16_le(field.len() as u16);
+    destination.extend_from_slice(field);
+}
