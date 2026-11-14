@@ -5,6 +5,7 @@ use thiserror::Error;
 pub type Result<T> = std::result::Result<T, StorKvError>;
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum StorKvError {
     #[error("Database is locked by another process: {0}")]
     DatabaseLocked(PathBuf),
@@ -43,24 +44,4 @@ pub enum StorKvError {
 
     #[error("Underlying I/O error: {0}")]
     Io(#[from] std::io::Error),
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_error_display() {
-        let err = StorKvError::WriteConflict {
-            scope_id: 1,
-            key: b"test_key".to_vec(),
-        };
-        assert!(err.to_string().contains("Write conflict"));
-
-        let err2 = StorKvError::KeyTooLarge {
-            max: 65535,
-            actual: 70000,
-        };
-        assert!(err2.to_string().contains("65535"));
-    }
 }

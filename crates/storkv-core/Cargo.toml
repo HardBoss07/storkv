@@ -1,16 +1,49 @@
 [package]
 name = "storkv-core"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[[test]]
+name = "format"
+path = "../../tests/format.rs"
+
+[[test]]
+name = "wal"
+path = "../../tests/wal.rs"
+
+[[test]]
+name = "mvcc"
+path = "../../tests/mvcc.rs"
+
+[[test]]
+name = "scope"
+path = "../../tests/scope.rs"
+
+[[test]]
+name = "compaction"
+path = "../../tests/compaction.rs"
+
+[[test]]
+name = "backup_watch"
+path = "../../tests/backup_watch.rs"
+
+[[test]]
+name = "chaos"
+path = "../../tests/chaos.rs"
 
 [dependencies]
-bytes = { workspace = true }
-crc32c = { workspace = true }
-lz4_flex = { workspace = true }
-zstd = { workspace = true }
-thiserror = { workspace = true }
-crossbeam-skiplist = "0.1"
-crossbeam-channel = "0.5"
-parking_lot = "0.12"
-fs2 = "0.4"
-
+bytes.workspace = true
+crc32c.workspace = true
+lz4_flex.workspace = true
+zstd.workspace = true
+thiserror.workspace = true
+crossbeam-skiplist.workspace = true
+crossbeam-channel.workspace = true
+parking_lot.workspace = true
+fs2.workspace = true
