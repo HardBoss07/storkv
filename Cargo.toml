@@ -14,17 +14,32 @@ version = "0.1.0"
 edition = "2024"
 license = "AGPL-3.0"
 repository = "https://github.com/HardBoss07/storkv"
+rust-version = "1.87"
 
 [workspace.dependencies]
 storkv-core = { path = "crates/storkv-core" }
 storkv-proto = { path = "crates/storkv-proto" }
 storkv-client = { path = "crates/storkv-client" }
+storkv-server = { path = "crates/storkv-server" }
+storkv-cli = { path = "crates/storkv-cli" }
+storkv-tui = { path = "crates/storkv-tui" }
+
 bytes = "1"
-crc32c = "0.6"
-lz4_flex = "0.14"
-zstd = "0.14"
-thiserror = "2"
-tokio = { version = "1", features = ["full"] }
 clap = { version = "4", features = ["derive"] }
-ratatui = "0.30"
+crc32c = "0.6"
+crossbeam-channel = "0.5"
+crossbeam-skiplist = "0.1"
 crossterm = "0.29"
+fs2 = "0.4"
+lz4_flex = "0.14"
+parking_lot = "0.12"
+ratatui = "0.30"
+thiserror = "2"
+tokio = { version = "1", default-features = false }
+zstd = "0.14"
+
+[workspace.lints.cargo]
+unused_workspace_dependencies = "allow"
+
+[workspace.lints.clippy]
+mod_module_files = "warn"

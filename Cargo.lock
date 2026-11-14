@@ -1494,16 +1494,27 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 name = "storkv-cli"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "clap",
+ "crc32c",
  "storkv-client",
  "storkv-core",
  "storkv-proto",
+ "storkv-server",
  "tokio",
 ]
 
 [[package]]
 name = "storkv-client"
 version = "0.1.0"
+dependencies = [
+ "bytes",
+ "storkv-core",
+ "storkv-proto",
+ "storkv-server",
+ "thiserror 2.0.21",
+ "tokio",
+]
 
 [[package]]
 name = "storkv-core"
@@ -1523,12 +1534,18 @@ dependencies = [
 [[package]]
 name = "storkv-proto"
 version = "0.1.0"
+dependencies = [
+ "bytes",
+ "thiserror 2.0.21",
+]
 
 [[package]]
 name = "storkv-server"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "clap",
+ "crossbeam-channel",
  "storkv-core",
  "storkv-proto",
  "tokio",
@@ -1538,10 +1555,14 @@ dependencies = [
 name = "storkv-tui"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "clap",
  "crossterm",
  "ratatui",
+ "storkv-client",
+ "storkv-core",
  "storkv-proto",
+ "storkv-server",
  "tokio",
 ]
 
@@ -1751,7 +1772,6 @@ dependencies = [
  "bytes",
  "libc",
  "mio",
- "parking_lot",
  "pin-project-lite",
  "signal-hook-registry",
  "socket2",
