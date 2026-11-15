@@ -1,14 +1,20 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+//! StorKV wire protocol: length-prefixed frames carrying typed requests,
+//! responses, telemetry, and errors over TCP or Unix-domain sockets.
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+mod endpoint;
+mod error;
+mod frame;
+mod request;
+mod response;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub use endpoint::{is_unix_socket_addr, unix_socket_path};
+pub use error::StorKvWireError;
+pub use frame::{MAX_FRAME_SIZE, Message, MessagePayload, PROTOCOL_MAGIC, PROTOCOL_VERSION};
+pub use request::{
+    Request, WireCompactionStyle, WireDurability, WireMergeOp, WireRetention, WireScopeOptions,
+    WireTxMutation,
+};
+pub use response::{
+    Response, WireAdminStats, WireChangeEvent, WireLevelStat, WireScopeHandle, WireScopeStat,
+    WireTelemetrySnapshot,
+};
