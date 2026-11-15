@@ -1,14 +1,11 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+//! Async and blocking clients for the StorKV wire protocol.
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+mod async_client;
+mod sync_client;
+mod transaction;
+mod transport;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub use async_client::AsyncClient;
+pub use sync_client::SyncClient;
+pub use transaction::AsyncTransaction;
+pub use transport::{ClientError, ClientResult, ClientStream, ScopeHandle};

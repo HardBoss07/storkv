@@ -1,6 +1,36 @@
 [package]
 name = "storkv-client"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "storkv_client"
+path = "src/lib.rs"
+
+[[test]]
+name = "client"
+path = "../../tests/client.rs"
 
 [dependencies]
+storkv-proto.workspace = true
+bytes.workspace = true
+tokio = { workspace = true, features = [
+    "io-util",
+    "macros",
+    "net",
+    "rt",
+    "rt-multi-thread",
+    "sync",
+    "time",
+] }
+thiserror.workspace = true
+
+[dev-dependencies]
+storkv-core.workspace = true
+storkv-server.workspace = true
