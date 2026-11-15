@@ -3,13 +3,33 @@ name = "storkv-server"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
 
-[[bin]]
-name = "storkvd"
-path = "src/storkvd.rs"
+[lints]
+workspace = true
+
+[lib]
+name = "storkv_server"
+path = "src/lib.rs"
+
+[[test]]
+name = "server"
+path = "../../tests/server.rs"
 
 [dependencies]
 storkv-core.workspace = true
 storkv-proto.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = [
+    "io-util",
+    "macros",
+    "net",
+    "rt",
+    "rt-multi-thread",
+    "signal",
+    "sync",
+    "time",
+] }
 clap.workspace = true
+bytes.workspace = true
+crossbeam-channel.workspace = true
