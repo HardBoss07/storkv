@@ -24,6 +24,15 @@ storkv-server = { path = "crates/storkv-server" }
 storkv-cli = { path = "crates/storkv-cli" }
 storkv-tui = { path = "crates/storkv-tui" }
 
+axum = { version = "0.8", default-features = false, features = [
+    "http1",
+    "http2",
+    "json",
+    "query",
+    "tokio",
+    "ws",
+] }
+base64 = "0.23"
 bytes = "1"
 clap = { version = "4", features = ["derive"] }
 crc32c = "0.6"
@@ -31,11 +40,35 @@ crossbeam-channel = "0.5"
 crossbeam-skiplist = "0.1"
 crossterm = "0.29"
 fs2 = "0.4"
+futures-util = "0.3"
+http = "1"
+http-body-util = "0.1"
+hyper = { version = "1", features = ["client", "http1", "http2"] }
+hyper-util = { version = "0.1", features = [
+    "client-legacy",
+    "http1",
+    "http2",
+    "tokio",
+] }
 lz4_flex = "0.14"
 parking_lot = "0.12"
+prost = "0.14"
+protoc-bin-vendored = "3"
 ratatui = "0.30"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 thiserror = "2"
 tokio = { version = "1", default-features = false }
+tokio-stream = { version = "0.1", features = ["sync"] }
+tokio-tungstenite = { version = "0.30", default-features = false, features = [
+    "connect",
+    "handshake",
+] }
+tonic = { version = "0.14", features = ["transport", "codegen"] }
+tonic-build = "0.14"
+tonic-prost = "0.14"
+tonic-prost-build = "0.14"
+tower = { version = "0.5", features = ["util"] }
 zstd = "0.14"
 
 [workspace.lints.cargo]
