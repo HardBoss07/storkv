@@ -6,11 +6,13 @@ use crate::error::Result;
 
 use super::traits::{File, FileSystem};
 
+/// POSIX file handle that implements the engine [`File`] trait.
 pub struct PosixFile {
     inner: StdFile,
 }
 
 impl PosixFile {
+    /// Wrap a standard library file handle.
     pub fn new(inner: StdFile) -> Self {
         Self { inner }
     }
@@ -60,6 +62,7 @@ impl File for PosixFile {
     }
 }
 
+/// Standard filesystem backend.
 #[derive(Default, Clone)]
 pub struct PosixFs;
 

@@ -17,6 +17,7 @@ pub struct FaultInjectingFs<FS: FileSystem> {
 }
 
 impl<FS: FileSystem> FaultInjectingFs<FS> {
+    /// Wrap a filesystem with the fault injector disabled.
     pub fn new(inner: FS) -> Self {
         Self {
             inner,
@@ -27,14 +28,17 @@ impl<FS: FileSystem> FaultInjectingFs<FS> {
         }
     }
 
+    /// Make every subsequent write fail when enabled.
     pub fn set_fail_writes(&self, fail: bool) {
         self.fail_writes.store(fail, Ordering::SeqCst);
     }
 
+    /// Make every subsequent sync fail when enabled.
     pub fn set_fail_syncs(&self, fail: bool) {
         self.fail_syncs.store(fail, Ordering::SeqCst);
     }
 
+    /// Make writes fail after the given number of bytes.
     pub fn set_write_byte_limit(&self, limit: usize) {
         self.write_byte_limit.store(limit, Ordering::SeqCst);
         self.written_bytes.store(0, Ordering::SeqCst);
@@ -53,6 +57,7 @@ impl<FS: FileSystem> FaultInjectingFs<FS> {
     }
 }
 
+/// File wrapper that applies the parent injector settings.
 pub struct FaultInjectingFile {
     inner: Box<dyn File>,
     fail_writes: Arc<AtomicBool>,
