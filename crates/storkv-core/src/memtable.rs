@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 
+/// Concurrent in-memory write buffer ordered by internal key.
 pub struct MemTable {
     map: SkipMap<Bytes, Bytes>,
     approx_bytes: AtomicUsize,
@@ -13,6 +14,7 @@ pub struct MemTable {
 }
 
 impl MemTable {
+    /// Create an empty memtable.
     pub fn new() -> Self {
         Self {
             map: SkipMap::new(),
@@ -22,6 +24,7 @@ impl MemTable {
         }
     }
 
+    /// Insert an encoded internal key with its value and commit sequence.
     pub fn insert(&self, encoded_internal_key: Bytes, value: Bytes, seq: u64) {
         let entry_size = encoded_internal_key.len() + value.len() + 32;
         self.approx_bytes.fetch_add(entry_size, Ordering::Relaxed);
@@ -34,18 +37,22 @@ impl MemTable {
         self.map.insert(encoded_internal_key, value);
     }
 
+    /// Return the approximate memory use in bytes.
     pub fn size_bytes(&self) -> usize {
         self.approx_bytes.load(Ordering::Relaxed)
     }
 
+    /// Return the monotonic creation time.
     pub fn created_at(&self) -> Instant {
         self.created_at
     }
 
+    /// Return the oldest commit sequence in the memtable.
     pub fn oldest_seq(&self) -> Option<u64> {
         *self.oldest_seq.read()
     }
 
+    /// Return true when the memtable holds no entries.
     pub fn is_empty(&self) -> bool {
         self.map.is_empty()
     }
@@ -77,6 +84,8 @@ impl MemTable {
         None
     }
 
+    /// Return entries at or after the encoded start key.
+    /// Return entries at or after the encoded start key.
     pub fn range_from<'a>(
         &'a self,
         start_bound: Bytes,
@@ -86,6 +95,7 @@ impl MemTable {
             .map(|entry| (entry.key().clone(), entry.value().clone()))
     }
 
+    /// Iterate every entry in internal key order.
     pub fn iter(&self) -> impl Iterator<Item = (Bytes, Bytes)> + '_ {
         self.map
             .iter()
@@ -93,21 +103,25 @@ impl MemTable {
     }
 }
 
+/// Ordered queue of immutable memtables that wait for flush.
 pub struct FlushQueue {
     queue: parking_lot::RwLock<Vec<Arc<MemTable>>>,
 }
 
 impl FlushQueue {
+    /// Create an empty queue.
     pub fn new() -> Self {
         Self {
             queue: parking_lot::RwLock::new(Vec::new()),
         }
     }
 
+    /// Append a memtable to the queue.
     pub fn push(&self, mem: Arc<MemTable>) {
         self.queue.write().push(mem);
     }
 
+    /// Remove and return the oldest queued memtable.
     pub fn pop_oldest(&self) -> Option<Arc<MemTable>> {
         let mut q = self.queue.write();
         if q.is_empty() {
@@ -117,18 +131,22 @@ impl FlushQueue {
         }
     }
 
+    /// Return the oldest queued memtable without removing it.
     pub fn oldest(&self) -> Option<Arc<MemTable>> {
         self.queue.read().first().cloned()
     }
 
+    /// Return the number of queued memtables.
     pub fn len(&self) -> usize {
         self.queue.read().len()
     }
 
+    /// Return true when the queue is empty.
     pub fn is_empty(&self) -> bool {
         self.queue.read().is_empty()
     }
 
+    /// Return a copy of every queued memtable.
     pub fn all(&self) -> Vec<Arc<MemTable>> {
         self.queue.read().clone()
     }

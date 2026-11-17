@@ -12,6 +12,14 @@ use super::writer::{WAL_HEADER_SIZE, WAL_MAGIC};
 pub struct WalRecovery;
 
 impl WalRecovery {
+    /// Read every complete batch from one WAL segment.
+    ///
+    /// A torn tail on the last segment is truncated and ignored. A checksum
+    /// failure in a non-last segment returns [`StorKvError::Corruption`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the segment cannot be read or is corrupt.
     pub fn recover_segment<FS: FileSystem>(
         fs: Arc<FS>,
         path: &Path,

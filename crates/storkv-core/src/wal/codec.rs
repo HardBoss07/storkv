@@ -5,6 +5,7 @@ use crate::format::compute_crc32c;
 
 use super::record::{WalBatchFrame, WalOp};
 
+/// Size of the fixed WAL frame header in bytes.
 pub const WAL_FRAME_HEADER_SIZE: usize = 24;
 
 const FRAME_LENGTH_AND_CRC_FIELDS: usize = 8;
@@ -14,6 +15,11 @@ const FLAG_COMPRESSED: u16 = 0x0001;
 const MIN_ENCODED_OP_SIZE: usize = 17;
 
 impl WalBatchFrame {
+    /// Encode the batch with an optional LZ4 payload compression.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when an operation cannot be encoded.
     pub fn encode(&self, compress: bool) -> Result<Vec<u8>> {
         let payload = encode_ops(&self.ops)?;
         let (flags, frame_payload) = maybe_compress(payload, compress);

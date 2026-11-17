@@ -7,16 +7,26 @@ use bytes::Bytes;
 use std::sync::Arc;
 use std::time::Duration;
 
+/// Optimistic transaction over a [`crate::Db`].
+///
+/// The transaction reads at a fixed sequence number, buffers writes, and
+/// validates its read set on commit. Reads see buffered writes first.
 pub struct Transaction<FS: FileSystem + 'static = PosixFs> {
     pub(crate) db: Arc<crate::db::DbInner<FS>>,
     pub(crate) ctx: TransactionContext,
 }
 
 impl<FS: FileSystem + 'static> Transaction<FS> {
+    /// Return the sequence number that the transaction reads at.
     pub fn read_seq(&self) -> u64 {
         self.ctx.read_seq
     }
 
+    /// Read one key and add it to the OCC read set.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the storage read fails.
     pub fn get<K: AsRef<[u8]>>(
         &mut self,
         scope: &crate::ScopeHandle,
@@ -60,6 +70,12 @@ impl<FS: FileSystem + 'static> Transaction<FS> {
         }
     }
 
+    /// Buffer a value write.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorKvError::KeyTooLarge`] or [`StorKvError::ValueTooLarge`]
+    /// when a field exceeds the format limit.
     pub fn put<K: AsRef<[u8]>, V: AsRef<[u8]>>(
         &mut self,
         scope: &crate::ScopeHandle,
@@ -79,6 +95,11 @@ impl<FS: FileSystem + 'static> Transaction<FS> {
         Ok(())
     }
 
+    /// Buffer a value write with a time to live.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the key or value exceeds the format limit.
     pub fn put_with_ttl<K: AsRef<[u8]>, V: AsRef<[u8]>>(
         &mut self,
         scope: &crate::ScopeHandle,
@@ -86,12 +107,23 @@ impl<FS: FileSystem + 'static> Transaction<FS> {
         val: V,
         ttl: Duration,
     ) -> crate::Result<()> {
+        let expires_at_ms =
+            TimestampMs::now().get() + u64::try_from(ttl.as_millis()).unwrap_or(u64::MAX);
+        self.put_with_expires_at(scope, key, val, expires_at_ms)
+    }
+
+    /// Buffer a write with an absolute expiry timestamp (`0` = no expiry).
+    pub fn put_with_expires_at<K: AsRef<[u8]>, V: AsRef<[u8]>>(
+        &mut self,
+        scope: &crate::ScopeHandle,
+        key: K,
+        val: V,
+        expires_at_ms: u64,
+    ) -> crate::Result<()> {
         let user_key = key.as_ref();
         let entry_value = val.as_ref();
         validate_key(user_key)?;
         validate_value(entry_value)?;
-
-        let expires_at_ms = TimestampMs::now().get() + ttl.as_millis() as u64;
         self.ctx.put(
             scope.scope_id,
             Bytes::copy_from_slice(user_key),
@@ -101,6 +133,16 @@ impl<FS: FileSystem + 'static> Transaction<FS> {
         Ok(())
     }
 
+    /// Track a key in the OCC read set without reading its value.
+    pub fn record_read(&mut self, scope_id: u32, key: &[u8]) {
+        self.ctx.record_read(scope_id, Bytes::copy_from_slice(key));
+    }
+
+    /// Buffer a delete.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorKvError::KeyTooLarge`] when the key exceeds the format limit.
     pub fn delete<K: AsRef<[u8]>>(
         &mut self,
         scope: &crate::ScopeHandle,
@@ -113,6 +155,11 @@ impl<FS: FileSystem + 'static> Transaction<FS> {
         Ok(())
     }
 
+    /// Buffer a half-open range delete.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorKvError::KeyTooLarge`] when a bound exceeds the format limit.
     pub fn delete_range<K: AsRef<[u8]>>(
         &mut self,
         scope: &crate::ScopeHandle,
@@ -132,6 +179,11 @@ impl<FS: FileSystem + 'static> Transaction<FS> {
         Ok(())
     }
 
+    /// Read an ordered key range at the transaction snapshot.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the storage read fails.
     pub fn scan<K: AsRef<[u8]>>(
         &mut self,
         scope: &crate::ScopeHandle,
@@ -146,6 +198,11 @@ impl<FS: FileSystem + 'static> Transaction<FS> {
         )
     }
 
+    /// Read every key with the given prefix at the transaction snapshot.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the storage read fails.
     pub fn scan_prefix<K: AsRef<[u8]>>(
         &mut self,
         scope: &crate::ScopeHandle,
@@ -155,6 +212,11 @@ impl<FS: FileSystem + 'static> Transaction<FS> {
             .scan_prefix(scope.scope_id, prefix.as_ref(), self.ctx.read_seq)
     }
 
+    /// Buffer a merge operand.
+    ///
+    /// # Errors
+    ///
+    /// This method returns an error only for interface parity; it cannot fail.
     pub fn merge<K: AsRef<[u8]>>(
         &mut self,
         scope: &crate::ScopeHandle,
@@ -173,6 +235,12 @@ impl<FS: FileSystem + 'static> Transaction<FS> {
         Ok(())
     }
 
+    /// Validate the read set and commit the write set.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorKvError::WriteConflict`] when a key in the read set changed
+    /// after the transaction started.
     pub fn commit(mut self) -> crate::Result<()> {
         let read_seq = self.ctx.read_seq;
         let context = std::mem::replace(&mut self.ctx, TransactionContext::new(0));

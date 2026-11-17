@@ -1,18 +1,26 @@
 use bytes::{BufMut, Bytes, BytesMut};
 
+/// Maximum user key length in bytes.
 pub const MAX_KEY_LEN: usize = 65_535;
+/// Maximum value length in bytes (256 MiB).
 pub const MAX_VAL_LEN: usize = 268_435_456; // 256 MiB
 
+/// Kind of an internal key entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(u8)]
 pub enum ValueType {
+    /// A stored value.
     Value = 0x01,
+    /// A point deletion marker.
     Tombstone = 0x02,
+    /// A merge operand.
     MergeOperand = 0x03,
+    /// A range deletion marker.
     RangeTombstone = 0x04,
 }
 
 impl ValueType {
+    /// Decode a value type byte.
     pub fn from_u8(v: u8) -> Option<Self> {
         match v {
             0x01 => Some(ValueType::Value),
@@ -31,11 +39,16 @@ impl ValueType {
 /// |<------ N bytes ------>|<------- 8 bytes ------>|<------- 8 bytes ------->|
 ///
 /// inverted_tag = !((seq << 8) | (value_type as u64)) serialized in Big-Endian.
+/// Internal key: user key, commit sequence, value type, and expiry time.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct InternalKey {
+    /// User key bytes.
     pub user_key: Bytes,
+    /// Commit sequence number.
     pub seq: u64,
+    /// Entry kind.
     pub value_type: ValueType,
+    /// Absolute expiry time in milliseconds, or `0`.
     pub expires_at_ms: u64,
 }
 
@@ -64,6 +77,7 @@ impl PartialOrd for InternalKey {
 }
 
 impl InternalKey {
+    /// Build an internal key.
     pub fn new(user_key: Bytes, seq: u64, value_type: ValueType, expires_at_ms: u64) -> Self {
         Self {
             user_key,
@@ -73,6 +87,7 @@ impl InternalKey {
         }
     }
 
+    /// Encode the key in sort order.
     pub fn encode(&self) -> Bytes {
         let mut buf = BytesMut::with_capacity(self.user_key.len() + 16);
         buf.extend_from_slice(&self.user_key);
@@ -82,6 +97,7 @@ impl InternalKey {
         buf.freeze()
     }
 
+    /// Decode a key. `None` means the input is too short or invalid.
     pub fn decode(bytes: Bytes) -> Option<Self> {
         if bytes.len() < 16 {
             return None;

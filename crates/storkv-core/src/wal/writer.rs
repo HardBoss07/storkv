@@ -10,20 +10,30 @@ use crate::vfs::{File, FileSystem};
 
 use super::record::{Durability, WalBatchFrame};
 
+/// Magic bytes at the start of every WAL segment.
 pub const WAL_MAGIC: &[u8; 8] = b"STORKWAL";
+/// Size of the WAL segment header in bytes.
 pub const WAL_HEADER_SIZE: usize = 16;
+/// Maximum size of a WAL segment before rotation.
 pub const MAX_WAL_SEGMENT_BYTES: u64 = 32 * 1024 * 1024; // 32 MiB
+/// Maximum age of a WAL segment before rotation.
 pub const WAL_SEAL_INTERVAL: Duration = Duration::from_secs(300); // 5 minutes
 
 const SEALED_FLAG_OFFSET: u64 = 10;
 const SEALED_FLAG_SET: [u8; 2] = 1u16.to_le_bytes();
 
+/// One open WAL segment file.
 pub struct WalSegment<FS: FileSystem> {
     // Widest fields first; the generic fields are dropped last.
+    /// Segment file number.
     pub file_num: u64,
+    /// Bytes written to the segment, including the header.
     pub written_bytes: u64,
+    /// Monotonic time when the segment was created or reopened.
     pub created_at: Instant,
+    /// Filesystem path of the segment.
     pub path: PathBuf,
+    /// Open file handle.
     pub file: Box<dyn File>,
     _fs: Arc<FS>,
 }
@@ -31,6 +41,11 @@ pub struct WalSegment<FS: FileSystem> {
 const _: () = assert!(std::mem::size_of::<WalBatchFrame>() <= 32);
 
 impl<FS: FileSystem> WalSegment<FS> {
+    /// Create a new segment and write its header.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the file cannot be created or synced.
     pub fn create(fs: Arc<FS>, wal_dir: &Path, file_num: u64) -> Result<Self> {
         let path = segment_path(wal_dir, file_num);
         let mut file = fs.create_file(&path)?;
@@ -79,6 +94,11 @@ impl<FS: FileSystem> WalSegment<FS> {
         }))
     }
 
+    /// Append one encoded batch to the segment.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the frame cannot be encoded or written.
     pub fn write_frame(&mut self, frame: &WalBatchFrame) -> Result<()> {
         let frame_bytes = frame.encode(false)?;
         self.file.write_all(&frame_bytes)?;
@@ -86,15 +106,26 @@ impl<FS: FileSystem> WalSegment<FS> {
         Ok(())
     }
 
+    /// Sync the segment data to stable storage.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the sync fails.
     pub fn sync(&mut self) -> Result<()> {
         self.file.sync_data()
     }
 
+    /// Return true when the segment reached its size or age limit.
     pub fn should_rotate(&self) -> bool {
         self.written_bytes >= MAX_WAL_SEGMENT_BYTES
             || self.created_at.elapsed() >= WAL_SEAL_INTERVAL
     }
 
+    /// Set the sealed flag and sync the segment header.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the seek, write, or sync fails.
     pub fn seal(&mut self) -> Result<()> {
         self.file
             .seek(std::io::SeekFrom::Start(SEALED_FLAG_OFFSET))?;
@@ -103,6 +134,7 @@ impl<FS: FileSystem> WalSegment<FS> {
     }
 }
 
+/// Owns the active WAL segment and rotates it on size or age limits.
 pub struct WalManager<FS: FileSystem> {
     fs: Arc<FS>,
     wal_dir: PathBuf,
@@ -111,6 +143,11 @@ pub struct WalManager<FS: FileSystem> {
 }
 
 impl<FS: FileSystem> WalManager<FS> {
+    /// Open or create the active segment.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the WAL directory or segment cannot be opened.
     pub fn open(fs: Arc<FS>, wal_dir: &Path, active_wal_num: u64) -> Result<Self> {
         fs.create_dir_all(wal_dir)?;
         let active_segment = match WalSegment::open_existing(fs.clone(), wal_dir, active_wal_num)? {
@@ -125,6 +162,11 @@ impl<FS: FileSystem> WalManager<FS> {
         })
     }
 
+    /// Write one batch and sync according to the durability policy.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when rotation, writing, or syncing fails.
     pub fn write_batch(&self, frame: &WalBatchFrame, durability: Durability) -> Result<()> {
         let mut segment = self.active_segment.lock();
         self.rotate_if_needed(&mut segment)?;
@@ -136,15 +178,22 @@ impl<FS: FileSystem> WalManager<FS> {
         Ok(())
     }
 
+    /// Sync the active segment.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the sync fails.
     pub fn sync_active(&self) -> Result<()> {
         let mut segment = self.active_segment.lock();
         segment.sync()
     }
 
+    /// Return the file number of the active segment.
     pub fn current_file_num(&self) -> u64 {
         self.active_segment.lock().file_num
     }
 
+    /// Return the write offset of the active segment.
     pub fn current_offset(&self) -> u64 {
         self.active_segment.lock().written_bytes
     }

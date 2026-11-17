@@ -4,42 +4,68 @@ use std::time::Duration;
 use crate::error::{Result, StorKvError};
 use crate::format::{MAX_KEY_LEN, MAX_VAL_LEN};
 
+/// Durability policy for committed writes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Durability {
+    /// Sync the WAL before the commit returns.
     StrictFsync,
-    Buffered { sync_interval: Duration },
+    /// Sync the WAL on a timer.
+    Buffered {
+        /// Maximum time between background syncs.
+        sync_interval: Duration,
+    },
 }
 
+/// One logical write in a WAL batch.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum WalOp {
+    /// Store a value with an absolute expiry time.
     Put {
+        /// Identifier of the target scope.
         scope_id: u32,
+        /// Absolute Unix epoch milliseconds, or `0` for no expiry.
         expires_at_ms: u64,
+        /// User key.
         key: Bytes,
+        /// Value bytes.
         val: Bytes,
     },
+    /// Delete one key.
     Delete {
+        /// Identifier of the target scope.
         scope_id: u32,
+        /// User key.
         key: Bytes,
     },
+    /// Apply a merge operand.
     Merge {
+        /// Identifier of the target scope.
         scope_id: u32,
+        /// User key.
         key: Bytes,
+        /// Operand bytes.
         val: Bytes,
     },
+    /// Delete a half-open key range.
     DeleteRange {
+        /// Identifier of the target scope.
         scope_id: u32,
+        /// Inclusive start key.
         start_key: Bytes,
+        /// Exclusive end key.
         end_key: Bytes,
     },
+    /// Drop a whole scope.
     DropScope {
+        /// Identifier of the scope to drop.
         scope_id: u32,
     },
 }
 
 impl WalOp {
+    /// Return the one-byte opcode of the operation.
     pub fn opcode(&self) -> u8 {
         match self {
             WalOp::Put { .. } => 0x01,
@@ -50,6 +76,12 @@ impl WalOp {
         }
     }
 
+    /// Encode the operation into a WAL batch payload.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorKvError::KeyTooLarge`] or [`StorKvError::ValueTooLarge`]
+    /// when a field exceeds the format limit.
     pub fn encode(&self, destination: &mut BytesMut) -> Result<()> {
         match self {
             WalOp::Put {
@@ -97,6 +129,11 @@ impl WalOp {
         Ok(())
     }
 
+    /// Decode one operation from a WAL batch payload.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorKvError::Corruption`] on a short header or unknown opcode.
     pub fn decode(source: &mut impl Buf) -> Result<Self> {
         if source.remaining() < 17 {
             return Err(StorKvError::Corruption("Incomplete WalOp header".into()));
@@ -139,12 +176,16 @@ impl WalOp {
 /// | crc32c   | frame_len | batch_seq | op_count | flags | reserved | payload            |
 /// | (u32 LE) | (u32 LE)  | (u64 LE)  | (u32 LE) | (u16) | (u16)    | ([u8; ...])        |
 /// +----------+-----------+-----------+----------+-------+----------+--------------------+
+/// One atomic WAL batch.
 pub struct WalBatchFrame {
+    /// Monotonic batch sequence number.
     pub batch_seq: u64,
+    /// Operations in commit order.
     pub ops: Vec<WalOp>,
 }
 
 impl WalBatchFrame {
+    /// Build a batch from an ordered operation list.
     pub fn new(batch_seq: u64, ops: Vec<WalOp>) -> Self {
         Self { batch_seq, ops }
     }
