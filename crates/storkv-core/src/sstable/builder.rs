@@ -8,6 +8,7 @@ use crate::error::{Result, StorKvError};
 use crate::vfs::File;
 use bytes::Bytes;
 
+/// Streaming writer for one SSTable file.
 pub struct SstWriter<'a> {
     file: &'a mut Box<dyn File>,
     offset: u64,
@@ -22,6 +23,7 @@ pub struct SstWriter<'a> {
 }
 
 impl<'a> SstWriter<'a> {
+    /// Create a writer that appends to the given file.
     pub fn new(
         file: &'a mut Box<dyn File>,
         scope_id: u32,
@@ -50,6 +52,11 @@ impl<'a> SstWriter<'a> {
         }
     }
 
+    /// Append one entry. Keys must arrive in internal key order.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a block cannot be compressed or written.
     pub fn add(
         &mut self,
         internal_key: &[u8],
@@ -159,6 +166,12 @@ impl<'a> SstWriter<'a> {
         Ok(handle)
     }
 
+    /// Flush the last block, write the filter, meta, and index blocks, then
+    /// write and sync the footer.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a block cannot be written or synced.
     pub fn finish(mut self) -> Result<(Footer, MetaBlock, Bytes, Bytes)> {
         self.flush_final_block()?;
         if self.meta.min_seq == u64::MAX {

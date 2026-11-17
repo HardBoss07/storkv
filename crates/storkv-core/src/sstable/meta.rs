@@ -2,17 +2,28 @@ use super::footer::BlockHandle;
 use crate::error::{Result, StorKvError};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
+/// Per-SSTable metadata block.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MetaBlock {
+    /// Number of entries in the file.
     pub entry_count: u64,
+    /// Number of tombstone entries.
     pub tombstone_count: u64,
+    /// Smallest sequence number in the file.
     pub min_seq: u64,
+    /// Largest sequence number in the file.
     pub max_seq: u64,
+    /// Smallest absolute expiry timestamp, or `0`.
     pub min_expires_at_ms: u64,
+    /// Largest absolute expiry timestamp, or `0`.
     pub max_expires_at_ms: u64,
+    /// Total user key bytes.
     pub raw_key_bytes: u64,
+    /// Total value bytes.
     pub raw_val_bytes: u64,
+    /// Identifier of the owning scope.
     pub scope_id: u32,
+    /// Compaction level from L0 through L6.
     pub level: u8,
 }
 
@@ -20,6 +31,7 @@ const _: () = assert!(std::mem::size_of::<MetaBlock>() <= 72);
 const _: () = assert!(std::mem::size_of::<BlockHandle>() == 16);
 
 impl MetaBlock {
+    /// Encode the metadata block in little-endian order.
     pub fn encode(&self) -> Vec<u8> {
         let mut buffer = BytesMut::with_capacity(69);
         buffer.put_u32_le(self.scope_id);
@@ -35,6 +47,11 @@ impl MetaBlock {
         buffer.to_vec()
     }
 
+    /// Decode a metadata block.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorKvError::Corruption`] when fewer than 69 bytes are present.
     pub fn decode(mut data: &[u8]) -> Result<Self> {
         if data.remaining() < 69 {
             return Err(StorKvError::Corruption("MetaBlock too short".into()));
@@ -54,23 +71,29 @@ impl MetaBlock {
     }
 }
 
+/// One index entry: the last key in a data block and the block handle.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IndexEntry {
+    /// Last internal key in the data block.
     pub last_internal_key: Bytes,
+    /// Offset and size of the data block.
     pub handle: BlockHandle,
 }
 
+/// Builder for the SSTable index block.
 pub struct IndexBlockBuilder {
     entries: Vec<IndexEntry>,
 }
 
 impl IndexBlockBuilder {
+    /// Create an empty builder.
     pub fn new() -> Self {
         Self {
             entries: Vec::new(),
         }
     }
 
+    /// Append one block boundary.
     pub fn add(&mut self, last_internal_key: Bytes, handle: BlockHandle) {
         self.entries.push(IndexEntry {
             last_internal_key,
@@ -78,6 +101,7 @@ impl IndexBlockBuilder {
         });
     }
 
+    /// Serialize the index block.
     pub fn finish(self) -> Vec<u8> {
         let mut buffer = BytesMut::new();
         buffer.put_u32_le(self.entries.len() as u32);
@@ -90,11 +114,18 @@ impl IndexBlockBuilder {
     }
 }
 
+/// Decoded SSTable index block.
 pub struct IndexBlockReader {
+    /// Index entries in key order.
     pub entries: Vec<IndexEntry>,
 }
 
 impl IndexBlockReader {
+    /// Decode an index block.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorKvError::Corruption`] on a truncated or inconsistent block.
     pub fn decode(mut data: &[u8]) -> Result<Self> {
         if data.remaining() < 4 {
             return Err(StorKvError::Corruption("Index block too short".into()));
@@ -126,6 +157,7 @@ impl IndexBlockReader {
         Ok(Self { entries })
     }
 
+    /// Find the first block whose last key is at or after the target key.
     pub fn find_block(&self, target_internal_key: &[u8]) -> Option<BlockHandle> {
         for entry in &self.entries {
             if entry.last_internal_key.as_ref() >= target_internal_key {

@@ -11,18 +11,22 @@ const FRAME_HEADER_SIZE: usize = 8;
 /// A VersionEdit frame holding multiple EditRecords.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct VersionEdit {
+    /// Records in the frame.
     pub edits: Vec<EditRecord>,
 }
 
 impl VersionEdit {
+    /// Create an empty frame.
     pub fn new() -> Self {
         Self { edits: Vec::new() }
     }
 
+    /// Append one record to the frame.
     pub fn add(&mut self, edit: EditRecord) {
         self.edits.push(edit);
     }
 
+    /// Encode the frame with a CRC32C header.
     pub fn encode(&self) -> Vec<u8> {
         let mut body = BytesMut::new();
         body.put_u16_le(self.edits.len() as u16);
@@ -41,9 +45,17 @@ impl VersionEdit {
         frame
     }
 
+    /// Decode one frame and return it with the number of consumed bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorKvError::Corruption`] on a short frame, checksum mismatch,
+    /// or invalid record.
     pub fn decode(source: &[u8]) -> Result<(Self, usize)> {
         let (checksum, payload_length) = decode_frame_header(source)?;
-        let total_frame_len = FRAME_HEADER_SIZE + payload_length;
+        let total_frame_len = FRAME_HEADER_SIZE
+            .checked_add(payload_length)
+            .ok_or_else(|| StorKvError::Corruption("VersionEdit frame length overflow".into()))?;
         if source.len() < total_frame_len {
             return Err(StorKvError::Corruption(
                 "Truncated VersionEdit frame payload".into(),

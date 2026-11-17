@@ -11,10 +11,15 @@ use crate::vfs::FileSystem;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 
+/// Compaction policy dispatcher.
 pub struct Compactor;
 
 impl Compactor {
     /// Run Leveled or FIFO compaction on a scope respecting gc_safe_seq
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when compaction cannot read or write a file.
     pub fn compact_scope<FS: FileSystem>(
         scope: &Arc<Scope<FS>>,
         gc_safe_seq: SequenceNumber,

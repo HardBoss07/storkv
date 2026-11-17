@@ -1,9 +1,12 @@
 use crate::error::{Result, StorKvError};
 use bytes::{BufMut, Bytes, BytesMut};
 
+/// Number of entries between restart points in a data block.
 pub const RESTART_INTERVAL: usize = 16;
+/// Target size of a data block in bytes.
 pub const TARGET_BLOCK_SIZE: usize = 4096;
 
+/// Builder for one prefix-compressed SSTable data block.
 pub struct DataBlockBuilder {
     buffer: BytesMut,
     restarts: Vec<u32>,
@@ -12,6 +15,7 @@ pub struct DataBlockBuilder {
 }
 
 impl DataBlockBuilder {
+    /// Create an empty block builder.
     pub fn new() -> Self {
         Self {
             buffer: BytesMut::new(),
@@ -21,6 +25,7 @@ impl DataBlockBuilder {
         }
     }
 
+    /// Append one key/value entry with prefix compression.
     pub fn add(&mut self, key: &[u8], value: &[u8]) {
         let shared = self.shared_prefix_length(key);
         let unshared = key.len() - shared;
@@ -54,10 +59,12 @@ impl DataBlockBuilder {
         shared
     }
 
+    /// Return the estimated serialized size in bytes.
     pub fn estimated_size(&self) -> usize {
         self.buffer.len() + (self.restarts.len() * 4) + 4
     }
 
+    /// Serialize the block, including the restart array.
     pub fn finish(mut self) -> Vec<u8> {
         for &restart_offset in &self.restarts {
             self.buffer.put_u32_le(restart_offset);
@@ -67,12 +74,18 @@ impl DataBlockBuilder {
     }
 }
 
+/// Reader for one prefix-compressed SSTable data block.
 pub struct DataBlockReader {
     data: Bytes,
     restarts: Vec<u32>,
 }
 
 impl DataBlockReader {
+    /// Parse the restart array of a data block.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorKvError::Corruption`] on a truncated or invalid block.
     pub fn new(data: Bytes) -> Result<Self> {
         if data.len() < 4 {
             return Err(StorKvError::Corruption("Data block too short".into()));
@@ -115,6 +128,11 @@ impl DataBlockReader {
         Ok(Self { data, restarts })
     }
 
+    /// Decode every entry in the block.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorKvError::Corruption`] when the entry stream is invalid.
     pub fn entries(&self) -> Result<Vec<(Bytes, Bytes)>> {
         let entry_start = *self.restarts.first().ok_or_else(|| {
             StorKvError::Corruption("Data block contains no restart points".into())
@@ -194,6 +212,11 @@ impl DataBlockReader {
         Ok((Bytes::copy_from_slice(current_key), value, payload_end))
     }
 
+    /// Return the first entry whose key is at or after the target key.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorKvError::Corruption`] when the block cannot be decoded.
     pub fn seek_ge(&self, target_internal_key: &[u8]) -> Result<Option<(Bytes, Bytes)>> {
         for (key, value) in self.entries()? {
             if key.as_ref() >= target_internal_key {

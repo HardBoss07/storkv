@@ -17,15 +17,25 @@ const CURRENT_FILENAME: &str = "CURRENT";
 const CURRENT_TEMP_FILENAME: &str = "CURRENT.tmp";
 const MANIFEST_PREFIX: &str = "MANIFEST-";
 
+/// Owns the active manifest file and its in-memory state.
 pub struct ManifestManager<FS: FileSystem> {
+    /// Filesystem backend.
     pub fs: Arc<FS>,
+    /// Database root directory.
     pub db_root: PathBuf,
+    /// File number of the active manifest.
     pub active_manifest_num: AtomicU64,
     state: parking_lot::RwLock<ManifestState>,
     writer: parking_lot::Mutex<Box<dyn File>>,
 }
 
 impl<FS: FileSystem> ManifestManager<FS> {
+    /// Open the current manifest or create a new one.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorKvError::Corruption`] on an invalid `CURRENT` file or
+    /// manifest header, or an I/O error.
     pub fn open(fs: Arc<FS>, db_root: &Path) -> Result<Self> {
         let current_path = db_root.join(CURRENT_FILENAME);
         let (state, active_num, writer) = if fs.exists(&current_path) {
@@ -43,6 +53,11 @@ impl<FS: FileSystem> ManifestManager<FS> {
         })
     }
 
+    /// Append one version edit, sync it, and apply it to the in-memory state.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the edit cannot be written or synced.
     pub fn log_edit(&self, edit: VersionEdit) -> Result<()> {
         let encoded_edit = edit.encode();
         let mut writer = self.writer.lock();
@@ -53,6 +68,7 @@ impl<FS: FileSystem> ManifestManager<FS> {
         Ok(())
     }
 
+    /// Borrow the current in-memory manifest state.
     pub fn state(&self) -> parking_lot::RwLockReadGuard<'_, ManifestState> {
         self.state.read()
     }

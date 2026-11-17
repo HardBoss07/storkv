@@ -2,6 +2,7 @@ use crate::error::{Result, StorKvError};
 use crate::format::compute_crc32c;
 use bytes::Bytes;
 
+/// Builder for a prefix Bloom filter block.
 pub struct BloomFilterBuilder {
     bits_per_key: usize,
     num_probes: u8,
@@ -9,6 +10,7 @@ pub struct BloomFilterBuilder {
 }
 
 impl BloomFilterBuilder {
+    /// Create a builder with 10 bits per key and 7 probes.
     pub fn new() -> Self {
         Self {
             bits_per_key: 10,
@@ -17,10 +19,12 @@ impl BloomFilterBuilder {
         }
     }
 
+    /// Add one key prefix to the filter.
     pub fn add_key(&mut self, key: &[u8]) {
         self.hashes.push(compute_crc32c(key));
     }
 
+    /// Serialize the filter block.
     pub fn build(self) -> Vec<u8> {
         let bitset_bits = if self.hashes.is_empty() {
             64
@@ -50,12 +54,18 @@ impl BloomFilterBuilder {
     }
 }
 
+/// Reader for a prefix Bloom filter block.
 pub struct BloomFilterReader {
     num_probes: u8,
     bitset: Bytes,
 }
 
 impl BloomFilterReader {
+    /// Parse a filter block.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorKvError::Corruption`] on a short or invalid block.
     pub fn new(data: Bytes) -> Result<Self> {
         if data.len() < 8 {
             return Err(StorKvError::Corruption("Filter block too short".into()));
@@ -66,13 +76,17 @@ impl BloomFilterReader {
                 .try_into()
                 .map_err(|_| StorKvError::Corruption("Invalid filter length field".into()))?,
         ) as usize;
-        if data.len() < 8 + bitset_length {
+        let bitset_end = 8usize
+            .checked_add(bitset_length)
+            .ok_or_else(|| StorKvError::Corruption("Filter bitset length overflow".into()))?;
+        if data.len() < bitset_end {
             return Err(StorKvError::Corruption("Truncated filter bitset".into()));
         }
-        let bitset = data.slice(8..8 + bitset_length);
+        let bitset = data.slice(8..bitset_end);
         Ok(Self { num_probes, bitset })
     }
 
+    /// Return false only when the filter proves that the key is absent.
     pub fn may_contain(&self, key: &[u8]) -> bool {
         if self.bitset.is_empty() {
             return true;

@@ -2,22 +2,34 @@ use crate::error::{Result, StorKvError};
 use crate::format::compute_crc32c;
 use bytes::{Buf, BufMut};
 
+/// Magic bytes at the end of every SSTable file.
 pub const SST_MAGIC: &[u8; 8] = b"STORKSST";
+/// Size of the fixed SSTable footer in bytes.
 pub const FOOTER_SIZE: usize = 56;
+/// Size of the compression and checksum trailer on each block.
 pub const BLOCK_TRAILER_SIZE: usize = 5;
 
+/// Offset and size of one SSTable block.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct BlockHandle {
+    /// Byte offset from the start of the file.
     pub offset: u64,
+    /// Block size in bytes, including the trailer.
     pub size: u64,
 }
 
 impl BlockHandle {
+    /// Encode the handle in little-endian order.
     pub fn encode(&self, buffer: &mut impl BufMut) {
         buffer.put_u64_le(self.offset);
         buffer.put_u64_le(self.size);
     }
 
+    /// Decode a handle from 16 bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorKvError::Corruption`] when fewer than 16 bytes are present.
     pub fn decode(buffer: &mut impl Buf) -> Result<Self> {
         if buffer.remaining() < 16 {
             return Err(StorKvError::Corruption("Incomplete BlockHandle".into()));
@@ -29,15 +41,24 @@ impl BlockHandle {
     }
 }
 
+/// Compression codec of one SSTable block.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum CompressionType {
+    /// No compression.
     None = 0x00,
+    /// LZ4 block compression.
     Lz4 = 0x01,
+    /// Zstandard compression.
     Zstd = 0x02,
 }
 
 impl CompressionType {
+    /// Decode a compression code.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorKvError::Corruption`] for an unknown code.
     pub fn from_u8(value: u8) -> Result<Self> {
         match value {
             0x00 => Ok(CompressionType::None),
@@ -51,6 +72,11 @@ impl CompressionType {
     }
 }
 
+/// Compress a block and append the compression code and CRC32C trailer.
+///
+/// # Errors
+///
+/// Returns [`StorKvError::Corruption`] when the codec fails.
 pub fn compress_and_frame_block(payload: &[u8], compression: CompressionType) -> Result<Vec<u8>> {
     let mut stored_payload = compress_payload(payload, compression)?;
 
@@ -79,6 +105,12 @@ fn compress_payload(payload: &[u8], compression: CompressionType) -> Result<Vec<
     }
 }
 
+/// Verify the CRC32C trailer and decompress a block.
+///
+/// # Errors
+///
+/// Returns [`StorKvError::Corruption`] on a short block, a checksum mismatch,
+/// or a decompression failure.
 pub fn decompress_and_verify_block(data_with_trailer: &[u8]) -> Result<Vec<u8>> {
     if data_with_trailer.len() < BLOCK_TRAILER_SIZE {
         return Err(StorKvError::Corruption(
@@ -126,14 +158,20 @@ fn decompress_payload(stored_payload: &[u8], compression: CompressionType) -> Re
     }
 }
 
+/// Fixed SSTable footer: handles of the meta, filter, and index blocks plus
+/// the format magic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Footer {
+    /// Handle of the metadata block.
     pub meta_handle: BlockHandle,
+    /// Handle of the prefix Bloom filter block.
     pub filter_handle: BlockHandle,
+    /// Handle of the index block.
     pub index_handle: BlockHandle,
 }
 
 impl Footer {
+    /// Encode the footer to exactly [`FOOTER_SIZE`] bytes.
     pub fn encode(&self) -> [u8; FOOTER_SIZE] {
         let mut buffer = [0u8; FOOTER_SIZE];
         let mut cursor = &mut buffer[..];
@@ -144,6 +182,11 @@ impl Footer {
         buffer
     }
 
+    /// Decode the last [`FOOTER_SIZE`] bytes of an SSTable file.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorKvError::Corruption`] on a short file or bad magic.
     pub fn decode(bytes: &[u8]) -> Result<Self> {
         if bytes.len() < FOOTER_SIZE {
             return Err(StorKvError::Corruption("Footer size too small".into()));

@@ -9,15 +9,22 @@ use super::record::{
 /// In-memory engine state reconstructed from MANIFEST
 #[derive(Debug, Clone, Default)]
 pub struct ManifestState {
+    /// Next sequence number to allocate.
     pub next_seq: u64,
+    /// Oldest WAL segment that recovery must replay.
     pub min_unflushed_wal_num: u64,
+    /// Scope metadata keyed by identifier.
     pub scopes: HashMap<u32, ScopeMeta>,
+    /// Scope identifiers keyed by name.
     pub scope_by_name: HashMap<String, u32>,
+    /// SSTable metadata keyed by scope, level, and file number.
     pub sst_files: BTreeMap<(u32, u8, u64), SstFileMeta>,
+    /// Pinned snapshots keyed by name.
     pub pinned_snapshots: HashMap<String, SnapshotMeta>,
 }
 
 impl ManifestState {
+    /// Apply every record of one version edit.
     pub fn apply(&mut self, edit: &VersionEdit) {
         for record in &edit.edits {
             self.apply_record(record);

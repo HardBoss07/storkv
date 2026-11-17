@@ -9,14 +9,24 @@ use crate::vfs::File;
 use bytes::Bytes;
 use std::io::SeekFrom;
 
+/// Reader for one SSTable file.
 pub struct SstReader {
+    /// Parsed footer.
     pub footer: Footer,
+    /// Parsed metadata block.
     pub meta: MetaBlock,
+    /// Parsed index block.
     pub index: IndexBlockReader,
+    /// Parsed prefix Bloom filter.
     pub filter: BloomFilterReader,
 }
 
 impl SstReader {
+    /// Open an SSTable and parse its footer, meta, filter, and index blocks.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorKvError::Corruption`] on a short file or invalid block.
     pub fn open(file: &mut Box<dyn File>) -> Result<Self> {
         let file_length = file.file_size()?;
         if file_length < FOOTER_SIZE as u64 {
@@ -54,6 +64,11 @@ impl SstReader {
         decompress_and_verify_block(&raw_block)
     }
 
+    /// Read the raw bytes of one block plus its trailer.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorKvError::Corruption`] on an overflow or a short read.
     pub fn read_raw_block(file: &mut Box<dyn File>, handle: BlockHandle) -> Result<Vec<u8>> {
         let total_size = usize::try_from(handle.size)
             .ok()
@@ -65,6 +80,11 @@ impl SstReader {
         Ok(block_bytes)
     }
 
+    /// Verify and decompress one data block.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorKvError::Corruption`] on a checksum or decode failure.
     pub fn read_data_block(
         &self,
         file: &mut Box<dyn File>,
@@ -74,6 +94,11 @@ impl SstReader {
         DataBlockReader::new(Bytes::from(decompressed))
     }
 
+    /// Read every key/value entry in the file.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorKvError::Corruption`] when a block cannot be decoded.
     pub fn read_all_entries(&self, file: &mut Box<dyn File>) -> Result<Vec<(Bytes, Bytes)>> {
         let mut entries = Vec::new();
         for index_entry in &self.index.entries {
