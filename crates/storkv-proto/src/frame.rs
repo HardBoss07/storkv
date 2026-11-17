@@ -16,19 +16,26 @@ const FRAME_HEADER_SIZE: usize = 8 + 2 + 8 + 1;
 const REQUEST_PAYLOAD_TAG: u8 = 1;
 const RESPONSE_PAYLOAD_TAG: u8 = 2;
 
+/// One decoded protocol frame.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Message {
+    /// Correlation identifier chosen by the sender.
     pub request_id: u64,
+    /// Request or response body.
     pub payload: MessagePayload,
 }
 
+/// Body of a protocol frame.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MessagePayload {
+    /// A client request.
     Request(Request),
+    /// A server response.
     Response(Response),
 }
 
 impl Message {
+    /// Build a request message with the given correlation identifier.
     pub fn new_request(request_id: u64, request: Request) -> Self {
         Self {
             request_id,
@@ -36,6 +43,7 @@ impl Message {
         }
     }
 
+    /// Build a response message with the given correlation identifier.
     pub fn new_response(request_id: u64, response: Response) -> Self {
         Self {
             request_id,

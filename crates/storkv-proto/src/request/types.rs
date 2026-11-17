@@ -1,120 +1,253 @@
 use bytes::Bytes;
 use std::time::Duration;
 
+/// Scope creation options as they appear on the wire.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WireScopeOptions {
+    /// Durability policy for commits in the new scope.
     pub durability: WireDurability,
+    /// Retention policy for keys in the new scope.
     pub retention: WireRetention,
+    /// Prefix Bloom filter size in bytes. `None` disables the filter.
     pub prefix_bloom_len: Option<usize>,
 }
 
+/// Durability policy for committed writes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum WireDurability {
+    /// Sync the WAL on every commit before the commit returns.
     StrictFsync,
-    Buffered { sync_interval: Duration },
+    /// Sync the WAL on a timer. The duration is the maximum unsynced window.
+    Buffered {
+        /// Maximum time between background syncs.
+        sync_interval: Duration,
+    },
 }
 
+/// Key retention policy for a scope.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum WireRetention {
+    /// Keep keys until an explicit delete arrives.
     Permanent,
+    /// Expire keys after a default TTL and compact with the selected style.
     Ttl {
+        /// Default lifetime for a key that a write does not override.
         default_ttl: Duration,
+        /// Compaction strategy for the scope.
         compaction_style: WireCompactionStyle,
     },
 }
 
+/// Compaction strategy for one scope.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum WireCompactionStyle {
+    /// Size-tiered levels L0 through L6.
     Leveled,
+    /// First-in, first-out retention by age.
     Fifo,
 }
 
+/// Merge operand sent over the wire.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum WireMergeOp {
+    /// Add an integer delta to the current counter value.
     CounterAdd(i64),
+    /// Send a caller-defined operand to the merge operator.
     Custom(Bytes),
 }
 
+/// Pending transaction mutation sent in a commit request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum WireTxMutation {
-    Put { val: Bytes, expires_at_ms: u64 },
+    /// Store a value. `0` in `expires_at_ms` means no expiry.
+    Put {
+        /// Value bytes to store.
+        val: Bytes,
+        /// Absolute Unix epoch milliseconds, or `0` for no expiry.
+        expires_at_ms: u64,
+    },
+    /// Delete one key.
     Delete,
-    Merge { operand: Bytes },
-    DeleteRange { end_key: Bytes },
+    /// Apply a merge operand to one key.
+    Merge {
+        /// Operand bytes for the merge operator.
+        operand: Bytes,
+    },
+    /// Delete the range from the mutation key up to, but not including, `end_key`.
+    DeleteRange {
+        /// Exclusive end key of the range.
+        end_key: Bytes,
+    },
 }
 
+/// Request message in the StorKV native protocol.
+///
+/// Each variant maps to one opcode on the wire. The opcode table is in
+/// `docs/crates/storkv-proto/wire_abi.md`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Request {
+    /// Check that the server is reachable.
     Ping,
+    /// Read one key from a scope.
     Get {
+        /// Identifier of the target scope.
         scope_id: u32,
+        /// User key to read.
         key: Bytes,
     },
+    /// Store one key/value pair.
     Put {
+        /// Identifier of the target scope.
         scope_id: u32,
+        /// User key to store.
         key: Bytes,
+        /// Value bytes to store.
         val: Bytes,
     },
+    /// Store one key/value pair with a relative time to live.
     PutWithTtl {
+        /// Identifier of the target scope.
         scope_id: u32,
+        /// User key to store.
         key: Bytes,
+        /// Value bytes to store.
         val: Bytes,
+        /// Lifetime from now until the key expires.
         ttl: Duration,
     },
+    /// Delete one key.
     Delete {
+        /// Identifier of the target scope.
         scope_id: u32,
+        /// User key to delete.
         key: Bytes,
     },
+    /// Delete every key in a half-open range.
     DeleteRange {
+        /// Identifier of the target scope.
         scope_id: u32,
+        /// Inclusive start key of the range.
         start_key: Bytes,
+        /// Exclusive end key of the range.
         end_key: Bytes,
     },
+    /// Apply a merge operand to one key.
     Merge {
+        /// Identifier of the target scope.
         scope_id: u32,
+        /// User key to merge.
         key: Bytes,
+        /// Merge operand.
         op: WireMergeOp,
     },
+    /// Read an ordered range. `None` bounds are open.
     Scan {
+        /// Identifier of the target scope.
         scope_id: u32,
+        /// Inclusive start key, or `None` for the first key.
         start_key: Option<Bytes>,
+        /// Exclusive end key, or `None` for the last key.
         end_key: Option<Bytes>,
     },
+    /// Read every key that starts with a prefix.
     ScanPrefix {
+        /// Identifier of the target scope.
         scope_id: u32,
+        /// Prefix to match.
         prefix: Bytes,
     },
+    /// Begin a transaction and receive a read sequence number.
     TxBegin,
+    /// Commit a transaction after optimistic read-set validation.
     TxCommit {
+        /// Sequence number captured by `TxBegin`.
         read_seq: u64,
+        /// Keys that the transaction read.
         read_set: Vec<(u32, Bytes)>,
+        /// Pending mutations keyed by scope identifier and user key.
         write_set: Vec<((u32, Bytes), WireTxMutation)>,
     },
+    /// Create a scope.
     CreateScope {
+        /// Unique scope name.
         name: String,
+        /// Scope configuration.
         options: WireScopeOptions,
     },
+    /// Drop a scope and delete its data.
     DropScope {
+        /// Name of the scope to drop.
         name: String,
     },
+    /// Pin a snapshot at the current sequence number.
     CreateSnapshot {
+        /// Unique snapshot name.
         name: String,
     },
+    /// Release a pinned snapshot.
     UnpinSnapshot {
+        /// Name of the snapshot to release.
         name: String,
     },
+    /// Copy a consistent database image to a directory.
     Checkpoint {
+        /// Destination directory path.
         dest_dir: String,
     },
+    /// Run compaction immediately.
     Compact,
+    /// Subscribe the connection to change events.
     WatchSubscribe,
+    /// Read runtime counters.
     TelemetryQuery,
+    /// Check database health.
     HealthCheck,
+    /// Read rich administrative statistics.
     AdminStats,
+    /// Run a full backup now. `wait == false` only wakes the background worker.
+    TriggerBackup {
+        /// Block until the generation is published.
+        wait: bool,
+    },
+    /// Read the live backup worker status.
+    BackupStatus,
+    /// Verify every archived generation, optionally as of `target_seq`.
+    VerifyBackup {
+        /// Sequence number to verify, or `None` for the newest state.
+        target_seq: Option<u64>,
+    },
+    /// List archived backup generations.
+    ListBackups,
+    /// Fetch the visible version metadata of a key (exact TTL and sequence).
+    KeyMeta {
+        /// Identifier of the target scope.
+        scope_id: u32,
+        /// User key to inspect.
+        key: Bytes,
+    },
+}
+
+impl Request {
+    /// Requests that mutate global storage state or expose backup internals.
+    /// They are only honoured on an admin connection when the server runs in
+    /// strict-admin mode.
+    pub fn is_admin_only(&self) -> bool {
+        matches!(
+            self,
+            Request::Checkpoint { .. }
+                | Request::Compact
+                | Request::CreateSnapshot { .. }
+                | Request::UnpinSnapshot { .. }
+                | Request::DropScope { .. }
+                | Request::TriggerBackup { .. }
+                | Request::VerifyBackup { .. }
+                | Request::ListBackups
+        )
+    }
 }

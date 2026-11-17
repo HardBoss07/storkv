@@ -42,10 +42,30 @@ pub(crate) fn decode_request(source: &mut BytesMut) -> Result<Request, StorKvWir
         18 => Ok(Request::HealthCheck),
         19 => Ok(Request::TxBegin),
         20 => Ok(Request::AdminStats),
+        21 => Ok(Request::TriggerBackup {
+            wait: get_u8(source)? != 0,
+        }),
+        22 => Ok(Request::BackupStatus),
+        23 => Ok(Request::VerifyBackup {
+            target_seq: get_opt_u64(source)?,
+        }),
+        24 => Ok(Request::ListBackups),
+        25 => Ok(Request::KeyMeta {
+            scope_id: get_u32_le(source)?,
+            key: get_bytes(source)?,
+        }),
         other => Err(StorKvWireError::Protocol(format!(
             "Unknown request opcode: {}",
             other
         ))),
+    }
+}
+
+fn get_opt_u64(source: &mut BytesMut) -> Result<Option<u64>, StorKvWireError> {
+    match get_u8(source)? {
+        0 => Ok(None),
+        1 => Ok(Some(get_u64_le(source)?)),
+        _ => Err(StorKvWireError::Protocol("Invalid optional u64 tag".into())),
     }
 }
 

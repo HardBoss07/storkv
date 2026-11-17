@@ -105,6 +105,31 @@ pub(crate) fn encode_request(destination: &mut BytesMut, request: &Request) {
         Request::HealthCheck => destination.put_u8(18),
         Request::TxBegin => destination.put_u8(19),
         Request::AdminStats => destination.put_u8(20),
+        Request::TriggerBackup { wait } => {
+            destination.put_u8(21);
+            destination.put_u8(u8::from(*wait));
+        }
+        Request::BackupStatus => destination.put_u8(22),
+        Request::VerifyBackup { target_seq } => {
+            destination.put_u8(23);
+            put_opt_u64(destination, *target_seq);
+        }
+        Request::ListBackups => destination.put_u8(24),
+        Request::KeyMeta { scope_id, key } => {
+            destination.put_u8(25);
+            destination.put_u32_le(*scope_id);
+            put_bytes(destination, key);
+        }
+    }
+}
+
+fn put_opt_u64(destination: &mut BytesMut, value: Option<u64>) {
+    match value {
+        Some(seq) => {
+            destination.put_u8(1);
+            destination.put_u64_le(seq);
+        }
+        None => destination.put_u8(0),
     }
 }
 

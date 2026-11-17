@@ -7,32 +7,63 @@ use crate::frame::{get_bytes, get_str, get_u32_le, put_bytes, put_str};
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum StorKvWireError {
+    /// Another process holds the database directory lock.
     #[error("Database locked: {0}")]
     DatabaseLocked(String),
+    /// A checksum or structure check failed on stored data.
     #[error("Storage corruption: {0}")]
     Corruption(String),
+    /// Optimistic concurrency validation found a changed read key.
     #[error("Write conflict in scope {scope_id}")]
-    WriteConflict { scope_id: u32, key: Vec<u8> },
+    WriteConflict {
+        /// Identifier of the scope that reported the conflict.
+        scope_id: u32,
+        /// User key that changed after the read.
+        key: Vec<u8>,
+    },
+    /// The named scope does not exist.
     #[error("Scope not found: {0}")]
     ScopeNotFound(String),
+    /// The scope identifier does not exist.
     #[error("Scope ID not found: {0}")]
     ScopeIdNotFound(u32),
+    /// A scope with the requested name already exists.
     #[error("Scope already exists: {0}")]
     ScopeAlreadyExists(String),
+    /// The scope was dropped after the request started.
     #[error("Scope dropped: {0}")]
     ScopeDropped(u32),
+    /// The named snapshot does not exist.
     #[error("Snapshot not found: {0}")]
     SnapshotNotFound(String),
+    /// A key is longer than the protocol limit.
     #[error("Key exceeds maximum length: {actual} > {max}")]
-    KeyTooLarge { max: usize, actual: usize },
+    KeyTooLarge {
+        /// Maximum permitted key length in bytes.
+        max: usize,
+        /// Actual key length in bytes.
+        actual: usize,
+    },
+    /// A value is longer than the protocol limit.
     #[error("Value exceeds maximum length: {actual} > {max}")]
-    ValueTooLarge { max: usize, actual: usize },
+    ValueTooLarge {
+        /// Maximum permitted value length in bytes.
+        max: usize,
+        /// Actual value length in bytes.
+        actual: usize,
+    },
+    /// The server rejected a semantically invalid request.
     #[error("Invalid operation: {0}")]
     InvalidOperation(String),
+    /// An input or output operation failed.
     #[error("IO error: {0}")]
     Io(String),
+    /// A frame was malformed or used an unsupported version.
     #[error("Protocol error: {0}")]
     Protocol(String),
+    /// Strict admin mode rejected an administrative request.
+    #[error("Unauthorized: this request requires an admin connection")]
+    Unauthorized,
 }
 
 pub(crate) fn encode_error(destination: &mut BytesMut, error: &StorKvWireError) {
@@ -92,6 +123,9 @@ pub(crate) fn encode_error(destination: &mut BytesMut, error: &StorKvWireError) 
             destination.put_u8(13);
             put_str(destination, message);
         }
+        StorKvWireError::Unauthorized => {
+            destination.put_u8(14);
+        }
     }
 }
 
@@ -126,6 +160,7 @@ pub(crate) fn decode_error(source: &mut BytesMut) -> Result<StorKvWireError, Sto
         11 => Ok(StorKvWireError::InvalidOperation(get_str(source)?)),
         12 => Ok(StorKvWireError::Io(get_str(source)?)),
         13 => Ok(StorKvWireError::Protocol(get_str(source)?)),
+        14 => Ok(StorKvWireError::Unauthorized),
         unknown_code => Err(StorKvWireError::Protocol(format!(
             "Unknown error code: {}",
             unknown_code
