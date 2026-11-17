@@ -1,8 +1,13 @@
 use clap::Parser;
 use std::path::PathBuf;
 use std::sync::Arc;
-use storkv_server::Server;
+use std::time::Duration;
+use storkv_core::backup::{
+    BackupCompression, BackupConfig, BackupRetention, CommandPipeSinkConfig,
+};
+use storkv_server::{Server, TransportOptions, transports};
 use tokio::net::TcpListener;
+use tokio::task::JoinHandle;
 
 #[derive(Parser, Debug)]
 #[command(name = "storkvd", about = "StorKV daemon")]
@@ -15,12 +20,105 @@ struct Args {
 
     #[arg(long)]
     admin_sock: Option<String>,
+
+    /// Enable autonomous continuous backup into this directory.
+    #[arg(long)]
+    backup_dir: Option<PathBuf>,
+
+    /// Seconds between automatic full backups.
+    #[arg(long, default_value_t = 3600)]
+    backup_interval_secs: u64,
+
+    /// Number of full generations to retain.
+    #[arg(long, default_value_t = 7)]
+    backup_retention: usize,
+
+    /// Ship sealed WAL segments continuously (point-in-time recovery).
+    #[arg(long)]
+    backup_ship_wal: bool,
+
+    /// Stream backup archives into this program instead of writing locally.
+    #[arg(long)]
+    backup_pipe_cmd: Option<String>,
+
+    /// Repeatable argument for --backup-pipe-cmd.
+    #[arg(long = "backup-pipe-arg")]
+    backup_pipe_args: Vec<String>,
+
+    /// Archive compression for the pipe sink: none, zstd, lz4.
+    #[arg(long, default_value = "none")]
+    backup_compression: String,
+
+    /// Restrict admin-only requests to admin listeners or token holders.
+    #[arg(long)]
+    strict_admin: bool,
+
+    /// Shared secret granting admin privileges on auxiliary transports.
+    #[arg(long)]
+    admin_token: Option<String>,
+
+    /// Serve the HTTP/1.1 + HTTP/2 REST API on this address.
+    #[arg(long)]
+    http_listen: Option<String>,
+
+    /// Serve the WebSocket multiplexed API on this address.
+    #[arg(long)]
+    ws_listen: Option<String>,
+
+    /// Serve the gRPC API on this address.
+    #[arg(long)]
+    grpc_listen: Option<String>,
+
+    /// Treat every HTTP connection as admin (dedicated admin listener).
+    #[arg(long)]
+    http_admin: bool,
+
+    /// Treat every WebSocket connection as admin.
+    #[arg(long)]
+    ws_admin: bool,
+
+    /// Treat every gRPC connection as admin.
+    #[arg(long)]
+    grpc_admin: bool,
+
+    /// Serve the Redis RESP2/RESP3 API on this address.
+    #[arg(long)]
+    redis_listen: Option<String>,
+
+    /// Serve the Memcached ASCII API on this address.
+    #[arg(long)]
+    memcached_listen: Option<String>,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
-    let server = Arc::new(Server::new(args.data_dir)?);
+    let server = Arc::new(Server::new(args.data_dir)?.with_strict_admin(args.strict_admin));
+
+    let backup_handle = if let Some(backup_dir) = &args.backup_dir {
+        let compression = BackupCompression::parse(&args.backup_compression)?;
+        let mut config = match &args.backup_pipe_cmd {
+            Some(program) => {
+                let mut pipe = CommandPipeSinkConfig::new(program.clone());
+                pipe.args = args.backup_pipe_args.clone();
+                pipe.compression = compression;
+                BackupConfig::command(backup_dir.clone(), pipe)?
+            }
+            None => BackupConfig::local(backup_dir.clone()),
+        };
+        config = config
+            .with_full_backup_interval(Duration::from_secs(args.backup_interval_secs))
+            .with_retention(BackupRetention {
+                max_full_backups: args.backup_retention,
+                ..BackupRetention::default()
+            })
+            .with_wal_shipping(args.backup_ship_wal)
+            .with_compression(compression);
+        println!("storkvd backups enabled at {}", backup_dir.display());
+        Some(server.db().start_auto_backup(config)?)
+    } else {
+        None
+    };
 
     let client_listener = TcpListener::bind(&args.listen).await?;
     println!("storkvd listening on {}", args.listen);
@@ -60,12 +158,70 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None
     };
 
+    let mut transport_tasks: Vec<JoinHandle<()>> = Vec::new();
+
+    if let Some(address) = &args.http_listen {
+        let listener = TcpListener::bind(address).await?;
+        let options = TransportOptions::new(args.http_admin, args.admin_token.clone());
+        let task_server = server.clone();
+        println!("storkvd http listening on {address}");
+        transport_tasks.push(tokio::spawn(async move {
+            let _ = transports::serve_http_tcp(task_server, listener, options).await;
+        }));
+    }
+
+    if let Some(address) = &args.ws_listen {
+        let listener = TcpListener::bind(address).await?;
+        let options = TransportOptions::new(args.ws_admin, args.admin_token.clone());
+        let task_server = server.clone();
+        println!("storkvd websocket listening on {address}");
+        transport_tasks.push(tokio::spawn(async move {
+            let _ = transports::serve_ws_tcp(task_server, listener, options).await;
+        }));
+    }
+
+    if let Some(address) = &args.grpc_listen {
+        let listener = TcpListener::bind(address).await?;
+        let options = TransportOptions::new(args.grpc_admin, args.admin_token.clone());
+        let task_server = server.clone();
+        println!("storkvd grpc listening on {address}");
+        transport_tasks.push(tokio::spawn(async move {
+            if let Err(error) = transports::serve_grpc_tcp(task_server, listener, options).await {
+                eprintln!("storkvd grpc listener stopped: {error}");
+            }
+        }));
+    }
+
+    if let Some(address) = &args.redis_listen {
+        let listener = TcpListener::bind(address).await?;
+        let task_server = server.clone();
+        println!("storkvd redis listening on {address}");
+        transport_tasks.push(tokio::spawn(async move {
+            let _ = storkv_server::compat::serve_redis_tcp(task_server, listener).await;
+        }));
+    }
+
+    if let Some(address) = &args.memcached_listen {
+        let listener = TcpListener::bind(address).await?;
+        let task_server = server.clone();
+        println!("storkvd memcached listening on {address}");
+        transport_tasks.push(tokio::spawn(async move {
+            let _ = storkv_server::compat::serve_memcached_tcp(task_server, listener).await;
+        }));
+    }
+
     tokio::signal::ctrl_c().await?;
     println!("Shutting down storkvd...");
+    if let Some(handle) = &backup_handle {
+        handle.shutdown()?;
+    }
     let _ = server.shutdown_handle().send(());
 
     let _ = client_task.await;
     if let Some(task) = admin_task {
+        let _ = task.await;
+    }
+    for task in transport_tasks {
         let _ = task.await;
     }
 

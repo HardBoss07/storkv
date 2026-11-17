@@ -6,7 +6,9 @@ use tokio::net::TcpListener;
 
 /// Transport-agnostic listener used by [`crate::Server::run_listener`].
 pub enum ServerListener {
+    /// TCP listener.
     Tcp(TcpListener),
+    /// Unix-domain socket listener.
     #[cfg(unix)]
     Unix(tokio::net::UnixListener),
 }
@@ -29,7 +31,9 @@ impl ServerListener {
 
 /// A connection accepted from either a TCP listener or a Unix-domain socket.
 pub enum AcceptedStream {
+    /// A TCP connection.
     Tcp(tokio::net::TcpStream),
+    /// A Unix-domain socket connection.
     #[cfg(unix)]
     Unix(tokio::net::UnixStream),
 }

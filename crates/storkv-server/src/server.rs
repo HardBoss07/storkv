@@ -11,39 +11,76 @@ use tokio::task::JoinHandle;
 
 use crate::listener::ServerListener;
 use crate::metrics::ServerStats;
+use crate::transports::{ConnectionGuard, TransportKind};
 
 const READ_BUFFER_CAPACITY: usize = 8192;
 const WATCH_CHANNEL_CAPACITY: usize = 128;
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// One network server bound to a single database.
 pub struct Server {
     pub(crate) db: Arc<Db>,
     pub(crate) shutdown_sender: broadcast::Sender<()>,
     pub(crate) stats: Arc<ServerStats>,
+    pub(crate) strict_admin: AtomicBool,
 }
 
 impl Server {
+    /// Open the database at `data_dir` and wrap it in a server.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the database cannot be opened.
     pub fn new(data_dir: PathBuf) -> Result<Self, StorKvError> {
         let db = Db::open(&data_dir, DbOptions::default())?;
         Ok(Self::with_db(Arc::new(db)))
     }
 
+    /// Wrap an existing database handle in a server.
     pub fn with_db(db: Arc<Db>) -> Self {
         let (shutdown_sender, _) = broadcast::channel(1);
         Self {
             db,
             shutdown_sender,
             stats: Arc::new(ServerStats::default()),
+            strict_admin: AtomicBool::new(false),
         }
     }
 
+    /// Builder-style strict-admin toggle. When enabled, admin-only requests are
+    /// rejected with [`storkv_proto::StorKvWireError::Unauthorized`] unless the
+    /// connection was accepted on an admin listener or presented a valid token.
+    pub fn with_strict_admin(self, strict_admin: bool) -> Self {
+        self.strict_admin.store(strict_admin, Ordering::Relaxed);
+        self
+    }
+
+    /// Change the strict-admin flag after construction.
+    pub fn set_strict_admin(&self, strict_admin: bool) {
+        self.strict_admin.store(strict_admin, Ordering::Relaxed);
+    }
+
+    /// Return the current strict-admin flag.
+    pub fn strict_admin(&self) -> bool {
+        self.strict_admin.load(Ordering::Relaxed)
+    }
+
+    /// Return the shared database handle.
     pub fn db(&self) -> &Arc<Db> {
         &self.db
     }
 
+    /// Return a sender that stops every listener when used.
     pub fn shutdown_handle(&self) -> broadcast::Sender<()> {
         self.shutdown_sender.clone()
     }
 
+    /// Accept native protocol connections from a TCP listener.
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O error when accept fails.
     pub async fn run_tcp_listener(
         self: Arc<Self>,
         listener: TcpListener,
@@ -79,6 +116,11 @@ impl Server {
     }
 
     #[cfg(unix)]
+    /// Accept native protocol connections from a Unix-domain socket listener.
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O error when accept fails.
     pub async fn run_uds_listener(
         self: Arc<Self>,
         listener: tokio::net::UnixListener,
@@ -88,6 +130,11 @@ impl Server {
             .await
     }
 
+    /// Handle one accepted connection until the peer closes or the server stops.
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O error when a read or write fails.
     pub async fn handle_connection<Stream>(
         self: Arc<Self>,
         stream: Stream,
@@ -141,6 +188,7 @@ where
     Stream: AsyncReadExt + AsyncWriteExt + Unpin + Send + 'static,
 {
     tokio::spawn(async move {
+        let _guard = ConnectionGuard::new(server.clone(), TransportKind::Native);
         let _ = server.handle_connection(stream, is_admin).await;
     });
 }
@@ -176,6 +224,9 @@ impl<W: AsyncWrite + Unpin> ConnectionSession<W> {
         let MessagePayload::Request(request) = message.payload else {
             return Ok(());
         };
+        self.server
+            .stats
+            .record_transport_request(TransportKind::Native.as_u8());
         if request == Request::WatchSubscribe {
             self.start_watch(message.request_id).await?;
         } else {
