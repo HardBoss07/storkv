@@ -5,6 +5,7 @@ use storkv_proto::{Request, Response};
 
 use crate::server::Server;
 
+mod backup;
 mod conversions;
 mod data;
 mod scopes;
@@ -16,7 +17,10 @@ pub use conversions::core_error_to_wire;
 use conversions::result_to_empty;
 
 impl Server {
-    pub(crate) fn dispatch_request(&self, request: Request, _is_admin: bool) -> Response {
+    pub(crate) fn dispatch_request(&self, request: Request, is_admin: bool) -> Response {
+        if !is_admin && request.is_admin_only() && self.strict_admin() {
+            return Response::Error(storkv_proto::StorKvWireError::Unauthorized);
+        }
         let is_write = is_write_request(&request);
         let started = Instant::now();
         let response = self.route_request(request);
@@ -68,6 +72,11 @@ impl Server {
                 write_set,
             } => self.handle_tx_commit(read_seq, read_set, write_set),
             Request::AdminStats => Response::AdminStats(self.stats.snapshot(&self.db)),
+            Request::TriggerBackup { wait } => self.handle_trigger_backup(wait),
+            Request::BackupStatus => self.handle_backup_status(),
+            Request::VerifyBackup { target_seq } => self.handle_verify_backup(target_seq),
+            Request::ListBackups => self.handle_list_backups(),
+            Request::KeyMeta { scope_id, key } => self.handle_key_meta(scope_id, key),
             Request::WatchSubscribe => Response::Empty,
             other => Response::Error(storkv_proto::StorKvWireError::Protocol(format!(
                 "Unsupported request: {other:?}"

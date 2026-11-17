@@ -8,6 +8,7 @@ pub(super) fn result_to_empty(result: storkv_core::Result<()>) -> Response {
     }
 }
 
+/// Convert a core engine error into the wire error type.
 pub fn core_error_to_wire(error: StorKvError) -> StorKvWireError {
     match error {
         StorKvError::DatabaseLocked(path) => {

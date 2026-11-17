@@ -94,6 +94,19 @@ impl Server {
         }
     }
 
+    pub(super) fn handle_key_meta(&self, scope_id: u32, user_key: Bytes) -> Response {
+        match self.db.key_meta(&scope_handle(scope_id), user_key) {
+            Ok(meta) => {
+                self.stats.record_read(scope_id);
+                Response::KeyMeta(meta.map(|meta| storkv_proto::WireKeyMeta {
+                    expires_at_ms: meta.expires_at_ms,
+                    seq: meta.seq,
+                }))
+            }
+            Err(error) => Response::Error(core_error_to_wire(error)),
+        }
+    }
+
     pub(super) fn handle_scan_prefix(&self, scope_id: u32, prefix: Bytes) -> Response {
         match self.db.scan_prefix(&scope_handle(scope_id), prefix) {
             Ok(entries) => {
