@@ -8,7 +8,9 @@ use tokio::net::TcpStream;
 
 /// Connection transport supporting both TCP and Unix-domain sockets.
 pub enum ClientStream {
+    /// TCP connection.
     Tcp(TcpStream),
+    /// Unix-domain socket connection.
     #[cfg(unix)]
     Unix(tokio::net::UnixStream),
 }
@@ -57,20 +59,43 @@ impl AsyncWrite for ClientStream {
     }
 }
 
+/// Client-side error type.
 #[derive(Error, Debug)]
 pub enum ClientError {
+    /// The server returned a protocol error.
     #[error("Server returned error: {0}")]
     Server(#[from] StorKvWireError),
+    /// An input or output operation failed.
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+    /// The server returned an unexpected message.
     #[error("Unexpected response from server: {0}")]
     Protocol(String),
+    /// The transport cannot carry the operation.
+    #[error("Transport does not support this operation: {0}")]
+    Unsupported(String),
+    /// An HTTP transport operation failed.
+    #[error("HTTP transport error: {0}")]
+    Http(String),
+    /// A gRPC transport operation failed.
+    #[error("gRPC transport error: {0}")]
+    Grpc(String),
+    /// A gRPC connection could not be established.
+    #[error("gRPC connection error: {0}")]
+    GrpcConnect(#[from] tonic::transport::Error),
+    /// A gRPC call returned a non-OK status.
+    #[error("gRPC status: {0}")]
+    GrpcStatus(#[from] tonic::Status),
 }
 
+/// Result alias for client operations.
 pub type ClientResult<T> = Result<T, ClientError>;
 
+/// Identifier and name of a scope on the client side.
 #[derive(Debug, Clone)]
 pub struct ScopeHandle {
+    /// Opaque scope identifier.
     pub scope_id: u32,
+    /// Unique scope name.
     pub name: String,
 }
