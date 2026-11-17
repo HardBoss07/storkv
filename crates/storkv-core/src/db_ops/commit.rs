@@ -13,6 +13,12 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 impl<FS: FileSystem + 'static> DbInner<FS> {
+    /// Validate the read set, append the write set to the WAL, and apply it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorKvError::WriteConflict`] when a read key changed after the
+    /// transaction started, or an I/O error.
     pub fn commit_tx(&self, transaction: TransactionContext) -> crate::Result<()> {
         let _commit_guard = self.commit_lock.lock();
         self.validate_read_set(&transaction)?;

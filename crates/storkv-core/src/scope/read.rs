@@ -11,6 +11,11 @@ use std::sync::atomic::Ordering;
 use super::state::{LEVEL_COUNT, Scope};
 
 impl<FS: FileSystem> Scope<FS> {
+    /// Collect the visible versions of one key at a read sequence.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a storage read fails.
     pub fn get_versions(
         &self,
         user_key: &[u8],
@@ -69,6 +74,11 @@ impl<FS: FileSystem> Scope<FS> {
         Ok(versions)
     }
 
+    /// Read the newest visible version of one key.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a storage read fails.
     pub fn get(
         &self,
         user_key: &[u8],

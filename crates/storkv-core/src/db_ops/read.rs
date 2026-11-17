@@ -7,11 +7,22 @@ use bytes::Bytes;
 use std::sync::atomic::Ordering;
 
 impl<FS: FileSystem + 'static> DbInner<FS> {
+    /// Read one key from the newest visible state.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorKvError::ScopeIdNotFound`] when the scope is unknown.
     pub fn get(&self, scope_id: u32, key: &[u8]) -> crate::Result<Option<Bytes>> {
         let read_seq = self.last_visible_seq.load(Ordering::Acquire);
         self.get_at(scope_id, key, SequenceNumber::new(read_seq))
     }
 
+    /// Read one key at a fixed read sequence.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorKvError::ScopeIdNotFound`] when the scope is unknown, or a
+    /// storage read error.
     pub fn get_at(
         &self,
         scope_id: u32,

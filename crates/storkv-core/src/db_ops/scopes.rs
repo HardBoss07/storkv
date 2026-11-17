@@ -10,6 +10,11 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 impl<FS: FileSystem + 'static> DbInner<FS> {
+    /// Create a scope and persist it in the manifest.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorKvError::ScopeAlreadyExists`] when the name is taken.
     pub fn create_scope(
         &self,
         name: String,
@@ -39,6 +44,12 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
         Ok(ScopeHandle { scope_id, name })
     }
 
+    /// Drop a scope, record the drop in the WAL and manifest, and notify
+    /// watchers.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorKvError::ScopeNotFound`] when the name is unknown.
     pub fn drop_scope(&self, name: &str) -> crate::Result<()> {
         let scope_id = remove_scope_name(self, name)?;
         let drop_seq = self.last_visible_seq.fetch_add(1, Ordering::SeqCst) + 1;
@@ -57,11 +68,18 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
         Ok(())
     }
 
+    /// Begin a transaction at the newest committed sequence number.
     pub fn begin_tx(self: &Arc<Self>) -> crate::Transaction<FS> {
         let read_seq = {
             let _guard = self.commit_lock.lock();
             self.last_visible_seq.load(Ordering::Acquire)
         };
+        self.begin_tx_at(read_seq)
+    }
+
+    /// Begin a transaction pinned to `read_seq`, retaining the snapshot for
+    /// compaction while the transaction is alive.
+    pub fn begin_tx_at(self: &Arc<Self>, read_seq: u64) -> crate::Transaction<FS> {
         self.active_tx_readers.write().push(read_seq);
         crate::Transaction {
             db: self.clone(),

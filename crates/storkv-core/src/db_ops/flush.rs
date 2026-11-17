@@ -9,6 +9,11 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 impl<FS: FileSystem + 'static> DbInner<FS> {
+    /// Rotate the active memtable, write it to an L0 SSTable, and record it.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the SSTable cannot be written or logged.
     pub fn flush_scope_memtable(&self, scope: &Arc<Scope<FS>>) -> crate::Result<()> {
         let memtable = scope.rotate_memtable();
         if memtable.is_empty() {

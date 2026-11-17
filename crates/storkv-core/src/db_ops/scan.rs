@@ -11,6 +11,11 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 impl<FS: FileSystem + 'static> DbInner<FS> {
+    /// Read an ordered range at a read sequence.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorKvError::ScopeIdNotFound`] when the scope is unknown.
     pub fn scan(
         &self,
         scope_id: u32,
@@ -39,6 +44,11 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
         Ok(state.into_results(start_key, end_key))
     }
 
+    /// Read every key with the given prefix at a read sequence.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorKvError::ScopeIdNotFound`] when the scope is unknown.
     pub fn scan_prefix(
         &self,
         scope_id: u32,
@@ -82,6 +92,11 @@ impl ScanState {
             self.range_tombstones
                 .push((internal_key.user_key, value, internal_key.seq));
         } else {
+            if let Some((_, _, existing_seq)) = self.collected.get(&internal_key.user_key) {
+                if *existing_seq >= internal_key.seq {
+                    return;
+                }
+            }
             self.collected.insert(
                 internal_key.user_key,
                 (internal_key.value_type, value, internal_key.seq),

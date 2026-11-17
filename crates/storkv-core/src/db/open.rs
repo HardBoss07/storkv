@@ -13,6 +13,11 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 
 impl<FS: FileSystem + 'static> DbInner<FS> {
+    /// Open the engine state, replay the WAL, and return the handle.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the manifest, scopes, or WAL cannot be opened.
     pub fn open(fs: Arc<FS>, db_root: PathBuf, options: DbOptions) -> crate::Result<Self> {
         let scopes_dir = db_root.join("scopes");
         let wal_dir = db_root.join("wal");
