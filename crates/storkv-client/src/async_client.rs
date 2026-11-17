@@ -1,60 +1,54 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use bytes::BytesMut;
 use storkv_proto::{
-    Message, MessagePayload, Request, Response, WireAdminStats, WireTelemetrySnapshot,
+    Request, Response, WireAdminStats, WireBackupEntry, WireBackupReport, WireBackupStatus,
+    WireBackupVerifyReport, WireTelemetrySnapshot,
 };
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 
+use crate::backend::Backend;
 use crate::transaction::AsyncTransaction;
-use crate::transport::{ClientError, ClientResult, ClientStream};
+use crate::transport::{ClientError, ClientResult, ScopeHandle};
+use crate::uri::TransportKind;
 
 mod scope_ops;
 
-const READ_CHUNK_SIZE: usize = 8192;
-
+/// Asynchronous client for the StorKV protocol.
 #[derive(Clone)]
 pub struct AsyncClient {
-    stream: Arc<Mutex<ClientStream>>,
-    read_buf: Arc<Mutex<BytesMut>>,
+    backend: Arc<Mutex<Backend>>,
     request_counter: Arc<AtomicU64>,
 }
 
 impl AsyncClient {
     /// Connect over TCP (`host:port`).
     pub async fn connect(address: &str) -> ClientResult<Self> {
-        let stream = TcpStream::connect(address).await?;
-        Self::from_stream(ClientStream::Tcp(stream))
+        Self::from_backend(Backend::connect(TransportKind::NativeTcp, address).await?)
     }
 
     /// Connect to either a TCP endpoint or a Unix-domain socket path. Addresses
     /// using the `unix:` scheme or filesystem-like paths are treated as UDS.
     pub async fn connect_any(address: &str) -> ClientResult<Self> {
-        if storkv_proto::is_unix_socket_addr(address) {
-            #[cfg(unix)]
-            {
-                let socket_path = storkv_proto::unix_socket_path(address);
-                let stream = tokio::net::UnixStream::connect(socket_path).await?;
-                return Self::from_stream(ClientStream::Unix(stream));
+        let (kind, target) = TransportKind::parse_uri(address)?;
+        match kind {
+            TransportKind::NativeTcp | TransportKind::NativeUnix => {
+                Self::from_backend(Backend::connect(kind, &target).await?)
             }
-            #[cfg(not(unix))]
-            {
-                return Err(ClientError::Io(std::io::Error::new(
-                    std::io::ErrorKind::Unsupported,
-                    "Unix-domain sockets are not supported on this platform",
-                )));
-            }
+            other => Self::from_backend(Backend::connect(other, &target).await?),
         }
-        Self::connect(address).await
     }
 
-    fn from_stream(stream: ClientStream) -> ClientResult<Self> {
+    /// Connect using any supported scheme: `storkv://`, `unix://`, `http://`,
+    /// `ws://`, or `grpc://`. A bare `host:port` remains native TCP.
+    pub async fn connect_uri(uri: &str) -> ClientResult<Self> {
+        let (kind, target) = TransportKind::parse_uri(uri)?;
+        Self::from_backend(Backend::connect(kind, &target).await?)
+    }
+
+    fn from_backend(backend: Backend) -> ClientResult<Self> {
         Ok(Self {
-            stream: Arc::new(Mutex::new(stream)),
-            read_buf: Arc::new(Mutex::new(BytesMut::with_capacity(READ_CHUNK_SIZE))),
+            backend: Arc::new(Mutex::new(backend)),
             request_counter: Arc::new(AtomicU64::new(1)),
         })
     }
@@ -63,27 +57,33 @@ impl AsyncClient {
         self.request_counter.fetch_add(1, Ordering::SeqCst)
     }
 
+    /// Send one request and receive its response.
     pub async fn send_request(&self, request: Request) -> ClientResult<Response> {
         let request_id = self.next_request_id();
-        let message = Message::new_request(request_id, request);
-        let encoded_message = message.encode();
-
-        let mut stream = self.stream.lock().await;
-        stream.write_all(&encoded_message).await?;
-
-        let mut read_buf = self.read_buf.lock().await;
-        loop {
-            if let Some(response) = decode_response(&mut read_buf)? {
-                return Ok(response);
-            }
-            read_more(&mut stream, &mut read_buf).await?;
-        }
+        let mut backend = self.backend.lock().await;
+        backend.send(request_id, request).await
     }
 
+    /// Open a watch subscription on transports that support streaming.
+    ///
+    /// Native and WebSocket connections receive `WatchEvent` frames on the same
+    /// connection; the returned stream decodes them until it is dropped.
+    pub async fn subscribe_watch(&self) -> ClientResult<WatchStream> {
+        let backend = self.backend.clone();
+        let request_id = self.next_request_id();
+        {
+            let mut backend = backend.lock().await;
+            backend.start_watch(request_id).await?;
+        }
+        Ok(WatchStream { backend })
+    }
+
+    /// Send a ping and require a pong reply.
     pub async fn ping(&self) -> ClientResult<()> {
         expect_variant(self.send_request(Request::Ping).await?, Response::Pong)
     }
 
+    /// Run a health check and require a healthy reply.
     pub async fn health_check(&self) -> ClientResult<()> {
         expect_variant(
             self.send_request(Request::HealthCheck).await?,
@@ -91,6 +91,7 @@ impl AsyncClient {
         )
     }
 
+    /// Read runtime counters.
     pub async fn telemetry(&self) -> ClientResult<WireTelemetrySnapshot> {
         match self.send_request(Request::TelemetryQuery).await? {
             Response::Telemetry(snapshot) => Ok(snapshot),
@@ -103,10 +104,78 @@ impl AsyncClient {
     pub async fn admin_stats(&self) -> ClientResult<WireAdminStats> {
         match self.send_request(Request::AdminStats).await? {
             Response::AdminStats(stats) => Ok(stats),
+            Response::Telemetry(snapshot) => Ok(WireAdminStats {
+                backups_completed_total: snapshot.backups_completed_total,
+                backups_failed_total: snapshot.backups_failed_total,
+                last_backup_timestamp_ms: snapshot.last_backup_timestamp_ms,
+                last_backup_seq: snapshot.last_backup_seq,
+                wal_segments_shipped_total: snapshot.wal_segments_shipped_total,
+                ..WireAdminStats::default()
+            }),
             other => Err(unexpected_response(other)),
         }
     }
 
+    /// Run a full backup now. With `wait == false` the server only wakes its
+    /// background worker and returns an empty report.
+    pub async fn trigger_backup(&self, wait: bool) -> ClientResult<WireBackupReport> {
+        match self.send_request(Request::TriggerBackup { wait }).await? {
+            Response::BackupReport(report) => Ok(report),
+            other => Err(unexpected_response(other)),
+        }
+    }
+
+    /// Fetch the live autonomous backup status, if configured.
+    /// Fetch the live autonomous backup status, if configured.
+    pub async fn backup_status(&self) -> ClientResult<WireBackupStatus> {
+        match self.send_request(Request::BackupStatus).await? {
+            Response::BackupStatus(status) => Ok(status),
+            other => Err(unexpected_response(other)),
+        }
+    }
+
+    /// Verify archived backup generations, optionally as of `target_seq`.
+    pub async fn verify_backup(
+        &self,
+        target_seq: Option<u64>,
+    ) -> ClientResult<WireBackupVerifyReport> {
+        match self
+            .send_request(Request::VerifyBackup { target_seq })
+            .await?
+        {
+            Response::BackupVerifyReport(report) => Ok(report),
+            other => Err(unexpected_response(other)),
+        }
+    }
+
+    /// List archived backup generations from oldest to newest.
+    pub async fn list_backups(&self) -> ClientResult<Vec<WireBackupEntry>> {
+        match self.send_request(Request::ListBackups).await? {
+            Response::BackupCatalog(entries) => Ok(entries),
+            other => Err(unexpected_response(other)),
+        }
+    }
+
+    /// Fetch the visible-version metadata (absolute expiry and sequence) of a
+    /// key. `None` means the key does not exist.
+    pub async fn key_meta(
+        &self,
+        scope: &ScopeHandle,
+        key: impl AsRef<[u8]>,
+    ) -> ClientResult<Option<storkv_proto::WireKeyMeta>> {
+        match self
+            .send_request(Request::KeyMeta {
+                scope_id: scope.scope_id,
+                key: bytes::Bytes::copy_from_slice(key.as_ref()),
+            })
+            .await?
+        {
+            Response::KeyMeta(meta) => Ok(meta),
+            other => Err(unexpected_response(other)),
+        }
+    }
+
+    /// Begin a transaction and receive its read sequence number.
     pub async fn begin_tx(&self) -> ClientResult<AsyncTransaction> {
         let read_sequence = match self.send_request(Request::TxBegin).await? {
             Response::TxStarted { read_seq } => read_seq,
@@ -122,30 +191,17 @@ impl AsyncClient {
     }
 }
 
-fn decode_response(read_buf: &mut BytesMut) -> ClientResult<Option<Response>> {
-    let Some(message) = Message::decode(read_buf)? else {
-        return Ok(None);
-    };
-    match message.payload {
-        MessagePayload::Response(Response::Error(error)) => Err(ClientError::Server(error)),
-        MessagePayload::Response(response) => Ok(Some(response)),
-        MessagePayload::Request(_) => Err(ClientError::Protocol(
-            "Expected response from server, got request".into(),
-        )),
-    }
+/// Stream of change events pushed by a native or WebSocket server connection.
+pub struct WatchStream {
+    backend: Arc<Mutex<Backend>>,
 }
 
-async fn read_more(stream: &mut ClientStream, read_buf: &mut BytesMut) -> ClientResult<()> {
-    let mut chunk = [0u8; READ_CHUNK_SIZE];
-    let bytes_read = stream.read(&mut chunk).await?;
-    if bytes_read == 0 {
-        return Err(ClientError::Io(std::io::Error::new(
-            std::io::ErrorKind::UnexpectedEof,
-            "Connection closed by server",
-        )));
+impl WatchStream {
+    /// Receive the next watch event. Yields `None` when the connection ends.
+    pub async fn next(&mut self) -> ClientResult<Option<storkv_proto::WireChangeEvent>> {
+        let mut backend = self.backend.lock().await;
+        backend.next_watch_event().await
     }
-    read_buf.extend_from_slice(&chunk[..bytes_read]);
-    Ok(())
 }
 
 pub(super) fn expect_empty(response: Response) -> ClientResult<()> {

@@ -11,6 +11,7 @@ use crate::transport::{ClientResult, ScopeHandle};
 use super::{AsyncClient, expect_empty, unexpected_response};
 
 impl AsyncClient {
+    /// Create a scope and return its handle.
     pub async fn create_scope<S: Into<String>>(
         &self,
         name: S,
@@ -37,6 +38,7 @@ impl AsyncClient {
         }
     }
 
+    /// Drop a scope and delete its data.
     pub async fn drop_scope<S: AsRef<str>>(&self, name: S) -> ClientResult<()> {
         expect_empty(
             self.send_request(Request::DropScope {
@@ -46,6 +48,7 @@ impl AsyncClient {
         )
     }
 
+    /// Read one key. `None` means the key does not exist.
     pub async fn get<K: AsRef<[u8]>>(
         &self,
         scope: &ScopeHandle,
@@ -63,6 +66,7 @@ impl AsyncClient {
         }
     }
 
+    /// Store one key/value pair.
     pub async fn put<K: AsRef<[u8]>, V: AsRef<[u8]>>(
         &self,
         scope: &ScopeHandle,
@@ -79,6 +83,7 @@ impl AsyncClient {
         )
     }
 
+    /// Store one key/value pair with a time to live.
     pub async fn put_with_ttl<K: AsRef<[u8]>, V: AsRef<[u8]>>(
         &self,
         scope: &ScopeHandle,
@@ -97,6 +102,7 @@ impl AsyncClient {
         )
     }
 
+    /// Delete one key.
     pub async fn delete<K: AsRef<[u8]>>(&self, scope: &ScopeHandle, key: K) -> ClientResult<()> {
         expect_empty(
             self.send_request(Request::Delete {
@@ -107,6 +113,7 @@ impl AsyncClient {
         )
     }
 
+    /// Delete a half-open key range.
     pub async fn delete_range<K: AsRef<[u8]>>(
         &self,
         scope: &ScopeHandle,
@@ -123,6 +130,7 @@ impl AsyncClient {
         )
     }
 
+    /// Apply a merge operand to one key.
     pub async fn merge<K: AsRef<[u8]>>(
         &self,
         scope: &ScopeHandle,
@@ -139,6 +147,7 @@ impl AsyncClient {
         )
     }
 
+    /// Read an ordered key range. `None` bounds are open.
     pub async fn scan<K: AsRef<[u8]>>(
         &self,
         scope: &ScopeHandle,
@@ -158,6 +167,7 @@ impl AsyncClient {
         }
     }
 
+    /// Read every key with the given prefix.
     pub async fn scan_prefix<K: AsRef<[u8]>>(
         &self,
         scope: &ScopeHandle,
@@ -175,6 +185,7 @@ impl AsyncClient {
         }
     }
 
+    /// Pin a snapshot at the current sequence number.
     pub async fn create_snapshot<S: Into<String>>(&self, name: S) -> ClientResult<()> {
         expect_empty(
             self.send_request(Request::CreateSnapshot { name: name.into() })
@@ -182,6 +193,7 @@ impl AsyncClient {
         )
     }
 
+    /// Release a pinned snapshot.
     pub async fn unpin_snapshot<S: AsRef<str>>(&self, name: S) -> ClientResult<()> {
         expect_empty(
             self.send_request(Request::UnpinSnapshot {
@@ -191,6 +203,7 @@ impl AsyncClient {
         )
     }
 
+    /// Copy a consistent database image to a directory.
     pub async fn checkpoint<S: Into<String>>(&self, dest_dir: S) -> ClientResult<()> {
         expect_empty(
             self.send_request(Request::Checkpoint {
@@ -200,6 +213,7 @@ impl AsyncClient {
         )
     }
 
+    /// Run compaction immediately.
     pub async fn compact(&self) -> ClientResult<()> {
         expect_empty(self.send_request(Request::Compact).await?)
     }

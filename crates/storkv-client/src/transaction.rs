@@ -10,6 +10,7 @@ use crate::transport::{ClientError, ClientResult, ScopeHandle};
 type ReadSet = HashSet<(u32, Bytes)>;
 type WriteSet = BTreeMap<(u32, Bytes), WireTxMutation>;
 
+/// Client-side transaction with read-your-own-writes and OCC commit.
 pub struct AsyncTransaction {
     client: AsyncClient,
     read_seq: u64,
@@ -27,6 +28,7 @@ impl AsyncTransaction {
         }
     }
 
+    /// Read one key and add the key to the OCC read set.
     pub async fn get<K: AsRef<[u8]>>(
         &mut self,
         scope: &ScopeHandle,
@@ -63,6 +65,7 @@ impl AsyncTransaction {
         }
     }
 
+    /// Buffer a value write. `0` expiry means no expiry.
     pub fn put<K: AsRef<[u8]>, V: AsRef<[u8]>>(&mut self, scope: &ScopeHandle, key: K, val: V) {
         self.insert_mutation(
             scope,
@@ -74,6 +77,7 @@ impl AsyncTransaction {
         );
     }
 
+    /// Buffer a value write with a time to live.
     pub fn put_with_ttl<K: AsRef<[u8]>, V: AsRef<[u8]>>(
         &mut self,
         scope: &ScopeHandle,
@@ -95,10 +99,12 @@ impl AsyncTransaction {
         );
     }
 
+    /// Buffer a delete.
     pub fn delete<K: AsRef<[u8]>>(&mut self, scope: &ScopeHandle, key: K) {
         self.insert_mutation(scope, key, WireTxMutation::Delete);
     }
 
+    /// Buffer a half-open range delete.
     pub fn delete_range<K: AsRef<[u8]>>(&mut self, scope: &ScopeHandle, start_key: K, end_key: K) {
         self.insert_mutation(
             scope,
@@ -109,6 +115,7 @@ impl AsyncTransaction {
         );
     }
 
+    /// Buffer a merge operand.
     pub fn merge<K: AsRef<[u8]>>(&mut self, scope: &ScopeHandle, key: K, op: WireMergeOp) {
         let operand = match op {
             WireMergeOp::CounterAdd(delta) => Bytes::from(delta.to_string()),
@@ -118,6 +125,7 @@ impl AsyncTransaction {
         self.insert_mutation(scope, key, WireTxMutation::Merge { operand });
     }
 
+    /// Send the write set and read set to the server.
     pub async fn commit(self) -> ClientResult<()> {
         let read_set = self.read_set.into_iter().collect();
         let write_set = self.write_set.into_iter().collect();
