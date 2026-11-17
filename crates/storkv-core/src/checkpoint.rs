@@ -3,6 +3,11 @@ use crate::vfs::FileSystem;
 use std::path::Path;
 
 impl<FS: FileSystem + 'static> DbInner<FS> {
+    /// Copy a consistent database image into `dest_dir`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a file cannot be linked, copied, or synced.
     pub fn checkpoint(&self, dest_dir: &Path) -> crate::Result<()> {
         self.fs.create_dir_all(dest_dir)?;
         self.flush_all_scopes()?;
