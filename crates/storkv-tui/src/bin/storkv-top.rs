@@ -7,7 +7,7 @@ use crossterm::{
 use ratatui::{Terminal, backend::CrosstermBackend};
 use std::io;
 use std::time::Duration;
-use storkv_tui::{AdminPoll, TelemetryPoll, fetch_dashboard, render_dashboard_with_stats};
+use storkv_tui::{AdminPoll, BackupPoll, TelemetryPoll, fetch_dashboard, render_dashboard_full};
 
 /// storkv-top — live terminal diagnostics dashboard for StorKV.
 #[derive(Parser, Debug)]
@@ -39,6 +39,7 @@ async fn main() -> io::Result<()> {
 
     let mut telemetry = TelemetryPoll::default();
     let mut admin = AdminPoll::default();
+    let mut backup = BackupPoll::default();
     let poll_duration = Duration::from_millis(args.interval_ms);
 
     loop {
@@ -46,9 +47,10 @@ async fn main() -> io::Result<()> {
         if let Ok(snapshot) = fetch_dashboard(&args.sock).await {
             telemetry = snapshot.telemetry;
             admin = snapshot.admin;
+            backup = snapshot.backup;
         }
 
-        terminal.draw(|frame| render_dashboard_with_stats(frame, &telemetry, &admin))?;
+        terminal.draw(|frame| render_dashboard_full(frame, &telemetry, &admin, &backup))?;
 
         // Poll for keyboard events with the configured interval
         if event::poll(poll_duration)?

@@ -6,7 +6,7 @@ use ratatui::{
     widgets::{Block, Borders, Cell, Paragraph, Row, Table},
 };
 
-use crate::model::{AdminPoll, LevelStats, TelemetryPoll, write_amplification};
+use crate::model::{AdminPoll, BackupPoll, LevelStats, TelemetryPoll, write_amplification};
 
 /// Render the full dashboard into a [`ratatui::Frame`].
 ///
@@ -15,6 +15,7 @@ use crate::model::{AdminPoll, LevelStats, TelemetryPoll, write_amplification};
 /// ┌─── Amplification ───┐
 /// ├─── Level Stats ─────┤
 /// ├─── WAL / Fsyncs ────┤
+/// ├─── Backup ──────────┤
 /// └─── Scope Metrics ───┘
 /// ```
 pub fn render_dashboard(frame: &mut Frame, telemetry: &TelemetryPoll) {
@@ -28,11 +29,22 @@ pub fn render_dashboard_with_stats(
     telemetry: &TelemetryPoll,
     admin: &AdminPoll,
 ) {
+    render_dashboard_full(frame, telemetry, admin, &BackupPoll::default());
+}
+
+/// Render every panel, including autonomous backup status.
+pub fn render_dashboard_full(
+    frame: &mut Frame,
+    telemetry: &TelemetryPoll,
+    admin: &AdminPoll,
+    backup: &BackupPoll,
+) {
     let chunks = dashboard_chunks(frame.area());
     render_amplification_panel(frame, telemetry, chunks[0]);
     render_levels_panel(frame, admin, chunks[1]);
     render_wal_panel(frame, telemetry, admin, chunks[2]);
-    render_scope_panel(frame, admin, chunks[3]);
+    render_backup_panel(frame, telemetry, backup, chunks[3]);
+    render_scope_panel(frame, admin, chunks[4]);
 }
 
 fn dashboard_chunks(area: Rect) -> std::rc::Rc<[Rect]> {
@@ -42,6 +54,7 @@ fn dashboard_chunks(area: Rect) -> std::rc::Rc<[Rect]> {
             Constraint::Length(5),
             Constraint::Length(11),
             Constraint::Length(6),
+            Constraint::Length(7),
             Constraint::Min(4),
         ])
         .split(area)
@@ -142,6 +155,56 @@ fn render_wal_panel(frame: &mut Frame, telemetry: &TelemetryPoll, admin: &AdminP
     ];
     let paragraph = Paragraph::new(wal_text)
         .block(Block::default().title("WAL / Fsyncs").borders(Borders::ALL));
+    frame.render_widget(paragraph, area);
+}
+
+fn render_backup_panel(
+    frame: &mut Frame,
+    telemetry: &TelemetryPoll,
+    backup: &BackupPoll,
+    area: Rect,
+) {
+    let state = if backup.enabled {
+        "enabled"
+    } else {
+        "disabled"
+    };
+    let root = backup
+        .backup_root
+        .as_deref()
+        .map(|root| truncate(root, 28))
+        .unwrap_or_else(|| "<none>".to_string());
+    let mut text = vec![
+        Line::from(vec![
+            Span::styled("State        : ", Style::default().fg(Color::Green)),
+            Span::raw(state),
+        ]),
+        Line::from(vec![
+            Span::styled("Last seq     : ", Style::default().fg(Color::Yellow)),
+            Span::raw(telemetry.last_backup_seq.to_string()),
+        ]),
+        Line::from(vec![
+            Span::styled("Completed    : ", Style::default().fg(Color::Cyan)),
+            Span::raw(format!(
+                "{} (failed {}, wals {})",
+                telemetry.backups_completed_total,
+                telemetry.backups_failed_total,
+                telemetry.wal_segments_shipped_total
+            )),
+        ]),
+        Line::from(vec![
+            Span::styled("Root         : ", Style::default().fg(Color::Magenta)),
+            Span::raw(format!("{root} [{}]", backup.sink)),
+        ]),
+    ];
+    if let Some(error) = &backup.last_error {
+        text.push(Line::from(vec![
+            Span::styled("Last error   : ", Style::default().fg(Color::Red)),
+            Span::raw(truncate(error, 40)),
+        ]));
+    }
+    let paragraph =
+        Paragraph::new(text).block(Block::default().title("Backup").borders(Borders::ALL));
     frame.render_widget(paragraph, area);
 }
 
