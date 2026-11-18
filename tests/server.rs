@@ -2,6 +2,8 @@ mod common;
 
 #[path = "server/admin.rs"]
 mod admin;
+#[path = "server/backup.rs"]
+mod backup;
 #[path = "server/concurrency.rs"]
 mod concurrency;
 #[path = "server/lifecycle.rs"]

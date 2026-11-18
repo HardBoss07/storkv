@@ -76,6 +76,7 @@ async fn test_admin_stats_reports_levels_scopes_and_latency() {
             scopes,
             fsync_latency_p99_us,
             fsync_latency_samples,
+            ..
         }) => {
             assert_eq!(levels.len(), 7);
             assert!(levels.iter().any(|level| level.level == 0));
