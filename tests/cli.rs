@@ -6,6 +6,13 @@ use tokio::net::TcpListener;
 
 mod common;
 
+#[path = "cli/backup_cmds.rs"]
+mod backup_cmds;
+#[path = "cli/migrate_cmds.rs"]
+mod migrate_cmds;
+#[path = "cli/multi_uri.rs"]
+mod multi_uri;
+
 async fn spawn_test_server(prefix: &str) -> (Arc<Server>, String, common::TempDb) {
     let mut temp_db = common::TempDb::new(prefix);
     let server = Arc::new(Server::with_db(Arc::new(temp_db.db.take().unwrap())));
