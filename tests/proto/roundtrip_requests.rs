@@ -108,6 +108,14 @@ fn test_round_trip_all_requests() {
         Request::TelemetryQuery,
         Request::HealthCheck,
         Request::AdminStats,
+        Request::TriggerBackup { wait: true },
+        Request::TriggerBackup { wait: false },
+        Request::BackupStatus,
+        Request::VerifyBackup { target_seq: None },
+        Request::VerifyBackup {
+            target_seq: Some(42),
+        },
+        Request::ListBackups,
     ];
 
     for (index, request) in requests.into_iter().enumerate() {

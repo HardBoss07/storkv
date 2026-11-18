@@ -122,6 +122,7 @@ fn test_every_prefix_of_every_representative_frame() {
                 }],
                 fsync_latency_p99_us: 9,
                 fsync_latency_samples: 1,
+                ..WireAdminStats::default()
             }),
         ),
         Message::new_response(

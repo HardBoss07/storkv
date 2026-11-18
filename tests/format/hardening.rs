@@ -24,6 +24,48 @@ fn test_zero_length_keys_and_values_roundtrip() {
 }
 
 #[test]
+fn binary_keys_and_multi_megabyte_values_survive_flush_and_reopen() {
+    let mut temp = common::TempDb::new("binary_large");
+    let db = temp.db();
+    let scope = db.create_scope("binary", ScopeOptions::default()).unwrap();
+
+    let key = b"bin\0key\xff".as_slice();
+    let prefix_key = b"bin\0other".as_slice();
+    let large_value: Vec<u8> = (0..3 * 1024 * 1024)
+        .map(|index| (index % 251) as u8)
+        .collect();
+
+    db.put(&scope, key, &large_value).unwrap();
+    db.put(&scope, prefix_key, b"small").unwrap();
+    let scope_arc = db
+        .inner()
+        .scopes
+        .read()
+        .get(&scope.scope_id)
+        .cloned()
+        .unwrap();
+    db.inner().flush_scope_memtable(&scope_arc).unwrap();
+
+    assert_eq!(
+        db.get(&scope, key).unwrap().as_deref(),
+        Some(large_value.as_slice())
+    );
+    assert_eq!(db.scan_prefix(&scope, b"bin\0").unwrap().len(), 2);
+
+    temp.close();
+    let reopened = storkv_core::Db::open(&temp.path, storkv_core::DbOptions::default()).unwrap();
+    assert_eq!(
+        reopened.get(&scope, key).unwrap().as_deref(),
+        Some(large_value.as_slice())
+    );
+    assert_eq!(
+        reopened.get(&scope, prefix_key).unwrap().as_deref(),
+        Some(b"small".as_slice())
+    );
+    assert_eq!(reopened.scan_prefix(&scope, b"bin\0").unwrap().len(), 2);
+}
+
+#[test]
 fn test_bloom_filter_false_positive_rate_below_two_percent() {
     let mut builder = BloomFilterBuilder::new();
     for index in 0..10_000 {

@@ -1,7 +1,11 @@
 mod common;
 
+#[path = "chaos/compaction.rs"]
+mod compaction;
 #[path = "chaos/faults.rs"]
 mod faults;
+#[path = "chaos/flush.rs"]
+mod flush;
 #[path = "chaos/lock.rs"]
 mod lock;
 #[path = "chaos/manifest.rs"]
