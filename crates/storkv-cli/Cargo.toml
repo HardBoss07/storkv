@@ -34,9 +34,12 @@ tokio = { workspace = true, features = [
     "sync",
     "time",
 ] }
+base64.workspace = true
 clap.workspace = true
 bytes.workspace = true
 crc32c.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 
 [dev-dependencies]
 storkv-server.workspace = true

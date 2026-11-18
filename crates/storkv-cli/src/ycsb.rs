@@ -6,22 +6,32 @@ use crate::CliRunner;
 
 const DEFAULT_SCOPE_NAME: &str = "default";
 
+/// Result of one YCSB-style workload run.
 #[derive(Debug, Clone)]
 pub struct YcsbSummary {
+    /// Workload name, such as `a` or `b`.
     pub workload: String,
+    /// Total load and operation count.
     pub total_ops: usize,
+    /// Total elapsed time in milliseconds.
     pub elapsed_ms: u64,
+    /// Observed operations per second.
     pub ops_per_sec: f64,
 }
 
 impl CliRunner {
+    /// Load records and run one YCSB-style workload against a live server.
+    ///
+    /// # Errors
+    ///
+    /// Returns a client error when the connection or an operation fails.
     pub async fn run_ycsb(
         socket: &str,
         workload: &str,
         record_count: usize,
         operation_count: usize,
     ) -> Result<YcsbSummary, ClientError> {
-        let client = AsyncClient::connect_any(socket).await?;
+        let client = AsyncClient::connect_uri(socket).await?;
         let scope = ScopeHandle {
             scope_id: 0,
             name: DEFAULT_SCOPE_NAME.into(),

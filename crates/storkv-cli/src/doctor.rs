@@ -12,14 +12,19 @@ use storkv_core::vfs::PosixFs;
 
 use crate::CliRunner;
 
+/// Result of an offline database verification run.
 #[derive(Debug)]
 pub struct DoctorReport {
+    /// Number of SSTable files checked.
     pub sstables_checked: usize,
+    /// Number of manifest files checked.
     pub manifests_checked: usize,
+    /// Verification errors. An empty list means success.
     pub errors: Vec<String>,
 }
 
 impl CliRunner {
+    /// Verify the manifest and every SSTable in an offline data directory.
     pub fn doctor<P: AsRef<Path>>(data_dir: P) -> DoctorReport {
         let root = data_dir.as_ref();
         let mut report = DoctorReport {
