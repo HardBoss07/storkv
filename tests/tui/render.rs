@@ -53,6 +53,7 @@ fn render_dashboard_nonzero_values_visible() {
         write_conflicts_total: 3,
         compactions_total: 2,
         fsyncs_total: 42,
+        ..Default::default()
     };
     terminal
         .draw(|frame| render_dashboard(frame, &telemetry))
@@ -171,6 +172,7 @@ fn render_dashboard_heavy_levels_and_long_scope_names() {
         write_conflicts_total: 17,
         compactions_total: 42,
         fsyncs_total: 8_000_000,
+        ..Default::default()
     };
     let admin = AdminPoll {
         levels: (0u8..=6)
