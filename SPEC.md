@@ -110,6 +110,19 @@ StorKV guarantees a **Recovery Point Objective (RPO) <= 5 minutes** without halt
    - Creates hard links (`std::fs::hard_link`) for every live `.sst` file into `dest_dir/scopes/<id>/` in `O(1)` time with zero block copying.
    - Copies `CURRENT`, the active `MANIFEST`, and unmerged WAL segments into `dest_dir/`, calls `fsync()` on all copied files and directories, and releases the snapshot pin.
 
+### 4.3 Autonomous Backup & Point-in-Time Recovery
+
+1. **Scheduler:** `Db::start_auto_backup(BackupConfig)` runs a dedicated std thread that triggers full checkpoint generations on `full_backup_interval`, optionally ships each newly sealed WAL segment, and prunes expired generations. `Db::stop_auto_backup()` stops it without affecting foreground reads or writes.
+2. **Sinks:** `LocalFilesystemSink` writes atomic `full-<timestamp_ms>-<seq>/` generation directories plus `wal/<segment>.wal` files and a checksummed `BACKUP_MANIFEST.json` (sequence range, creation time, file list, sizes, CRC32C digests). `CommandPipeSink` streams optionally compressed (`none`, `zstd`, `lz4`) archives to an external command's stdin so object storage is handled by tools such as `rclone` or `aws s3 cp -`.
+3. **Retention:** The scheduler keeps the newest `max_full_backups` generations and removes WAL segments older than `max_wal_age`. Pipe sinks report remote-managed pruning and leave object lifecycle to the operator.
+4. **Restore:** `Db::restore_from_backup(backup_root, target_dir, target_seq)` verifies every reachable manifest and artifact checksum, selects the newest full generation with `checkpoint_seq <= target_seq` (or the newest generation when no target is given), replays archived WAL segments up to the target sequence, and refuses to write into a non-empty destination.
+5. **Verification:** `Db::verify_backup(target_seq)` reports generations, files, bytes, WAL segments, and structured errors without mutating the backup tree. Corrupt or incomplete generations are never selected for restore.
+6. **Wire and tooling:** `TriggerBackup`, `BackupStatus`, and `VerifyBackup` are append-only protocol extensions. `storkvd` exposes backup flags, `storkvctl` exposes `backup`, `backup-status`, `backup-verify`, and `restore`, and `storkv-top` renders live backup state.
+
+### 4.4 Multi-Transport and Compatibility Front Ends
+
+All transports execute through the same `Server::dispatch_request` core, so admin policy, telemetry, OCC conflict detection, and Watch events are identical regardless of protocol. HTTP, WebSocket, and gRPC are additive listeners; the native `STORKPRT` v1 frame format is unchanged. Redis, Memcached, and etcd adapters map onto ordinary scopes (`default` / `redis_db_<n>`, `memcached`, and `etcd`) with no separate storage format or recovery path. The embedded `Tree` adapter is a thin wrapper over `Db` scopes.
+
 ---
 
 ## 5. Out of Scope (v1 Non-Goals)
