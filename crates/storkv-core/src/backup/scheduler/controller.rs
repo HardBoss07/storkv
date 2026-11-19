@@ -5,8 +5,8 @@ use std::time::{Duration, Instant};
 use parking_lot::Mutex;
 
 use crate::db::DbInner;
-use crate::error::{Result, StorKvError};
-use crate::vfs::PosixFs;
+use crate::error::{Result, StorkvError};
+use crate::vfs::{AnyFs, PosixFs};
 
 use crate::backup::config::BackupConfig;
 use crate::backup::manifest::{
@@ -19,7 +19,7 @@ use super::{BackupReport, BackupStatus, SCHEDULER_TICK};
 
 pub(super) struct BackupController {
     pub(super) config: BackupConfig,
-    pub(super) inner: Arc<DbInner<PosixFs>>,
+    pub(super) inner: Arc<DbInner<AnyFs<PosixFs>>>,
     pub(super) shutdown: AtomicBool,
     pub(super) wake: (Mutex<bool>, parking_lot::Condvar),
     run_lock: Mutex<()>,
@@ -29,7 +29,7 @@ pub(super) struct BackupController {
 }
 
 impl BackupController {
-    pub(super) fn new(inner: Arc<DbInner<PosixFs>>, config: BackupConfig) -> Self {
+    pub(super) fn new(inner: Arc<DbInner<AnyFs<PosixFs>>>, config: BackupConfig) -> Self {
         Self {
             config,
             inner,
@@ -74,7 +74,7 @@ impl BackupController {
         let sequence = self.inner.last_visible_seq.load(Ordering::Acquire);
         let timestamp_ms = now_timestamp_ms();
         let generation_id = new_generation_id(timestamp_ms, sequence);
-        let staged_dir = staging_directory(&self.config.backup_root, &generation_id);
+        let staged_dir = staging_directory(&self.config.backup_root, &generation_id)?;
 
         let result = self.write_generation(&generation_id, timestamp_ms, sequence, &staged_dir);
         match result {
@@ -174,7 +174,7 @@ fn wal_shipment_manifest(segment: &wal_index::WalSegmentInfo) -> Result<BackupMa
         .path
         .file_name()
         .and_then(|name| name.to_str())
-        .ok_or_else(|| StorKvError::InvalidOperation("WAL segment has no file name".into()))?;
+        .ok_or_else(|| StorkvError::InvalidOperation("WAL segment has no file name".into()))?;
     let checksum = crc32c_file(&segment.path)?;
     let entry = BackupFileEntry {
         path: format!("wal/{file_name}"),

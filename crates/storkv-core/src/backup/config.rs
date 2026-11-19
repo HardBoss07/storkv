@@ -9,12 +9,12 @@ use crate::backup::sink_pipe::{CommandPipeSink, CommandPipeSinkConfig};
 
 /// How the auto-backup scheduler behaves and where artifacts are written.
 pub struct BackupConfig {
-    /// Directory that stores backup artifacts.
-    pub backup_root: PathBuf,
-    /// Time between full backup generations.
-    pub full_backup_interval: Duration,
     /// Ship sealed WAL segments between full backups when true.
     pub ship_sealed_wal: bool,
+    /// Time between full backup generations.
+    pub full_backup_interval: Duration,
+    /// Directory that stores backup artifacts.
+    pub backup_root: PathBuf,
     /// Retention limits for full generations and WAL segments.
     pub retention: BackupRetention,
     /// Compression codec for archive and manifest payloads.
@@ -57,13 +57,13 @@ impl BackupCompression {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::StorKvError::InvalidOperation`] for an unknown name.
+    /// Returns [`crate::StorkvError::InvalidOperation`] for an unknown name.
     pub fn parse(value: &str) -> crate::Result<Self> {
         match value.to_ascii_lowercase().as_str() {
             "none" => Ok(BackupCompression::None),
             "zstd" => Ok(BackupCompression::Zstd),
             "lz4" => Ok(BackupCompression::Lz4),
-            other => Err(crate::StorKvError::InvalidOperation(format!(
+            other => Err(crate::StorkvError::InvalidOperation(format!(
                 "unsupported backup compression `{other}` (expected none, zstd, or lz4)"
             ))),
         }
@@ -141,12 +141,12 @@ impl BackupConfig {
 
     pub(crate) fn validate(&self) -> crate::Result<()> {
         if self.full_backup_interval.is_zero() {
-            return Err(crate::StorKvError::InvalidOperation(
+            return Err(crate::StorkvError::InvalidOperation(
                 "backup interval must be greater than zero".into(),
             ));
         }
         if self.retention.max_full_backups == 0 {
-            return Err(crate::StorKvError::InvalidOperation(
+            return Err(crate::StorkvError::InvalidOperation(
                 "backup retention must keep at least one full generation".into(),
             ));
         }

@@ -1,23 +1,23 @@
 use std::path::{Path, PathBuf};
 
-use crate::error::{Result, StorKvError};
+use crate::error::{Result, StorkvError};
 use crate::wal::{WAL_HEADER_SIZE, WAL_MAGIC, WalBatchFrame};
 
 /// Sequence span and metadata of one WAL segment.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WalSegmentInfo {
+    /// Unix epoch seconds when the segment was created.
+    pub created_at_sec: u32,
     /// Segment file number.
     pub file_num: u64,
-    /// Filesystem path of the segment.
-    pub path: PathBuf,
     /// Oldest batch sequence number in the segment.
     pub min_seq: u64,
     /// Newest batch sequence number in the segment.
     pub max_seq: u64,
-    /// Unix epoch seconds when the segment was created.
-    pub created_at_sec: u32,
     /// Segment size in bytes.
     pub size_bytes: u64,
+    /// Filesystem path of the segment.
+    pub path: PathBuf,
 }
 
 /// Read a sealed or active WAL segment and derive its sequence span.
@@ -105,8 +105,8 @@ fn validate_header(bytes: &[u8], path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn corruption(path: &Path, detail: &str) -> StorKvError {
-    StorKvError::BackupCorruption {
+fn corruption(path: &Path, detail: &str) -> StorkvError {
+    StorkvError::BackupCorruption {
         path: path.display().to_string(),
         detail: detail.to_string(),
     }

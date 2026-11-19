@@ -1,7 +1,7 @@
 use std::io::{Read, Write};
 use std::path::Path;
 
-use crate::error::{Result, StorKvError};
+use crate::error::{Result, StorkvError};
 
 use super::{BackupManifest, CRC_READ_CHUNK, MANIFEST_CRC_SUFFIX, MANIFEST_FILENAME};
 
@@ -14,7 +14,7 @@ impl BackupManifest {
     pub fn write_to_dir(&self, directory: &Path) -> Result<()> {
         std::fs::create_dir_all(directory)?;
         let manifest_bytes = serde_json::to_vec_pretty(self)
-            .map_err(|error| StorKvError::Serialization(error.to_string()))?;
+            .map_err(|error| StorkvError::Serialization(error.to_string()))?;
         let checksum = crate::format::compute_crc32c(&manifest_bytes);
 
         let manifest_path = directory.join(MANIFEST_FILENAME);
@@ -28,20 +28,20 @@ impl BackupManifest {
     ///
     /// # Errors
     ///
-    /// Returns [`StorKvError::BackupCorruption`] on a read failure, a checksum
+    /// Returns [`StorkvError::BackupCorruption`] on a read failure, a checksum
     /// mismatch, invalid JSON, or an invalid manifest.
     pub fn read_from_dir(directory: &Path) -> Result<Self> {
         let manifest_path = directory.join(MANIFEST_FILENAME);
         let checksum_path = directory.join(format!("{MANIFEST_FILENAME}{MANIFEST_CRC_SUFFIX}"));
         let manifest_bytes =
-            std::fs::read(&manifest_path).map_err(|error| StorKvError::BackupCorruption {
+            std::fs::read(&manifest_path).map_err(|error| StorkvError::BackupCorruption {
                 path: manifest_path.display().to_string(),
                 detail: error.to_string(),
             })?;
         let expected_checksum = read_checksum(&checksum_path)?;
         let actual_checksum = crate::format::compute_crc32c(&manifest_bytes);
         if expected_checksum != actual_checksum {
-            return Err(StorKvError::BackupCorruption {
+            return Err(StorkvError::BackupCorruption {
                 path: manifest_path.display().to_string(),
                 detail: format!(
                     "manifest CRC32C mismatch: expected 0x{expected_checksum:08x}, got 0x{actual_checksum:08x}"
@@ -51,7 +51,7 @@ impl BackupManifest {
 
         let manifest: BackupManifest =
             serde_json::from_slice(&manifest_bytes).map_err(|error| {
-                StorKvError::BackupCorruption {
+                StorkvError::BackupCorruption {
                     path: manifest_path.display().to_string(),
                     detail: error.to_string(),
                 }
@@ -81,7 +81,7 @@ pub fn parse_crc32c(value: &str) -> Result<u32> {
         .strip_prefix("0x")
         .or_else(|| trimmed.strip_prefix("0X"))
         .unwrap_or(trimmed);
-    u32::from_str_radix(digits, 16).map_err(|error| StorKvError::BackupCorruption {
+    u32::from_str_radix(digits, 16).map_err(|error| StorkvError::BackupCorruption {
         path: MANIFEST_FILENAME.into(),
         detail: format!("invalid CRC32C `{value}`: {error}"),
     })
@@ -96,7 +96,7 @@ pub fn write_synced(path: &Path, bytes: &[u8]) -> Result<()> {
 
 fn read_checksum(path: &Path) -> Result<u32> {
     let contents =
-        std::fs::read_to_string(path).map_err(|error| StorKvError::BackupCorruption {
+        std::fs::read_to_string(path).map_err(|error| StorkvError::BackupCorruption {
             path: path.display().to_string(),
             detail: error.to_string(),
         })?;

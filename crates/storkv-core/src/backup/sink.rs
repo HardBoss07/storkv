@@ -34,12 +34,12 @@ pub struct SinkStatus {
 /// Artifacts selected for removal by the retention planner.
 #[derive(Debug, Clone, Default)]
 pub struct RetentionPlan {
+    /// Number of generations that the plan removes, when known.
+    pub generations_removed: Option<usize>,
     /// Generation identifiers to delete.
     pub generations: Vec<String>,
     /// WAL segment file numbers to delete.
     pub wal_segments: Vec<u64>,
-    /// Number of generations that the plan removes, when known.
-    pub generations_removed: Option<usize>,
 }
 
 /// Result of a retention prune pass.

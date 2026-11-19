@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use crate::error::{Result, StorKvError};
+use crate::error::{Result, StorkvError};
 
 use super::manifest::{BackupManifest, MANIFEST_CRC_SUFFIX, parse_crc32c, write_synced};
 use super::sink::{BackupSink, PruneReport, RetentionPlan, SinkKind, SinkStatus};
@@ -29,7 +29,7 @@ impl LocalFilesystemSink {
         &self.root
     }
 
-    fn record_error(&self, error: &StorKvError) {
+    fn record_error(&self, error: &StorkvError) {
         if let Ok(mut status) = self.status.lock() {
             status.last_error = Some(error.to_string());
         }
@@ -132,7 +132,7 @@ fn publish_generation_inner(
     std::fs::create_dir_all(&generations_dir)?;
     let destination = generations_dir.join(&manifest.generation_id);
     if destination.exists() {
-        return Err(StorKvError::InvalidOperation(format!(
+        return Err(StorkvError::InvalidOperation(format!(
             "backup generation already exists: {}",
             destination.display()
         )));
@@ -149,7 +149,7 @@ fn ship_wal_segment_inner(root: &Path, manifest: &BackupManifest, source: &Path)
     let file_name = source
         .file_name()
         .and_then(|name| name.to_str())
-        .ok_or_else(|| StorKvError::InvalidOperation("WAL segment has no file name".into()))?;
+        .ok_or_else(|| StorkvError::InvalidOperation("WAL segment has no file name".into()))?;
     let destination = wal_directory.join(file_name);
     if destination.exists() {
         return Ok(());
@@ -166,7 +166,7 @@ fn ship_wal_segment_inner(root: &Path, manifest: &BackupManifest, source: &Path)
         .iter()
         .find(|entry| entry.path.ends_with(file_name))
         .ok_or_else(|| {
-            StorKvError::InvalidOperation("WAL manifest is missing its file entry".into())
+            StorkvError::InvalidOperation("WAL manifest is missing its file entry".into())
         })?;
     let checksum = parse_crc32c(&checksum_entry.crc32c)?;
     write_synced(
@@ -174,7 +174,7 @@ fn ship_wal_segment_inner(root: &Path, manifest: &BackupManifest, source: &Path)
         format!("0x{checksum:08x}\n").as_bytes(),
     )?;
     let manifest_bytes = serde_json::to_vec_pretty(manifest)
-        .map_err(|error| StorKvError::Serialization(error.to_string()))?;
+        .map_err(|error| StorkvError::Serialization(error.to_string()))?;
     let manifest_checksum = crate::format::compute_crc32c(&manifest_bytes);
     let manifest_name = format!("{file_name}.manifest.json");
     write_synced(&wal_directory.join(&manifest_name), &manifest_bytes)?;

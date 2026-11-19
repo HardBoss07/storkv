@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::error::{Result, StorKvError};
+use crate::error::{Result, StorkvError};
 
 use super::io::crc32c_file;
 use super::paths::manifest_path_string;
@@ -29,7 +29,7 @@ fn collect_recursive(
             continue;
         }
         let relative_path = path.strip_prefix(root).map_err(|error| {
-            StorKvError::InvalidOperation(format!("backup path not under root: {error}"))
+            StorkvError::InvalidOperation(format!("backup path not under root: {error}"))
         })?;
         let relative_name = manifest_path_string(relative_path);
         if relative_name == MANIFEST_FILENAME

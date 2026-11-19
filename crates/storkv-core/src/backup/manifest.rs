@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::error::{Result, StorKvError};
+use crate::error::{Result, StorkvError};
 
 mod files;
 mod io;
@@ -69,46 +69,46 @@ impl BackupFileKind {
 /// One file entry in a backup manifest.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BackupFileEntry {
-    /// Path relative to the generation directory.
-    pub path: String,
-    /// File kind.
-    pub kind: BackupFileKind,
     /// File size in bytes.
     pub size_bytes: u64,
-    /// CRC32C checksum as a hexadecimal string.
-    pub crc32c: String,
     /// Oldest sequence number in the file, when the file carries data.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_seq: Option<u64>,
     /// Newest sequence number in the file, when the file carries data.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_seq: Option<u64>,
+    /// Path relative to the generation directory.
+    pub path: String,
+    /// File kind.
+    pub kind: BackupFileKind,
+    /// CRC32C checksum as a hexadecimal string.
+    pub crc32c: String,
 }
 
 /// Manifest that describes one backup generation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BackupManifest {
-    /// Format marker. Always [`BACKUP_FORMAT`].
-    pub format: String,
     /// Manifest format version.
     pub format_version: u16,
-    /// Unique identifier of the generation.
-    pub generation_id: String,
-    /// Generation kind.
-    pub kind: BackupKind,
     /// Unix epoch milliseconds when the generation was created.
     pub created_at_ms: u64,
     /// Oldest sequence number in the generation.
     pub min_seq: u64,
     /// Newest sequence number in the generation.
     pub max_seq: u64,
+    /// Total bytes of all listed files.
+    pub total_bytes: u64,
+    /// Format marker. Always [`BACKUP_FORMAT`].
+    pub format: String,
+    /// Unique identifier of the generation.
+    pub generation_id: String,
+    /// Generation kind.
+    pub kind: BackupKind,
     /// Full generation that a WAL generation extends.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base_generation: Option<String>,
     /// Compression codec name.
     pub compression: String,
-    /// Total bytes of all listed files.
-    pub total_bytes: u64,
     /// Files in the generation.
     pub files: Vec<BackupFileEntry>,
 }
@@ -142,16 +142,16 @@ impl BackupManifest {
     ///
     /// # Errors
     ///
-    /// Returns [`StorKvError::BackupCorruption`] when a field is invalid.
+    /// Returns [`StorkvError::BackupCorruption`] when a field is invalid.
     pub fn validate(&self) -> Result<()> {
         if self.format != BACKUP_FORMAT {
-            return Err(StorKvError::BackupCorruption {
+            return Err(StorkvError::BackupCorruption {
                 path: self.generation_id.clone(),
                 detail: format!("unexpected backup format `{}`", self.format),
             });
         }
         if self.format_version != BACKUP_FORMAT_VERSION {
-            return Err(StorKvError::BackupCorruption {
+            return Err(StorkvError::BackupCorruption {
                 path: self.generation_id.clone(),
                 detail: format!(
                     "unsupported backup format version {} (expected {})",
@@ -159,8 +159,12 @@ impl BackupManifest {
                 ),
             });
         }
+        paths::validate_generation_id(&self.generation_id)?;
+        for entry in &self.files {
+            paths::manifest_relative_path(&entry.path)?;
+        }
         if self.max_seq < self.min_seq {
-            return Err(StorKvError::BackupCorruption {
+            return Err(StorkvError::BackupCorruption {
                 path: self.generation_id.clone(),
                 detail: "max_seq is smaller than min_seq".into(),
             });

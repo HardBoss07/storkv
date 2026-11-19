@@ -6,8 +6,8 @@ use std::time::Duration;
 use parking_lot::Mutex;
 
 use crate::db::DbInner;
-use crate::error::{Result, StorKvError};
-use crate::vfs::PosixFs;
+use crate::error::{Result, StorkvError};
+use crate::vfs::{AnyFs, PosixFs};
 
 use super::config::BackupConfig;
 use super::sink::PruneReport;
@@ -23,8 +23,6 @@ const SCHEDULER_TICK: Duration = Duration::from_secs(1);
 pub struct BackupStatus {
     /// True when the worker is running.
     pub enabled: bool,
-    /// Backup root path, when configured.
-    pub backup_root: Option<String>,
     /// Unix epoch milliseconds of the last successful backup.
     pub last_backup_timestamp_ms: u64,
     /// Sequence number of the last successful backup.
@@ -37,6 +35,8 @@ pub struct BackupStatus {
     pub wal_segments_shipped_total: u64,
     /// Milliseconds until the next scheduled full backup.
     pub next_full_backup_in_ms: u64,
+    /// Backup root path, when configured.
+    pub backup_root: Option<String>,
     /// Detail of the most recent failure, if any.
     pub last_error: Option<String>,
     /// Sink description, such as `local` or `command`.
@@ -46,14 +46,14 @@ pub struct BackupStatus {
 /// Result of one full backup generation.
 #[derive(Debug, Clone, Default)]
 pub struct BackupReport {
-    /// Unique identifier of the new generation.
-    pub generation_id: String,
     /// Sequence number captured by the backup.
     pub sequence: u64,
     /// Number of files in the generation.
     pub files: usize,
     /// Total bytes in the generation.
     pub bytes: u64,
+    /// Unique identifier of the new generation.
+    pub generation_id: String,
     /// Details of the retention prune pass.
     pub prune: PruneReport,
 }
@@ -71,7 +71,7 @@ impl AutoBackupHandle {
     ///
     /// Returns an error when the configuration is invalid, the backup root
     /// cannot be created, or the worker thread cannot start.
-    pub fn start(inner: Arc<DbInner<PosixFs>>, config: BackupConfig) -> Result<Self> {
+    pub fn start(inner: Arc<DbInner<AnyFs<PosixFs>>>, config: BackupConfig) -> Result<Self> {
         config.validate()?;
         std::fs::create_dir_all(&config.backup_root)?;
         let controller = Arc::new(BackupController::new(inner, config));
@@ -80,7 +80,7 @@ impl AutoBackupHandle {
             .name("storkv-backup".into())
             .spawn(move || run_worker(worker_controller))
             .map_err(|error| {
-                StorKvError::InvalidOperation(format!("failed to spawn backup worker: {error}"))
+                StorkvError::InvalidOperation(format!("failed to spawn backup worker: {error}"))
             })?;
         Ok(Self {
             controller,
