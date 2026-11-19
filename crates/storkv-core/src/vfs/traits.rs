@@ -1,5 +1,6 @@
 use std::io::{Read, Seek, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use crate::error::Result;
 
@@ -44,4 +45,14 @@ pub trait FileSystem: Send + Sync {
     fn read_dir(&self, path: &Path) -> Result<Vec<PathBuf>>;
     /// Return the size of a file in bytes.
     fn file_size(&self, path: &Path) -> Result<u64>;
+    /// Return a fresh in-memory view of this filesystem.
+    ///
+    /// The default implementation returns `None`. Selectors override this
+    /// method to give one scope an in-RAM backend.
+    fn memory_view(&self) -> Option<Arc<Self>>
+    where
+        Self: Sized,
+    {
+        None
+    }
 }

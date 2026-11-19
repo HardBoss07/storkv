@@ -3,17 +3,16 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-use crate::error::{Result, StorKvError};
+use crate::error::{Result, StorkvError};
 
 use super::traits::{File, FileSystem};
 
 /// Fault injector for chaos, crash-recovery, and torn-write testing.
 pub struct FaultInjectingFs<FS: FileSystem> {
     inner: FS,
-    fail_writes: AtomicBool,
-    fail_syncs: AtomicBool,
+    fail_writes: Arc<AtomicBool>,
+    fail_syncs: Arc<AtomicBool>,
     write_byte_limit: AtomicUsize,
-    written_bytes: AtomicUsize,
 }
 
 impl<FS: FileSystem> FaultInjectingFs<FS> {
@@ -21,10 +20,9 @@ impl<FS: FileSystem> FaultInjectingFs<FS> {
     pub fn new(inner: FS) -> Self {
         Self {
             inner,
-            fail_writes: AtomicBool::new(false),
-            fail_syncs: AtomicBool::new(false),
+            fail_writes: Arc::new(AtomicBool::new(false)),
+            fail_syncs: Arc::new(AtomicBool::new(false)),
             write_byte_limit: AtomicUsize::new(usize::MAX),
-            written_bytes: AtomicUsize::new(0),
         }
     }
 
@@ -41,18 +39,17 @@ impl<FS: FileSystem> FaultInjectingFs<FS> {
     /// Make writes fail after the given number of bytes.
     pub fn set_write_byte_limit(&self, limit: usize) {
         self.write_byte_limit.store(limit, Ordering::SeqCst);
-        self.written_bytes.store(0, Ordering::SeqCst);
     }
 
     fn wrap_file(&self, inner: Box<dyn File>) -> Box<dyn File> {
         Box::new(FaultInjectingFile {
             inner,
-            fail_writes: Arc::new(AtomicBool::new(self.fail_writes.load(Ordering::SeqCst))),
-            fail_syncs: Arc::new(AtomicBool::new(self.fail_syncs.load(Ordering::SeqCst))),
+            fail_writes: Arc::clone(&self.fail_writes),
+            fail_syncs: Arc::clone(&self.fail_syncs),
             write_byte_limit: Arc::new(AtomicUsize::new(
                 self.write_byte_limit.load(Ordering::SeqCst),
             )),
-            written_bytes: Arc::new(AtomicUsize::new(self.written_bytes.load(Ordering::SeqCst))),
+            written_bytes: Arc::new(AtomicUsize::new(0)),
         })
     }
 }
@@ -108,7 +105,7 @@ impl Seek for FaultInjectingFile {
 impl File for FaultInjectingFile {
     fn sync_all(&mut self) -> Result<()> {
         if self.fail_syncs.load(Ordering::SeqCst) {
-            return Err(StorKvError::Io(std::io::Error::other(
+            return Err(StorkvError::Io(std::io::Error::other(
                 "Injected sync_all failure",
             )));
         }
@@ -117,7 +114,7 @@ impl File for FaultInjectingFile {
 
     fn sync_data(&mut self) -> Result<()> {
         if self.fail_syncs.load(Ordering::SeqCst) {
-            return Err(StorKvError::Io(std::io::Error::other(
+            return Err(StorkvError::Io(std::io::Error::other(
                 "Injected sync_data failure",
             )));
         }
