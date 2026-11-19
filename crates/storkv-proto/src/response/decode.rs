@@ -7,12 +7,12 @@ use super::types::{
     WireTelemetrySnapshot,
 };
 
-use crate::error::{StorKvWireError, decode_error};
+use crate::error::{StorkvWireError, decode_error};
 use crate::frame::{get_bytes, get_opt_bytes, get_str, get_u8, get_u32_le, get_u64_le};
 
-pub(crate) fn decode_response(source: &mut BytesMut) -> Result<Response, StorKvWireError> {
+pub(crate) fn decode_response(source: &mut BytesMut) -> Result<Response, StorkvWireError> {
     if source.is_empty() {
-        return Err(StorKvWireError::Protocol("Empty response payload".into()));
+        return Err(StorkvWireError::Protocol("Empty response payload".into()));
     }
     let opcode = source.get_u8();
     match opcode {
@@ -39,19 +39,39 @@ pub(crate) fn decode_response(source: &mut BytesMut) -> Result<Response, StorKvW
         )?)),
         13 => Ok(Response::BackupCatalog(decode_backup_list(source)?)),
         14 => decode_key_meta(source),
+        15 => Ok(Response::ReplicationFrame {
+            sent_at_ms: get_u64_le(source)?,
+            frame: get_bytes(source)?,
+        }),
+        16 => {
+            let count = get_u32_le(source)? as usize;
+            if count > source.len() / 12 {
+                return Err(StorkvWireError::Protocol(
+                    "Replication snapshot count exceeds available payload".into(),
+                ));
+            }
+            let mut entries = Vec::with_capacity(count);
+            for _ in 0..count {
+                let scope_id = get_u32_le(source)?;
+                let key = get_bytes(source)?;
+                let value = get_bytes(source)?;
+                entries.push((scope_id, key, value));
+            }
+            Ok(Response::ReplicationSnapshot(entries))
+        }
         255 => Ok(Response::Error(decode_error(source)?)),
-        other => Err(StorKvWireError::Protocol(format!(
+        other => Err(StorkvWireError::Protocol(format!(
             "Unknown response opcode: {}",
             other
         ))),
     }
 }
 
-fn decode_scan_response(source: &mut BytesMut) -> Result<Response, StorKvWireError> {
+fn decode_scan_response(source: &mut BytesMut) -> Result<Response, StorkvWireError> {
     let pair_count = get_u32_le(source)? as usize;
     // Each pair costs at least two u32 length prefixes.
     if pair_count > source.len() / 8 {
-        return Err(StorKvWireError::Protocol(
+        return Err(StorkvWireError::Protocol(
             "Scan result count exceeds available payload".into(),
         ));
     }
@@ -64,7 +84,7 @@ fn decode_scan_response(source: &mut BytesMut) -> Result<Response, StorKvWireErr
     Ok(Response::Scan(pairs))
 }
 
-fn decode_telemetry(source: &mut BytesMut) -> Result<WireTelemetrySnapshot, StorKvWireError> {
+fn decode_telemetry(source: &mut BytesMut) -> Result<WireTelemetrySnapshot, StorkvWireError> {
     let mut snapshot = WireTelemetrySnapshot {
         writes_total: get_u64_le(source)?,
         reads_total: get_u64_le(source)?,
@@ -84,17 +104,17 @@ fn decode_telemetry(source: &mut BytesMut) -> Result<WireTelemetrySnapshot, Stor
     Ok(snapshot)
 }
 
-fn get_opt_str(source: &mut BytesMut) -> Result<Option<String>, StorKvWireError> {
+fn get_opt_str(source: &mut BytesMut) -> Result<Option<String>, StorkvWireError> {
     match get_u8(source)? {
         0 => Ok(None),
         1 => Ok(Some(get_str(source)?)),
-        _ => Err(StorKvWireError::Protocol(
+        _ => Err(StorkvWireError::Protocol(
             "Invalid optional string tag".into(),
         )),
     }
 }
 
-fn decode_backup_report(source: &mut BytesMut) -> Result<WireBackupReport, StorKvWireError> {
+fn decode_backup_report(source: &mut BytesMut) -> Result<WireBackupReport, StorkvWireError> {
     Ok(WireBackupReport {
         generation_id: get_str(source)?,
         sequence: get_u64_le(source)?,
@@ -106,7 +126,7 @@ fn decode_backup_report(source: &mut BytesMut) -> Result<WireBackupReport, StorK
     })
 }
 
-fn decode_backup_status(source: &mut BytesMut) -> Result<WireBackupStatus, StorKvWireError> {
+fn decode_backup_status(source: &mut BytesMut) -> Result<WireBackupStatus, StorkvWireError> {
     Ok(WireBackupStatus {
         enabled: get_u8(source)? != 0,
         backup_root: get_opt_str(source)?,
@@ -123,14 +143,14 @@ fn decode_backup_status(source: &mut BytesMut) -> Result<WireBackupStatus, StorK
 
 fn decode_backup_verify_report(
     source: &mut BytesMut,
-) -> Result<WireBackupVerifyReport, StorKvWireError> {
+) -> Result<WireBackupVerifyReport, StorkvWireError> {
     let generations_checked = get_u32_le(source)?;
     let files_checked = get_u64_le(source)?;
     let bytes_checked = get_u64_le(source)?;
     let wal_segments_checked = get_u64_le(source)?;
     let error_count = get_u32_le(source)? as usize;
     if error_count > source.len() / 8 {
-        return Err(StorKvWireError::Protocol(
+        return Err(StorkvWireError::Protocol(
             "Backup verification error count exceeds available payload".into(),
         ));
     }
@@ -150,11 +170,11 @@ fn decode_backup_verify_report(
     })
 }
 
-fn decode_backup_list(source: &mut BytesMut) -> Result<Vec<WireBackupEntry>, StorKvWireError> {
+fn decode_backup_list(source: &mut BytesMut) -> Result<Vec<WireBackupEntry>, StorkvWireError> {
     let entry_count = get_u32_le(source)? as usize;
     // Each entry has at least two u32 string prefixes plus fixed fields.
     if entry_count > source.len() / 24 {
-        return Err(StorKvWireError::Protocol(
+        return Err(StorkvWireError::Protocol(
             "Backup entry count exceeds available payload".into(),
         ));
     }
@@ -165,7 +185,7 @@ fn decode_backup_list(source: &mut BytesMut) -> Result<Vec<WireBackupEntry>, Sto
             1 => WireBackupKind::Full,
             2 => WireBackupKind::Wal,
             _ => {
-                return Err(StorKvWireError::Protocol("Invalid backup kind".into()));
+                return Err(StorkvWireError::Protocol("Invalid backup kind".into()));
             }
         };
         entries.push(WireBackupEntry {
@@ -182,20 +202,20 @@ fn decode_backup_list(source: &mut BytesMut) -> Result<Vec<WireBackupEntry>, Sto
     Ok(entries)
 }
 
-fn decode_key_meta(source: &mut BytesMut) -> Result<Response, StorKvWireError> {
+fn decode_key_meta(source: &mut BytesMut) -> Result<Response, StorkvWireError> {
     match get_u8(source)? {
         0 => Ok(Response::KeyMeta(None)),
         1 => Ok(Response::KeyMeta(Some(WireKeyMeta {
             expires_at_ms: get_u64_le(source)?,
             seq: get_u64_le(source)?,
         }))),
-        _ => Err(StorKvWireError::Protocol(
+        _ => Err(StorkvWireError::Protocol(
             "Invalid key metadata presence tag".into(),
         )),
     }
 }
 
-fn decode_change_event(source: &mut BytesMut) -> Result<WireChangeEvent, StorKvWireError> {
+fn decode_change_event(source: &mut BytesMut) -> Result<WireChangeEvent, StorkvWireError> {
     let event_type = get_u8(source)?;
     match event_type {
         1 => {
@@ -221,7 +241,12 @@ fn decode_change_event(source: &mut BytesMut) -> Result<WireChangeEvent, StorKvW
             let seq = get_u64_le(source)?;
             Ok(WireChangeEvent::DropScope { scope_id, seq })
         }
-        _ => Err(StorKvWireError::Protocol(
+        4 => {
+            let scope_id = get_u32_le(source)?;
+            let seq = get_u64_le(source)?;
+            Ok(WireChangeEvent::InvalidateScope { scope_id, seq })
+        }
+        _ => Err(StorkvWireError::Protocol(
             "Unknown watch event variant".into(),
         )),
     }

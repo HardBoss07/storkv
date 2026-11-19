@@ -120,6 +120,20 @@ pub(crate) fn encode_request(destination: &mut BytesMut, request: &Request) {
             destination.put_u32_le(*scope_id);
             put_bytes(destination, key);
         }
+        Request::WatchFrom { from_seq } => {
+            destination.put_u8(26);
+            destination.put_u64_le(*from_seq);
+        }
+        Request::ReplicationStart { from_seq } => {
+            destination.put_u8(27);
+            destination.put_u64_le(*from_seq);
+        }
+        Request::ConfigureConsistency { consistency } => {
+            destination.put_u8(28);
+            let (mode, max_lag_ms) = consistency.to_wire();
+            destination.put_u8(mode);
+            destination.put_u64_le(max_lag_ms);
+        }
     }
 }
 

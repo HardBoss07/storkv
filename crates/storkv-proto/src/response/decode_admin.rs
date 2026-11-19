@@ -1,10 +1,10 @@
 use bytes::BytesMut;
 
 use super::types::{WireAdminStats, WireLevelStat, WireScopeStat, WireTransportStat};
-use crate::error::StorKvWireError;
+use crate::error::StorkvWireError;
 use crate::frame::{get_str, get_u8, get_u32_le, get_u64_le};
 
-pub(super) fn decode_admin_stats(source: &mut BytesMut) -> Result<WireAdminStats, StorKvWireError> {
+pub(super) fn decode_admin_stats(source: &mut BytesMut) -> Result<WireAdminStats, StorkvWireError> {
     let levels = decode_level_stats(source)?;
     let scopes = decode_scope_stats(source)?;
     let mut stats = WireAdminStats {
@@ -30,11 +30,11 @@ pub(super) fn decode_admin_stats(source: &mut BytesMut) -> Result<WireAdminStats
 
 fn decode_transport_stats(
     source: &mut BytesMut,
-) -> Result<Vec<WireTransportStat>, StorKvWireError> {
+) -> Result<Vec<WireTransportStat>, StorkvWireError> {
     let count = get_u32_le(source)? as usize;
     // Each entry is u8 + three u64 fields.
     if count > source.len() / 25 {
-        return Err(StorKvWireError::Protocol(
+        return Err(StorkvWireError::Protocol(
             "Transport count exceeds available payload".into(),
         ));
     }
@@ -50,11 +50,11 @@ fn decode_transport_stats(
     Ok(transports)
 }
 
-fn decode_level_stats(source: &mut BytesMut) -> Result<Vec<WireLevelStat>, StorKvWireError> {
+fn decode_level_stats(source: &mut BytesMut) -> Result<Vec<WireLevelStat>, StorkvWireError> {
     let level_count = get_u32_le(source)? as usize;
     // A level entry is at least u8 + u32 + u64.
     if level_count > source.len() / 13 {
-        return Err(StorKvWireError::Protocol(
+        return Err(StorkvWireError::Protocol(
             "Level count exceeds available payload".into(),
         ));
     }
@@ -69,11 +69,11 @@ fn decode_level_stats(source: &mut BytesMut) -> Result<Vec<WireLevelStat>, StorK
     Ok(levels)
 }
 
-fn decode_scope_stats(source: &mut BytesMut) -> Result<Vec<WireScopeStat>, StorKvWireError> {
+fn decode_scope_stats(source: &mut BytesMut) -> Result<Vec<WireScopeStat>, StorkvWireError> {
     let scope_count = get_u32_le(source)? as usize;
     // A scope entry is at least u32 + u32 name length + u64 + u64 + u32.
     if scope_count > source.len() / 28 {
-        return Err(StorKvWireError::Protocol(
+        return Err(StorkvWireError::Protocol(
             "Scope count exceeds available payload".into(),
         ));
     }

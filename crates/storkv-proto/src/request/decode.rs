@@ -4,12 +4,12 @@ use std::time::Duration;
 use super::decode_scope::decode_create_scope_request;
 use super::decode_tx::decode_tx_commit_request;
 use super::types::{Request, WireMergeOp};
-use crate::error::StorKvWireError;
+use crate::error::StorkvWireError;
 use crate::frame::{get_bytes, get_i64_le, get_opt_bytes, get_str, get_u8, get_u32_le, get_u64_le};
 
-pub(crate) fn decode_request(source: &mut BytesMut) -> Result<Request, StorKvWireError> {
+pub(crate) fn decode_request(source: &mut BytesMut) -> Result<Request, StorkvWireError> {
     if source.is_empty() {
-        return Err(StorKvWireError::Protocol("Empty request payload".into()));
+        return Err(StorkvWireError::Protocol("Empty request payload".into()));
     }
     let opcode = source.get_u8();
     match opcode {
@@ -54,18 +54,31 @@ pub(crate) fn decode_request(source: &mut BytesMut) -> Result<Request, StorKvWir
             scope_id: get_u32_le(source)?,
             key: get_bytes(source)?,
         }),
-        other => Err(StorKvWireError::Protocol(format!(
+        26 => Ok(Request::WatchFrom {
+            from_seq: get_u64_le(source)?,
+        }),
+        27 => Ok(Request::ReplicationStart {
+            from_seq: get_u64_le(source)?,
+        }),
+        28 => {
+            let mode = get_u8(source)?;
+            let max_lag_ms = get_u64_le(source)?;
+            Ok(Request::ConfigureConsistency {
+                consistency: crate::Consistency::from_wire(mode, max_lag_ms)?,
+            })
+        }
+        other => Err(StorkvWireError::Protocol(format!(
             "Unknown request opcode: {}",
             other
         ))),
     }
 }
 
-fn get_opt_u64(source: &mut BytesMut) -> Result<Option<u64>, StorKvWireError> {
+fn get_opt_u64(source: &mut BytesMut) -> Result<Option<u64>, StorkvWireError> {
     match get_u8(source)? {
         0 => Ok(None),
         1 => Ok(Some(get_u64_le(source)?)),
-        _ => Err(StorKvWireError::Protocol("Invalid optional u64 tag".into())),
+        _ => Err(StorkvWireError::Protocol("Invalid optional u64 tag".into())),
     }
 }
 
@@ -77,7 +90,7 @@ enum RequestTag {
 fn decode_keyed_request(
     source: &mut BytesMut,
     tag: RequestTag,
-) -> Result<Request, StorKvWireError> {
+) -> Result<Request, StorkvWireError> {
     let scope_id = get_u32_le(source)?;
     let user_key = get_bytes(source)?;
     Ok(match tag {
@@ -92,7 +105,7 @@ fn decode_keyed_request(
     })
 }
 
-fn decode_put_request(source: &mut BytesMut) -> Result<Request, StorKvWireError> {
+fn decode_put_request(source: &mut BytesMut) -> Result<Request, StorkvWireError> {
     let scope_id = get_u32_le(source)?;
     let user_key = get_bytes(source)?;
     let entry_value = get_bytes(source)?;
@@ -103,7 +116,7 @@ fn decode_put_request(source: &mut BytesMut) -> Result<Request, StorKvWireError>
     })
 }
 
-fn decode_put_with_ttl_request(source: &mut BytesMut) -> Result<Request, StorKvWireError> {
+fn decode_put_with_ttl_request(source: &mut BytesMut) -> Result<Request, StorkvWireError> {
     let scope_id = get_u32_le(source)?;
     let user_key = get_bytes(source)?;
     let entry_value = get_bytes(source)?;
@@ -116,7 +129,7 @@ fn decode_put_with_ttl_request(source: &mut BytesMut) -> Result<Request, StorKvW
     })
 }
 
-fn decode_delete_range_request(source: &mut BytesMut) -> Result<Request, StorKvWireError> {
+fn decode_delete_range_request(source: &mut BytesMut) -> Result<Request, StorkvWireError> {
     let scope_id = get_u32_le(source)?;
     let start_key = get_bytes(source)?;
     let end_key = get_bytes(source)?;
@@ -127,14 +140,14 @@ fn decode_delete_range_request(source: &mut BytesMut) -> Result<Request, StorKvW
     })
 }
 
-fn decode_merge_request(source: &mut BytesMut) -> Result<Request, StorKvWireError> {
+fn decode_merge_request(source: &mut BytesMut) -> Result<Request, StorkvWireError> {
     let scope_id = get_u32_le(source)?;
     let user_key = get_bytes(source)?;
     let op_type = get_u8(source)?;
     let merge_op = match op_type {
         1 => WireMergeOp::CounterAdd(get_i64_le(source)?),
         2 => WireMergeOp::Custom(get_bytes(source)?),
-        _ => return Err(StorKvWireError::Protocol("Invalid merge op type".into())),
+        _ => return Err(StorkvWireError::Protocol("Invalid merge op type".into())),
     };
     Ok(Request::Merge {
         scope_id,
@@ -143,7 +156,7 @@ fn decode_merge_request(source: &mut BytesMut) -> Result<Request, StorKvWireErro
     })
 }
 
-fn decode_scan_request(source: &mut BytesMut) -> Result<Request, StorKvWireError> {
+fn decode_scan_request(source: &mut BytesMut) -> Result<Request, StorkvWireError> {
     let scope_id = get_u32_le(source)?;
     let start_key = get_opt_bytes(source)?;
     let end_key = get_opt_bytes(source)?;
@@ -154,7 +167,7 @@ fn decode_scan_request(source: &mut BytesMut) -> Result<Request, StorKvWireError
     })
 }
 
-fn decode_scan_prefix_request(source: &mut BytesMut) -> Result<Request, StorKvWireError> {
+fn decode_scan_prefix_request(source: &mut BytesMut) -> Result<Request, StorkvWireError> {
     let scope_id = get_u32_le(source)?;
     let prefix = get_bytes(source)?;
     Ok(Request::ScanPrefix { scope_id, prefix })

@@ -1,6 +1,6 @@
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
-use crate::error::StorKvWireError;
+use crate::error::StorkvWireError;
 use crate::request::{Request, decode_request, encode_request};
 use crate::response::{Response, decode_response, encode_response};
 
@@ -71,7 +71,7 @@ impl Message {
     /// Returns Ok(Some(msg)) if a complete frame was read and consumed,
     /// Returns Ok(None) if more data is needed,
     /// Returns Err if frame is malformed or invalid.
-    pub fn decode(source: &mut BytesMut) -> Result<Option<Self>, StorKvWireError> {
+    pub fn decode(source: &mut BytesMut) -> Result<Option<Self>, StorkvWireError> {
         let Some(frame_length) = read_frame_length(source)? else {
             return Ok(None);
         };
@@ -92,13 +92,13 @@ fn payload_tag(payload: &MessagePayload) -> u8 {
     }
 }
 
-fn read_frame_length(source: &BytesMut) -> Result<Option<usize>, StorKvWireError> {
+fn read_frame_length(source: &BytesMut) -> Result<Option<usize>, StorkvWireError> {
     if source.len() < LENGTH_PREFIX_SIZE {
         return Ok(None);
     }
     let frame_length = u32::from_be_bytes([source[0], source[1], source[2], source[3]]) as usize;
     if frame_length > MAX_FRAME_SIZE {
-        return Err(StorKvWireError::Protocol(format!(
+        return Err(StorkvWireError::Protocol(format!(
             "Frame size {} exceeds maximum allowed {}",
             frame_length, MAX_FRAME_SIZE
         )));
@@ -113,9 +113,9 @@ fn write_frame_header(destination: &mut BytesMut, request_id: u64, payload_tag: 
     destination.put_u8(payload_tag);
 }
 
-fn decode_frame_body(frame_bytes: &mut BytesMut) -> Result<Message, StorKvWireError> {
+fn decode_frame_body(frame_bytes: &mut BytesMut) -> Result<Message, StorkvWireError> {
     if frame_bytes.len() < FRAME_HEADER_SIZE {
-        return Err(StorKvWireError::Protocol(
+        return Err(StorkvWireError::Protocol(
             "Frame header too short".to_string(),
         ));
     }
@@ -123,14 +123,14 @@ fn decode_frame_body(frame_bytes: &mut BytesMut) -> Result<Message, StorKvWireEr
     let mut magic = [0u8; 8];
     frame_bytes.copy_to_slice(&mut magic);
     if &magic != PROTOCOL_MAGIC {
-        return Err(StorKvWireError::Protocol(
+        return Err(StorkvWireError::Protocol(
             "Invalid protocol magic".to_string(),
         ));
     }
 
     let version = frame_bytes.get_u16();
     if version != PROTOCOL_VERSION {
-        return Err(StorKvWireError::Protocol(format!(
+        return Err(StorkvWireError::Protocol(format!(
             "Unsupported protocol version: {}",
             version
         )));
@@ -148,11 +148,11 @@ fn decode_frame_body(frame_bytes: &mut BytesMut) -> Result<Message, StorKvWireEr
 fn decode_payload(
     frame_bytes: &mut BytesMut,
     payload_type: u8,
-) -> Result<MessagePayload, StorKvWireError> {
+) -> Result<MessagePayload, StorkvWireError> {
     match payload_type {
         REQUEST_PAYLOAD_TAG => Ok(MessagePayload::Request(decode_request(frame_bytes)?)),
         RESPONSE_PAYLOAD_TAG => Ok(MessagePayload::Response(decode_response(frame_bytes)?)),
-        other => Err(StorKvWireError::Protocol(format!(
+        other => Err(StorkvWireError::Protocol(format!(
             "Unknown payload type: {}",
             other
         ))),
@@ -179,64 +179,64 @@ pub(crate) fn put_str(destination: &mut BytesMut, text: &str) {
     put_bytes(destination, text.as_bytes());
 }
 
-pub(crate) fn get_u8(source: &mut BytesMut) -> Result<u8, StorKvWireError> {
+pub(crate) fn get_u8(source: &mut BytesMut) -> Result<u8, StorkvWireError> {
     if source.is_empty() {
-        return Err(StorKvWireError::Protocol(
+        return Err(StorkvWireError::Protocol(
             "Unexpected EOF reading u8".into(),
         ));
     }
     Ok(source.get_u8())
 }
 
-pub(crate) fn get_u32_le(source: &mut BytesMut) -> Result<u32, StorKvWireError> {
+pub(crate) fn get_u32_le(source: &mut BytesMut) -> Result<u32, StorkvWireError> {
     if source.len() < 4 {
-        return Err(StorKvWireError::Protocol(
+        return Err(StorkvWireError::Protocol(
             "Unexpected EOF reading u32".into(),
         ));
     }
     Ok(source.get_u32_le())
 }
 
-pub(crate) fn get_i64_le(source: &mut BytesMut) -> Result<i64, StorKvWireError> {
+pub(crate) fn get_i64_le(source: &mut BytesMut) -> Result<i64, StorkvWireError> {
     if source.len() < 8 {
-        return Err(StorKvWireError::Protocol(
+        return Err(StorkvWireError::Protocol(
             "Unexpected EOF reading i64".into(),
         ));
     }
     Ok(source.get_i64_le())
 }
 
-pub(crate) fn get_u64_le(source: &mut BytesMut) -> Result<u64, StorKvWireError> {
+pub(crate) fn get_u64_le(source: &mut BytesMut) -> Result<u64, StorkvWireError> {
     if source.len() < 8 {
-        return Err(StorKvWireError::Protocol(
+        return Err(StorkvWireError::Protocol(
             "Unexpected EOF reading u64".into(),
         ));
     }
     Ok(source.get_u64_le())
 }
 
-pub(crate) fn get_bytes(source: &mut BytesMut) -> Result<Bytes, StorKvWireError> {
+pub(crate) fn get_bytes(source: &mut BytesMut) -> Result<Bytes, StorkvWireError> {
     let payload_length = get_u32_le(source)? as usize;
     if source.len() < payload_length {
-        return Err(StorKvWireError::Protocol(
+        return Err(StorkvWireError::Protocol(
             "Unexpected EOF reading bytes".into(),
         ));
     }
     Ok(source.split_to(payload_length).freeze())
 }
 
-pub(crate) fn get_opt_bytes(source: &mut BytesMut) -> Result<Option<Bytes>, StorKvWireError> {
+pub(crate) fn get_opt_bytes(source: &mut BytesMut) -> Result<Option<Bytes>, StorkvWireError> {
     match get_u8(source)? {
         0 => Ok(None),
         1 => Ok(Some(get_bytes(source)?)),
-        _ => Err(StorKvWireError::Protocol(
+        _ => Err(StorkvWireError::Protocol(
             "Invalid optional bytes tag".into(),
         )),
     }
 }
 
-pub(crate) fn get_str(source: &mut BytesMut) -> Result<String, StorKvWireError> {
+pub(crate) fn get_str(source: &mut BytesMut) -> Result<String, StorkvWireError> {
     let text_bytes = get_bytes(source)?;
     String::from_utf8(text_bytes.to_vec())
-        .map_err(|error| StorKvWireError::Protocol(format!("Invalid UTF-8: {}", error)))
+        .map_err(|error| StorkvWireError::Protocol(format!("Invalid UTF-8: {}", error)))
 }

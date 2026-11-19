@@ -2,18 +2,18 @@ use bytes::BytesMut;
 use std::time::Duration;
 
 use super::types::{Request, WireCompactionStyle, WireDurability, WireRetention, WireScopeOptions};
-use crate::error::StorKvWireError;
+use crate::error::StorkvWireError;
 use crate::frame::{get_str, get_u8, get_u32_le, get_u64_le};
 
 pub(crate) fn decode_create_scope_request(
     source: &mut BytesMut,
-) -> Result<Request, StorKvWireError> {
+) -> Result<Request, StorkvWireError> {
     let name = get_str(source)?;
     let options = decode_scope_options(source)?;
     Ok(Request::CreateScope { name, options })
 }
 
-fn decode_scope_options(source: &mut BytesMut) -> Result<WireScopeOptions, StorKvWireError> {
+fn decode_scope_options(source: &mut BytesMut) -> Result<WireScopeOptions, StorkvWireError> {
     let durability = decode_durability(source)?;
     let retention = decode_retention(source)?;
     let prefix_bloom_len = decode_prefix_bloom_len(source)?;
@@ -24,7 +24,7 @@ fn decode_scope_options(source: &mut BytesMut) -> Result<WireScopeOptions, StorK
     })
 }
 
-fn decode_durability(source: &mut BytesMut) -> Result<WireDurability, StorKvWireError> {
+fn decode_durability(source: &mut BytesMut) -> Result<WireDurability, StorkvWireError> {
     match get_u8(source)? {
         1 => Ok(WireDurability::StrictFsync),
         2 => {
@@ -33,11 +33,11 @@ fn decode_durability(source: &mut BytesMut) -> Result<WireDurability, StorKvWire
                 sync_interval: Duration::from_millis(interval_ms),
             })
         }
-        _ => Err(StorKvWireError::Protocol("Invalid durability".into())),
+        _ => Err(StorkvWireError::Protocol("Invalid durability".into())),
     }
 }
 
-fn decode_retention(source: &mut BytesMut) -> Result<WireRetention, StorKvWireError> {
+fn decode_retention(source: &mut BytesMut) -> Result<WireRetention, StorkvWireError> {
     match get_u8(source)? {
         1 => Ok(WireRetention::Permanent),
         2 => {
@@ -48,22 +48,22 @@ fn decode_retention(source: &mut BytesMut) -> Result<WireRetention, StorKvWireEr
                 compaction_style,
             })
         }
-        _ => Err(StorKvWireError::Protocol("Invalid retention".into())),
+        _ => Err(StorkvWireError::Protocol("Invalid retention".into())),
     }
 }
 
-fn decode_compaction_style(source: &mut BytesMut) -> Result<WireCompactionStyle, StorKvWireError> {
+fn decode_compaction_style(source: &mut BytesMut) -> Result<WireCompactionStyle, StorkvWireError> {
     match get_u8(source)? {
         1 => Ok(WireCompactionStyle::Leveled),
         2 => Ok(WireCompactionStyle::Fifo),
-        _ => Err(StorKvWireError::Protocol("Invalid compaction".into())),
+        _ => Err(StorkvWireError::Protocol("Invalid compaction".into())),
     }
 }
 
-fn decode_prefix_bloom_len(source: &mut BytesMut) -> Result<Option<usize>, StorKvWireError> {
+fn decode_prefix_bloom_len(source: &mut BytesMut) -> Result<Option<usize>, StorkvWireError> {
     match get_u8(source)? {
         0 => Ok(None),
         1 => Ok(Some(get_u32_le(source)? as usize)),
-        _ => Err(StorKvWireError::Protocol("Invalid bloom tag".into())),
+        _ => Err(StorkvWireError::Protocol("Invalid bloom tag".into())),
     }
 }

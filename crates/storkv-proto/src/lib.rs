@@ -28,24 +28,23 @@
 //! let message = Message::new_request(7, Request::Ping);
 //! let encoded = message.encode();
 //! let mut buffer = bytes::BytesMut::from(&encoded[..]);
-//! let decoded = Message::decode(&mut buffer).expect("complete frame");
-//! assert_eq!(
-//!     decoded,
-//!     Some(Message::new_request(7, Request::Ping))
-//! );
+//! let decoded = Message::decode(&mut buffer);
+//! assert_eq!(decoded.ok().flatten(), Some(Message::new_request(7, Request::Ping)));
 //! # let _: MessagePayload = MessagePayload::Response(Response::Pong);
 //! ```
 
 #![warn(missing_docs)]
 
+mod consistency;
 mod endpoint;
 mod error;
 mod frame;
 mod request;
 mod response;
 
+pub use consistency::Consistency;
 pub use endpoint::{is_unix_socket_addr, unix_socket_path};
-pub use error::StorKvWireError;
+pub use error::StorkvWireError;
 pub use frame::{MAX_FRAME_SIZE, Message, MessagePayload, PROTOCOL_MAGIC, PROTOCOL_VERSION};
 pub use request::{
     Request, WireCompactionStyle, WireDurability, WireMergeOp, WireRetention, WireScopeOptions,

@@ -1,10 +1,10 @@
 use bytes::{Bytes, BytesMut};
 
 use super::types::{Request, WireTxMutation};
-use crate::error::StorKvWireError;
+use crate::error::StorkvWireError;
 use crate::frame::{get_bytes, get_u8, get_u32_le, get_u64_le};
 
-pub(crate) fn decode_tx_commit_request(source: &mut BytesMut) -> Result<Request, StorKvWireError> {
+pub(crate) fn decode_tx_commit_request(source: &mut BytesMut) -> Result<Request, StorkvWireError> {
     let read_seq = get_u64_le(source)?;
     let read_set = decode_read_set(source)?;
     let write_set = decode_write_set(source)?;
@@ -15,12 +15,12 @@ pub(crate) fn decode_tx_commit_request(source: &mut BytesMut) -> Result<Request,
     })
 }
 
-fn decode_read_set(source: &mut BytesMut) -> Result<Vec<(u32, Bytes)>, StorKvWireError> {
+fn decode_read_set(source: &mut BytesMut) -> Result<Vec<(u32, Bytes)>, StorkvWireError> {
     let read_count = get_u32_le(source)? as usize;
     // Each read-set entry needs at least a u32 scope id and a u32
     // length prefix. Reject impossible counts before reserving memory.
     if read_count > source.len() / 8 {
-        return Err(StorKvWireError::Protocol(
+        return Err(StorkvWireError::Protocol(
             "Read-set count exceeds available payload".into(),
         ));
     }
@@ -35,10 +35,10 @@ fn decode_read_set(source: &mut BytesMut) -> Result<Vec<(u32, Bytes)>, StorKvWir
 
 type TxWriteSet = Vec<((u32, Bytes), WireTxMutation)>;
 
-fn decode_write_set(source: &mut BytesMut) -> Result<TxWriteSet, StorKvWireError> {
+fn decode_write_set(source: &mut BytesMut) -> Result<TxWriteSet, StorkvWireError> {
     let write_count = get_u32_le(source)? as usize;
     if write_count > source.len() / 9 {
-        return Err(StorKvWireError::Protocol(
+        return Err(StorkvWireError::Protocol(
             "Write-set count exceeds available payload".into(),
         ));
     }
@@ -52,7 +52,7 @@ fn decode_write_set(source: &mut BytesMut) -> Result<TxWriteSet, StorKvWireError
     Ok(write_set)
 }
 
-fn decode_tx_mutation(source: &mut BytesMut) -> Result<WireTxMutation, StorKvWireError> {
+fn decode_tx_mutation(source: &mut BytesMut) -> Result<WireTxMutation, StorkvWireError> {
     let mutation_type = get_u8(source)?;
     match mutation_type {
         1 => {
@@ -70,6 +70,6 @@ fn decode_tx_mutation(source: &mut BytesMut) -> Result<WireTxMutation, StorKvWir
         4 => Ok(WireTxMutation::DeleteRange {
             end_key: get_bytes(source)?,
         }),
-        _ => Err(StorKvWireError::Protocol("Invalid mutation type".into())),
+        _ => Err(StorkvWireError::Protocol("Invalid mutation type".into())),
     }
 }

@@ -72,6 +72,20 @@ pub(crate) fn encode_response(destination: &mut BytesMut, response: &Response) {
             destination.put_u8(255);
             encode_error(destination, error);
         }
+        Response::ReplicationFrame { sent_at_ms, frame } => {
+            destination.put_u8(15);
+            destination.put_u64_le(*sent_at_ms);
+            put_bytes(destination, frame);
+        }
+        Response::ReplicationSnapshot(entries) => {
+            destination.put_u8(16);
+            destination.put_u32_le(entries.len() as u32);
+            for (scope_id, key, value) in entries {
+                destination.put_u32_le(*scope_id);
+                put_bytes(destination, key);
+                put_bytes(destination, value);
+            }
+        }
     }
 }
 
@@ -118,6 +132,11 @@ fn encode_change_event(destination: &mut BytesMut, event: &WireChangeEvent) {
         }
         WireChangeEvent::DropScope { scope_id, seq } => {
             destination.put_u8(3);
+            destination.put_u32_le(*scope_id);
+            destination.put_u64_le(*seq);
+        }
+        WireChangeEvent::InvalidateScope { scope_id, seq } => {
+            destination.put_u8(4);
             destination.put_u32_le(*scope_id);
             destination.put_u64_le(*seq);
         }
