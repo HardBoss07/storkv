@@ -122,7 +122,7 @@ impl Tree {
             }
             match tx.commit() {
                 Ok(()) => return Ok(true),
-                Err(crate::StorKvError::WriteConflict { .. }) => continue,
+                Err(crate::StorkvError::WriteConflict { .. }) => continue,
                 Err(error) => return Err(error),
             }
         }

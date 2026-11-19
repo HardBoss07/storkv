@@ -1,6 +1,7 @@
 use std::time::Duration;
 use storkv_core::{
     CompactionStyle, Db, DbOptions, Durability, MergeOp, Result, Retention, ScopeOptions,
+    StorageMode as StorkvStorage,
 };
 
 fn main() -> Result<()> {
@@ -20,6 +21,7 @@ fn main() -> Result<()> {
                 compaction_style: CompactionStyle::Fifo,
             },
             prefix_bloom_len: Some(8),
+            storage_mode: StorkvStorage::Disk,
         },
     )?;
 
@@ -29,6 +31,7 @@ fn main() -> Result<()> {
             durability: Durability::StrictFsync,
             retention: Retention::Permanent,
             prefix_bloom_len: None,
+            storage_mode: StorkvStorage::Disk,
         },
     )?;
 

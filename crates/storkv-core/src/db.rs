@@ -3,4 +3,4 @@ mod inner;
 mod open;
 
 pub use handle::{Db, ScopeHandle};
-pub use inner::DbInner;
+pub use inner::{DbInner, MAX_SCOPES};

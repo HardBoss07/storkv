@@ -114,7 +114,8 @@ fn write_compacted_sstable<FS: FileSystem>(
             .entry(internal_key.user_key.clone())
             .or_insert(0);
         *version_count += 1;
-        if *version_count > 1 && internal_key.seq < gc_safe_seq.get() {
+        let droppable = internal_key.value_type != ValueType::RangeTombstone;
+        if droppable && *version_count > 1 && internal_key.seq < gc_safe_seq.get() {
             continue;
         }
 
