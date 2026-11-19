@@ -7,6 +7,9 @@ members = [
     "crates/storkv-client",
     "crates/storkv-tui",
     "crates/storkv-cli",
+    "crates/storkv-sdk",
+    "crates/storkv-ffi",
+    "xtask",
 ]
 
 [workspace.package]
@@ -23,6 +26,8 @@ storkv-client = { path = "crates/storkv-client" }
 storkv-server = { path = "crates/storkv-server" }
 storkv-cli = { path = "crates/storkv-cli" }
 storkv-tui = { path = "crates/storkv-tui" }
+storkv-sdk = { path = "crates/storkv-sdk" }
+storkv-ffi = { path = "crates/storkv-ffi" }
 
 axum = { version = "0.8", default-features = false, features = [
     "http1",
@@ -34,7 +39,7 @@ axum = { version = "0.8", default-features = false, features = [
 ] }
 base64 = "0.23"
 bytes = "1"
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "env"] }
 crc32c = "0.6"
 crossbeam-channel = "0.5"
 crossbeam-skiplist = "0.1"
@@ -52,8 +57,10 @@ hyper-util = { version = "0.1", features = [
 ] }
 lz4_flex = "0.14"
 parking_lot = "0.12"
+proptest = "1"
 prost = "0.14"
 protoc-bin-vendored = "3"
+rcgen = "0.13"
 ratatui = "0.30"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
