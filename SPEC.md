@@ -2,7 +2,7 @@
 
 ## 1. System Overview
 
-StorKV is an embeddable and network-capable Log-Structured Merge-tree (LSM) key-value storage engine written in Rust. It elevates multi-tenant isolation, expiration, atomic cross-namespace transactions, reactive change streams, and crash consistency from fragile application-layer patterns into core storage primitives.
+StorKV is an embeddable and network-capable Log-Structured Merge-tree (LSM) key-value storage engine written in Rust. It elevates logical scope isolation, expiration, atomic cross-scope transactions, reactive change streams, and crash consistency from fragile application-layer patterns into core storage primitives.
 
 ### Design Principles
 
@@ -19,6 +19,8 @@ StorKV is an embeddable and network-capable Log-Structured Merge-tree (LSM) key-
 - **Storage Isolation:** Each scope (e.g., `sessions`, `jobs`, `metadata`) owns an independent active `MemTable`, immutable flush queue, `SSTable` hierarchy (`L0` through `L6`), and compaction worker state.
 - **Atomicity Across Scopes:** All scopes share a single segmented Write-Ahead Log (`wal/`). A `WriteBatch` or `Transaction` mutating keys across multiple scopes is serialized into a single checksummed WAL frame with one contiguous sequence range, guaranteeing all-or-nothing durability across scope boundaries.
 - **O(1) Scope & Range Drops:** Dropping a scope (`db.drop_scope("sessions")`) writes a `DropScope` record to the WAL and `MANIFEST`, immediately hiding all keys at `seq <= drop_seq` without scanning individual records. Compaction reclaims orphaned `.sst` files asynchronously.
+- **Bounded Scope Count:** One database holds at most 1024 scopes (`storkv_core::MAX_SCOPES`). A creation request above this limit returns `StorkvError::InvalidOperation`.
+- **Logical Namespaces, Not Security Tenants:** A scope isolates data layout. It does not isolate access. The network API has no per-scope authorization. Any client on a listener can address any scope ID on that listener. Put separate tenants on separate servers, listeners, or reverse-proxy rules.
 
 ### 2.2 MVCC Snapshot Isolation, OCC & Merge Resolution
 
@@ -29,14 +31,22 @@ StorKV is an embeddable and network-capable Log-Structured Merge-tree (LSM) key-
 - **Optimistic Conflict Detection:**
   - Transactions buffer writes locally in a thread-local `WriteSet` and record every read key `(scope_id, user_key)` in a `ReadSet`.
   - At `tx.commit()`, the single-writer commit coordinator acquires the commit lock and verifies that for every key in `ReadSet`, the latest committed version in the engine has `latest_seq <= tx.read_seq`.
-  - If any key in `ReadSet` was modified after `tx.read_seq`, `tx.commit()` aborts without writing to the WAL and returns `Err(StorKvError::WriteConflict)`.
+  - If any key in `ReadSet` was modified after `tx.read_seq`, `tx.commit()` aborts without writing to the WAL and returns `Err(StorkvError::WriteConflict)`.
   - Blind writes (`put`, `delete`, `merge` without prior reads) bypass conflict checks and serialize linearly in commit order.
 - **Read-Modify-Write (`MergeOperator`) Resolution:**
   - `Merge` operations append a `MergeOperand` record without reading existing state first.
   - During reads, the iterator collects contiguous `MergeOperand`s from newest to oldest until hitting a base `Value`, `Tombstone`, `RangeTombstone`, or key end, then invokes `MergeOperator::full_merge` to materialize the final value.
   - During compaction, adjacent `MergeOperand`s strictly below `gc_safe_seq` are folded via `MergeOperator::partial_merge`.
 
-### 2.3 WAL-Pinning Mitigation
+### 2.3 Resumable Watch Cursors
+
+- **Cursor Replay:** `Db::watch_scope_from(scope, from_seq)` first replays retained WAL operations with `seq > from_seq`, then attaches the subscriber to live events. The commit lock makes the replay-to-live transition gapless.
+- **Cursor Expiry:** A cursor that is older than the retained WAL history fails with `StorkvError::WatchCursorExpired { requested, oldest_available }`. The caller resubscribes from `oldest_available` or performs a full rescan.
+- **Bounded Replay:** A resume request is limited to 1024 events and 16 MiB of payload. A larger replay fails with `StorkvError::ReplayBudgetExceeded`.
+- **Bounded Queues:** Each subscriber has a queue of 1024 events. A non-blocking broadcast removes a subscriber whose queue is full. The registry accepts at most 1024 subscribers and returns `StorkvError::TooManySubscribers` above that limit.
+- **Wire Cursor:** The native request `WatchFrom { from_seq }` (opcode `26`) and the gRPC `WatchRequest.from_seq` field expose the same contract over the network.
+
+### 2.4 WAL-Pinning Mitigation
 
 Because multiple scopes share one WAL, a low-throughput scope (e.g., `config`) could retain an unflushed `MemTable` holding a low `oldest_unflushed_seq`, preventing old WAL segments from being recycled while a high-throughput scope (e.g., `sessions`) churns gigabytes of data.
 
@@ -45,7 +55,7 @@ StorKV enforces two bounded WAL watermarks:
 1. **Byte Lag Watermark (`max_wal_pin_bytes`, default `64 MiB`):** Whenever `current_wal_offset - min_unflushed_wal_offset > max_wal_pin_bytes`, the flush scheduler identifies the scope holding the lowest `oldest_unflushed_seq` and forces an immediate minor flush of its active `MemTable`.
 2. **Time Lag Watermark (`max_wal_pin_age`, default `60s`):** Any unflushed `MemTable` older than `max_wal_pin_age` with pending writes is scheduled for background flush, bounding recovery replay time and disk usage.
 
-### 2.4 Compaction Garbage Collection Floor
+### 2.5 Compaction Garbage Collection Floor
 
 Background compaction preserves historical versions only down to `gc_safe_seq`, defined as:
 
@@ -83,13 +93,36 @@ Every scope is configured via a `ScopeOptions` struct or built-in preset at crea
 
 - **TTL Clock Semantics:** Expiration timestamps (`expires_at_ms`) are stored as wall-clock Unix epoch milliseconds so TTLs remain deterministic across process restarts and checkpoint restores. Expired keys become invisible to reads immediately once `now_ms >= expires_at_ms`, independent of background compaction timing.
 
+### 3.3 Storage Residency Modes (`StorageMode`)
+
+Every scope declares where its data lives. The mode is stored in the manifest (`CreateScope` tag value) and survives recovery.
+
+| Mode                         | WAL                                   | MemTable and SSTable                | Crash Behavior                                                        |
+| :--------------------------- | :------------------------------------ | :---------------------------------- | :-------------------------------------------------------------------- |
+| `StorageMode::Disk`          | Written to disk                       | Written to disk                     | Full durability and recovery through the WAL and SSTables.            |
+| `StorageMode::InMemory`      | Skipped                               | Kept only in RAM                    | No data survives a process restart. Use it for pure caches.           |
+| `StorageMode::InMemoryPersistent` | Written to disk                  | Kept only in RAM                    | The WAL replays into RAM on open. `Db::flush` writes a recovery snapshot. |
+
+- **Recovery Snapshots:** `Db::flush()` writes `<db_root>/snapshots/<scope_id>.snapshot` with magic `STORKSNAP` and version `1`. The snapshot records `snapshot_seq`; recovery skips WAL operations at or below that sequence.
+- **Shutdown Flush:** `Drop for Db` flushes every scope when the last handle is released. This keeps in-memory scopes recoverable across a clean restart.
+- **Process-Only Mode:** `Db::open_in_memory(options)` opens a database that uses no disk at all. No file lock, WAL, or manifest is created.
+
+### 3.4 Client-Side Read Cache
+
+The SDK offers an optional, per-scope read cache. It is disabled by default.
+
+- **Configuration:** `CacheOptions { enabled: false, max_entries_per_scope: 1024 }`. Enable it with `CacheOptions::default().enable()` and pass it to `StorkvPoolOptions::cache`.
+- **Invalidation:** Each cached scope holds a watch subscription. A `Put` or `Delete` event updates or removes the matching entry. A `DropScope` or `InvalidateScope` event clears the scope. A cached entry with an expiry becomes a miss when the expiry passes.
+- **Disconnect Handling:** On a transport disconnect or `WatchCursorExpired`, the SDK clears the cache and resubscribes from the next expected sequence. A networked pool clears the cache before it reconnects.
+- **Bounded Memory:** Each scope keeps at most `max_entries_per_scope` entries in a least-recently-used map. Writes that the pool performs update the cache directly.
+
 ---
 
 ## 4. Failure & Backup Model
 
 ### 4.1 Crash & Torn-Write Recovery
 
-1. **Single-Process Lock:** `Db::open()` acquires an exclusive `flock()` on `<db_root>/LOCK`. Opening an already-locked directory fails immediately with `StorKvError::DatabaseLocked`.
+1. **Single-Process Lock:** `Db::open()` acquires an exclusive `flock()` on `<db_root>/LOCK`. Opening an already-locked directory fails immediately with `StorkvError::DatabaseLocked`.
 2. **Atomic `MANIFEST` Activation:**
    - All structural state transitions (flushed SSTables, compacted SSTables, created/dropped scopes, pinned snapshots) are appended as `CRC32C`-framed `VersionEdit` records to `MANIFEST-<num>`.
    - To roll a new manifest, the engine writes `CURRENT.tmp`, calls `fdatasync()`, executes atomic POSIX `rename("CURRENT.tmp", "CURRENT")`, and calls `fsync()` on `<db_root>`.
@@ -97,7 +130,7 @@ Every scope is configured via a `ScopeOptions` struct or built-in preset at crea
    - During startup recovery, WAL segments are replayed sequentially from `min_unflushed_wal_number`.
    - Each frame's `CRC32C` is verified before applying its operations.
    - If the final frame in the last WAL segment fails `CRC32C` verification or is truncated (due to a mid-write `SIGKILL` or power loss), the engine truncates the file back to the end of the last valid frame, logs a structured `RecoveryWarning::TornWalTailTruncated` metric, and completes startup cleanly.
-   - Any corrupted frame in the _middle_ of a WAL segment (indicating storage media bit-rot) halts startup with `StorKvError::Corruption` unless `RecoveryMode::SkipCorruptedFrames` is explicitly enabled.
+   - Any corrupted frame in the _middle_ of a WAL segment (indicating storage media bit-rot) halts startup with `StorkvError::Corruption` unless `RecoveryMode::SkipCorruptedFrames` is explicitly enabled.
 
 ### 4.2 Hot Checkpoints & <= 5-Minute RPO Backup Model
 
@@ -123,6 +156,20 @@ StorKV guarantees a **Recovery Point Objective (RPO) <= 5 minutes** without halt
 
 All transports execute through the same `Server::dispatch_request` core, so admin policy, telemetry, OCC conflict detection, and Watch events are identical regardless of protocol. HTTP, WebSocket, and gRPC are additive listeners; the native `STORKPRT` v1 frame format is unchanged. Redis, Memcached, and etcd adapters map onto ordinary scopes (`default` / `redis_db_<n>`, `memcached`, and `etcd`) with no separate storage format or recovery path. The embedded `Tree` adapter is a thin wrapper over `Db` scopes.
 
+The read consistency level is per connection. Each connection starts from the server default. A `ConfigureConsistency` request changes only the connection that sent it, so one client cannot change the read policy of another client. On a replica, the default is `Eventual`.
+
+The Redis adapter bounds untrusted input. An inline command line is limited to 64 KiB. A request buffer is limited to about 256 MiB. A `MATCH` or `KEYS` pattern is limited to 1,024 bytes, and the glob matcher is iterative with an `O(pattern_len * text_len)` worst case. A Redis or Memcached flush writes one range tombstone rather than reading each key. When `--strict-admin` is active, `FLUSHDB`, `FLUSHALL`, and Memcached `flush_all` are denied.
+
+### 4.5 Primary and Replica WAL Streaming
+
+StorKV supports asynchronous, single-primary replication with explicit consistency levels:
+
+1. **Roles:** `--role <standalone|primary|replica>` selects the node role. A standalone node serves local reads and writes. A primary serves reads and writes, and streams committed WAL frames. A replica applies frames from one primary and rejects writes.
+2. **Stream:** A replica connects to `--primary-uri` with the native transport and opens `ReplicationStart { from_seq }` (request opcode `27`). The primary replays retained frames with `batch_seq >= from_seq` and then streams live frames as `ReplicationFrame { sent_at_ms, frame }` (response opcode `15`). The frame bytes are the standard `WalBatchFrame` encoding, so the replica appends them to its own WAL and applies the operations in sequence order. Each stream has a queue of 1024 frames, and the primary accepts at most 1024 stream subscribers. A slow subscriber is removed when its queue is full. A replay is limited to 1024 frames and 16 MiB. When `--strict-admin` is active, only an admin connection can open the stream.
+3. **Snapshot Catch-Up:** When the replica cursor is older than the retained WAL, the primary sends `ReplicationSnapshot(Vec<(u32, Bytes, Bytes)>)` (response opcode `16`) with every visible key. The replica applies the snapshot and then resumes from `oldest_available`.
+4. **Consistency Levels:** A client selects a level with `ConfigureConsistency { consistency }` (request opcode `28`). `Consistency::Strong` requires the primary, so a replica rejects data reads and writes with `NotPrimary`. `Consistency::BoundedStaleness { max_lag_ms }` lets a replica serve reads while its lag stays at or below the bound, and returns `StaleReplica { lag_ms, max_lag_ms }` otherwise. `Consistency::Eventual` lets a replica serve reads at any lag. Lag is `now - last_frame_sent_at_ms`.
+5. **Failure Model:** Replication is asynchronous and has no quorum or leader election (PACELC: prefer availability and low latency during a partition, at the cost of temporary staleness). A replica reconnects with backoff and resumes from its last applied sequence.
+
 ---
 
 ## 5. Out of Scope (v1 Non-Goals)
@@ -131,6 +178,6 @@ To keep the core storage engine rock-solid, fast, and maintainable, the followin
 
 1. **No SQL Query Parser or Relational Planner:** Access is strictly programmatic via key-value, prefix-scan, range-scan, `Merge`, and `Watch` APIs.
 2. **No Secondary Indexes:** Applications requiring secondary lookups maintain index keys inside a dedicated scope within the same atomic `Transaction`.
-3. **No Multi-Node Distributed Consensus (Raft):** v1 focuses on single-node vertical performance, crash-proof local I/O, and asynchronous WAL/checkpoint replication. Distributed consensus is deferred to v2.
+3. **No Multi-Node Distributed Consensus (Raft):** v1 focuses on single-node vertical performance and crash-proof local I/O. It adds asynchronous primary-to-replica WAL streaming with explicit consistency levels (see 4.5), but it has no quorum commit, leader election, or automatic failover. Distributed consensus is deferred to v2.
 4. **No Multi-Process Shared-Memory Access:** Multiple processes must communicate with `storkvd` over TCP or Unix Domain Sockets rather than opening the same data directory directly.
 5. **No Dynamic User-Loaded Native `.so`/Wasm Plugins in `storkv-core`:** Custom merge operators in v1 are registered statically via Rust traits (`MergeOperator`) to preserve zero-overhead inlining and type safety.
