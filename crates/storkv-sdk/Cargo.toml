@@ -1,0 +1,50 @@
+[package]
+name = "storkv-sdk"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "storkv_sdk"
+path = "src/lib.rs"
+
+[[test]]
+name = "sdk"
+path = "../../tests/sdk.rs"
+
+[dependencies]
+storkv-core.workspace = true
+storkv-client.workspace = true
+storkv-proto.workspace = true
+bytes.workspace = true
+crossbeam-channel.workspace = true
+futures-util.workspace = true
+parking_lot.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt", "sync", "time"] }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+postcard = { version = "1", optional = true, features = ["alloc"] }
+
+[features]
+default = ["json"]
+serde = ["dep:serde"]
+json = ["serde", "dep:serde_json"]
+postcard = ["serde", "dep:postcard"]
+
+[dev-dependencies]
+storkv-server.workspace = true
+tokio = { workspace = true, features = [
+    "macros",
+    "net",
+    "rt",
+    "rt-multi-thread",
+    "sync",
+    "time",
+] }
+serde = { workspace = true }
