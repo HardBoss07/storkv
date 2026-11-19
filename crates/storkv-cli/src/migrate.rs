@@ -19,10 +19,10 @@ use redis::read_redis;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Record {
-    key_b64: String,
-    value_b64: String,
     #[serde(default)]
     expires_at_ms: u64,
+    key_b64: String,
+    value_b64: String,
 }
 
 /// Destination of a migration.

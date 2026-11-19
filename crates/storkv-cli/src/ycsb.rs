@@ -9,14 +9,14 @@ const DEFAULT_SCOPE_NAME: &str = "default";
 /// Result of one YCSB-style workload run.
 #[derive(Debug, Clone)]
 pub struct YcsbSummary {
-    /// Workload name, such as `a` or `b`.
-    pub workload: String,
     /// Total load and operation count.
     pub total_ops: usize,
     /// Total elapsed time in milliseconds.
     pub elapsed_ms: u64,
     /// Observed operations per second.
     pub ops_per_sec: f64,
+    /// Workload name, such as `a` or `b`.
+    pub workload: String,
 }
 
 impl CliRunner {

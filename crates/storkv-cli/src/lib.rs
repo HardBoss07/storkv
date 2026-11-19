@@ -17,4 +17,5 @@ pub use doctor::DoctorReport;
 pub use migrate::MigrateTarget;
 pub use ycsb::YcsbSummary;
 
+/// Entry point used by the `storkvctl` binary after argument parsing.
 pub struct CliRunner;

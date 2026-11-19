@@ -4,7 +4,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use storkv_client::{AsyncClient, ScopeHandle};
 use storkv_core::mvcc::TransactionContext;
-use storkv_core::{Db, DbOptions, StorKvError};
+use storkv_core::{Db, DbOptions, StorkvError};
 use storkv_proto::{WireDurability, WireRetention};
 
 use super::{MigrateTarget, Record, decode};
@@ -104,7 +104,7 @@ pub(super) async fn open_online_scope(
     Ok(scope)
 }
 
-fn open_offline_scope(db: &Db, name: &str) -> Result<storkv_core::ScopeHandle, StorKvError> {
+fn open_offline_scope(db: &Db, name: &str) -> Result<storkv_core::ScopeHandle, StorkvError> {
     if let Some(scope_id) = db.inner().scope_names.read().get(name).copied() {
         return Ok(storkv_core::ScopeHandle {
             scope_id,
@@ -117,6 +117,7 @@ fn open_offline_scope(db: &Db, name: &str) -> Result<storkv_core::ScopeHandle, S
             durability: storkv_core::Durability::StrictFsync,
             retention: storkv_core::Retention::Permanent,
             prefix_bloom_len: Some(8),
+            storage_mode: storkv_core::StorageMode::Disk,
         },
     )
 }
