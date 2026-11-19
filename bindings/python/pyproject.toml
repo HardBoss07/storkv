@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "storkv"
+version = "0.1.0"
+description = "Python bindings for the StorKV C ABI"
+requires-python = ">=3.9"
+
+[tool.setuptools]
+packages = ["storkv"]
+include-package-data = true
+
+[tool.setuptools.package-data]
+storkv = ["*.dll", "*.so", "*.dylib"]
