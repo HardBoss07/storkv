@@ -97,14 +97,14 @@ fn verify_backup_rejects_truncated_manifest_and_sidecar() {
 
     let error = backup::verify_backup(&root, None).unwrap_err();
     assert!(
-        matches!(error, storkv_core::StorKvError::BackupCorruption { .. }),
+        matches!(error, storkv_core::StorkvError::BackupCorruption { .. }),
         "torn sidecar must be rejected, got {error}"
     );
 
     fs::write(&sidecar, b"0x00000000\n").unwrap();
     let error = backup::verify_backup(&root, None).unwrap_err();
     assert!(
-        matches!(error, storkv_core::StorKvError::BackupCorruption { .. }),
+        matches!(error, storkv_core::StorkvError::BackupCorruption { .. }),
         "wrong sidecar checksum must be rejected, got {error}"
     );
 }
@@ -127,7 +127,7 @@ fn verify_backup_rejects_target_outside_catalog() {
     let error = backup::verify_backup(&root, Some(report.sequence + 1000)).unwrap_err();
     assert!(matches!(
         error,
-        storkv_core::StorKvError::TargetSequenceUnavailable { .. }
+        storkv_core::StorkvError::TargetSequenceUnavailable { .. }
     ));
 }
 

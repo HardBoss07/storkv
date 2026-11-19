@@ -47,8 +47,6 @@ impl From<WireTelemetrySnapshot> for TelemetryPoll {
 pub struct BackupPoll {
     /// True when the worker is running.
     pub enabled: bool,
-    /// Backup root path, when configured.
-    pub backup_root: Option<String>,
     /// Unix epoch milliseconds of the last successful backup.
     pub last_backup_timestamp_ms: u64,
     /// Sequence number of the last successful backup.
@@ -61,6 +59,8 @@ pub struct BackupPoll {
     pub wal_segments_shipped_total: u64,
     /// Milliseconds until the next scheduled full backup.
     pub next_full_backup_in_ms: u64,
+    /// Backup root path, when configured.
+    pub backup_root: Option<String>,
     /// Detail of the most recent failure, if any.
     pub last_error: Option<String>,
     /// Sink description, such as `local` or `command`.
@@ -100,27 +100,27 @@ pub struct LevelStats {
 pub struct ScopeStats {
     /// Identifier of the scope.
     pub scope_id: u32,
-    /// Name of the scope.
-    pub name: String,
+    /// Number of SSTable files that hold scope data.
+    pub sst_files: u32,
     /// Total writes to the scope.
     pub writes_total: u64,
     /// Total reads from the scope.
     pub reads_total: u64,
-    /// Number of SSTable files that hold scope data.
-    pub sst_files: u32,
+    /// Name of the scope.
+    pub name: String,
 }
 
 /// Rich dashboard data polled from the admin socket.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AdminPoll {
-    /// Per-level SSTable distribution for L0 through L6.
-    pub levels: Vec<LevelStats>,
-    /// Per-scope activity metrics.
-    pub scopes: Vec<ScopeStats>,
     /// 99th percentile of the observed fsync latency, in microseconds.
     pub fsync_latency_p99_us: u64,
     /// Number of latency samples behind the percentile.
     pub fsync_latency_samples: u64,
+    /// Per-level SSTable distribution for L0 through L6.
+    pub levels: Vec<LevelStats>,
+    /// Per-scope activity metrics.
+    pub scopes: Vec<ScopeStats>,
 }
 
 impl From<WireAdminStats> for AdminPoll {

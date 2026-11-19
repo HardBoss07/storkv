@@ -77,7 +77,7 @@ fn failing_sink_reports_failure_and_preserves_catalog() {
     db.start_auto_backup(failing).unwrap();
     let error = db.trigger_backup(true).unwrap_err();
     assert!(
-        matches!(error, storkv_core::StorKvError::BackupSink { .. }),
+        matches!(error, storkv_core::StorkvError::BackupSink { .. }),
         "unexpected error: {error}"
     );
     assert_eq!(

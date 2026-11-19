@@ -23,6 +23,7 @@ fn test_manifest_header_and_all_eight_edit_records() {
         retention: 1,
         default_ttl_ms: 60000,
         compaction_style: 1,
+        storage_mode: 0,
         name: "test_scope_10".into(),
     });
     edit.add(EditRecord::DropScope {

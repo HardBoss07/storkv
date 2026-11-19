@@ -1,6 +1,6 @@
 use bytes::{Bytes, BytesMut};
 use storkv_proto::{
-    Message, MessagePayload, Response, StorKvWireError, WireAdminStats, WireBackupEntry,
+    Message, MessagePayload, Response, StorkvWireError, WireAdminStats, WireBackupEntry,
     WireBackupKind, WireBackupReport, WireBackupStatus, WireBackupVerifyError,
     WireBackupVerifyReport, WireChangeEvent, WireLevelStat, WireScopeHandle, WireScopeStat,
     WireTelemetrySnapshot, WireTransportStat,
@@ -133,28 +133,28 @@ fn test_round_trip_all_responses_and_errors() {
             scope_id: 1,
             seq: 1001,
         }),
-        Response::Error(StorKvWireError::DatabaseLocked("/path/to/lock".into())),
-        Response::Error(StorKvWireError::Corruption("bad CRC".into())),
-        Response::Error(StorKvWireError::WriteConflict {
+        Response::Error(StorkvWireError::DatabaseLocked("/path/to/lock".into())),
+        Response::Error(StorkvWireError::Corruption("bad CRC".into())),
+        Response::Error(StorkvWireError::WriteConflict {
             scope_id: 3,
             key: b"conflict_key".to_vec(),
         }),
-        Response::Error(StorKvWireError::ScopeNotFound("ghost".into())),
-        Response::Error(StorKvWireError::ScopeIdNotFound(999)),
-        Response::Error(StorKvWireError::ScopeAlreadyExists("default".into())),
-        Response::Error(StorKvWireError::ScopeDropped(4)),
-        Response::Error(StorKvWireError::SnapshotNotFound("snapX".into())),
-        Response::Error(StorKvWireError::KeyTooLarge {
+        Response::Error(StorkvWireError::ScopeNotFound("ghost".into())),
+        Response::Error(StorkvWireError::ScopeIdNotFound(999)),
+        Response::Error(StorkvWireError::ScopeAlreadyExists("default".into())),
+        Response::Error(StorkvWireError::ScopeDropped(4)),
+        Response::Error(StorkvWireError::SnapshotNotFound("snapX".into())),
+        Response::Error(StorkvWireError::KeyTooLarge {
             max: 65535,
             actual: 70000,
         }),
-        Response::Error(StorKvWireError::ValueTooLarge {
+        Response::Error(StorkvWireError::ValueTooLarge {
             max: 268435456,
             actual: 300000000,
         }),
-        Response::Error(StorKvWireError::InvalidOperation("bad op".into())),
-        Response::Error(StorKvWireError::Io("disk full".into())),
-        Response::Error(StorKvWireError::Protocol("unknown header".into())),
+        Response::Error(StorkvWireError::InvalidOperation("bad op".into())),
+        Response::Error(StorkvWireError::Io("disk full".into())),
+        Response::Error(StorkvWireError::Protocol("unknown header".into())),
     ];
 
     for (index, response) in responses.into_iter().enumerate() {

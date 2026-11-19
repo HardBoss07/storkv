@@ -8,6 +8,8 @@ mod isolation;
 mod merge_ttl;
 #[path = "mvcc/occ.rs"]
 mod occ;
+#[path = "mvcc/proptest_oracle.rs"]
+mod proptest_oracle;
 #[path = "mvcc/scans.rs"]
 mod scans;
 #[path = "mvcc/sequencing.rs"]

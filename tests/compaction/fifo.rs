@@ -18,6 +18,7 @@ fn test_fifo_compaction_reclaims_expired_sstables_on_disk() {
                     compaction_style: CompactionStyle::Fifo,
                 },
                 prefix_bloom_len: None,
+                storage_mode: storkv_core::StorageMode::Disk,
             },
         )
         .unwrap();

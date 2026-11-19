@@ -15,6 +15,7 @@ fn test_leveled_compaction_over_10k_keys() {
                 },
                 retention: Retention::Permanent,
                 prefix_bloom_len: Some(8),
+                storage_mode: storkv_core::StorageMode::Disk,
             },
         )
         .unwrap();

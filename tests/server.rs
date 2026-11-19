@@ -8,6 +8,8 @@ mod backup;
 mod concurrency;
 #[path = "server/lifecycle.rs"]
 mod lifecycle;
+#[path = "server/replication.rs"]
+mod replication;
 #[path = "server/support.rs"]
 mod support;
 #[path = "server/transactions.rs"]

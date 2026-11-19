@@ -13,6 +13,8 @@ mod grpc;
 mod http;
 #[path = "transports/native.rs"]
 mod native;
+#[path = "transports/tls_auth_matrix.rs"]
+mod tls_auth_matrix;
 #[path = "transports/watch.rs"]
 mod watch;
 #[path = "transports/ws.rs"]

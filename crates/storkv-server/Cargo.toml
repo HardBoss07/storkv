@@ -27,6 +27,7 @@ tonic-prost-build.workspace = true
 
 [dependencies]
 storkv-core.workspace = true
+storkv-client.workspace = true
 storkv-proto.workspace = true
 tokio = { workspace = true, features = [
     "io-util",

@@ -8,5 +8,7 @@ mod isolation;
 mod lifecycle;
 #[path = "scope/persistence.rs"]
 mod persistence;
+#[path = "scope/storage_mode.rs"]
+mod storage_mode;
 #[path = "scope/wal_pinning.rs"]
 mod wal_pinning;

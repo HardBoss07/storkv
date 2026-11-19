@@ -1,17 +1,17 @@
-//! `StorKvAdmin` gRPC implementation.
+//! `StorkvAdmin` gRPC implementation.
 
 use storkv_proto::{Request, Response};
 use tonic::{Request as GrpcRequest, Response as GrpcResponse, Status};
 
 use super::conversions::telemetry_reply;
-use super::generated::stor_kv_admin_server::StorKvAdmin;
+use super::generated::storkv_admin_server::StorkvAdmin;
 use super::{
     BackupEntry, GrpcService, ListBackupsReply, ScopeRef, TelemetryReply, VerifyBackupReply,
     VerifyBackupRequest, not_found,
 };
 
 #[tonic::async_trait]
-impl StorKvAdmin for GrpcService {
+impl StorkvAdmin for GrpcService {
     async fn admin_stats(
         &self,
         request: GrpcRequest<super::Empty>,

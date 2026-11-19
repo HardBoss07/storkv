@@ -1,6 +1,6 @@
 use bytes::Bytes;
 use storkv_core::{MergeOp, ScopeHandle};
-use storkv_proto::{Response, StorKvWireError, WireMergeOp};
+use storkv_proto::{Response, StorkvWireError, WireMergeOp};
 
 use super::conversions::core_error_to_wire;
 use crate::server::Server;
@@ -64,7 +64,7 @@ impl Server {
             WireMergeOp::CounterAdd(delta) => MergeOp::CounterAdd(delta),
             WireMergeOp::Custom(operand) => MergeOp::Custom(operand),
             _ => {
-                return Response::Error(StorKvWireError::InvalidOperation(
+                return Response::Error(StorkvWireError::InvalidOperation(
                     "unsupported merge operator".into(),
                 ));
             }

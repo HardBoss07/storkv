@@ -3,7 +3,7 @@ use crate::common;
 use bytes::Bytes;
 #[cfg(unix)]
 use std::sync::Arc;
-use storkv_proto::{MAX_FRAME_SIZE, Message, MessagePayload, Request, Response, StorKvWireError};
+use storkv_proto::{MAX_FRAME_SIZE, Message, MessagePayload, Request, Response, StorkvWireError};
 #[cfg(unix)]
 use storkv_server::Server;
 #[cfg(unix)]
@@ -92,7 +92,7 @@ async fn test_oversized_and_garbage_frames_are_rejected_then_server_recovers() {
             .unwrap();
         let message = read_one_response(&mut stream).await;
         match message.payload {
-            MessagePayload::Response(Response::Error(StorKvWireError::Protocol(_))) => {}
+            MessagePayload::Response(Response::Error(StorkvWireError::Protocol(_))) => {}
             other => panic!("expected Protocol error, got {other:?}"),
         }
     }
@@ -107,7 +107,7 @@ async fn test_oversized_and_garbage_frames_are_rejected_then_server_recovers() {
         stream.write_all(body).await.unwrap();
         let message = read_one_response(&mut stream).await;
         match message.payload {
-            MessagePayload::Response(Response::Error(StorKvWireError::Protocol(_))) => {}
+            MessagePayload::Response(Response::Error(StorkvWireError::Protocol(_))) => {}
             other => panic!("expected Protocol error, got {other:?}"),
         }
     }

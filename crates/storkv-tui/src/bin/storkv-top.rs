@@ -17,13 +17,12 @@ use storkv_tui::{AdminPoll, BackupPoll, TelemetryPoll, fetch_dashboard, render_d
     about = "Live StorKV diagnostics dashboard"
 )]
 struct Args {
-    /// Address of the storkvd admin socket (TCP host:port)
-    #[arg(long, default_value = "127.0.0.1:7878")]
-    sock: String,
-
     /// Polling interval in milliseconds
     #[arg(long, default_value_t = 1000)]
     interval_ms: u64,
+    /// Address of the storkvd admin socket (TCP host:port)
+    #[arg(long, default_value = "127.0.0.1:7878")]
+    sock: String,
 }
 
 #[tokio::main]

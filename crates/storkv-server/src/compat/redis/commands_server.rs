@@ -96,19 +96,25 @@ impl RedisSession {
     }
 
     pub(super) fn flush_db(&self) -> Resp {
+        if self.server.strict_admin() {
+            return Resp::error("NOPERM FLUSHDB requires an admin connection");
+        }
         let scope = match self.scope() {
             Ok(scope) => scope,
             Err(response) => return response,
         };
         match compat::flush_scope(self.db(), &scope) {
-            Ok(_) => Resp::simple("OK"),
+            Ok(()) => Resp::simple("OK"),
             Err(error) => storage_error(error),
         }
     }
 
     pub(super) fn flush_all(&self) -> Resp {
+        if self.server.strict_admin() {
+            return Resp::error("NOPERM FLUSHALL requires an admin connection");
+        }
         match compat::flush_redis_scopes(self.db()) {
-            Ok(_) => Resp::simple("OK"),
+            Ok(()) => Resp::simple("OK"),
             Err(error) => storage_error(error),
         }
     }

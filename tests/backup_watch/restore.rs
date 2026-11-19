@@ -1,9 +1,11 @@
 use std::fs;
 
-use storkv_core::backup::{self, RestoreReport};
+use storkv_core::backup::{self, BackupKind, BackupManifest, RestoreReport};
 use storkv_core::wal::WalBatchFrame;
-use storkv_core::{Db, DbOptions, ScopeOptions, StorKvError};
+use storkv_core::{Db, DbOptions, ScopeOptions, StorkvError};
 
+#[cfg(unix)]
+use crate::support::generation_directories;
 use crate::support::{backup_root, put_op, write_wal_segment};
 
 fn prepare(prefix: &str) -> (crate::common::TempDb, std::path::PathBuf, u32, u64) {
@@ -114,7 +116,7 @@ fn restore_rejects_target_above_newest_archived_sequence() {
     let target = temp.path.join("restored-above");
     let error = Db::restore_from_backup(&root, &target, Some(base_seq + 10)).unwrap_err();
     match error {
-        StorKvError::TargetSequenceUnavailable {
+        StorkvError::TargetSequenceUnavailable {
             requested, newest, ..
         } => {
             assert_eq!(requested, base_seq + 10);
@@ -122,6 +124,75 @@ fn restore_rejects_target_above_newest_archived_sequence() {
         }
         other => panic!("unexpected error: {other}"),
     }
+}
+
+#[test]
+fn manifest_rejects_path_traversal_generation_id() {
+    for generation_id in [
+        "",
+        ".",
+        "..",
+        "../../outside",
+        "nested/path",
+        "nested\\path",
+    ] {
+        let manifest =
+            BackupManifest::new(generation_id.to_string(), BackupKind::Full, 0, 1, 1, "none");
+        let error = manifest
+            .validate()
+            .expect_err("unsafe generation identifier must fail");
+        assert!(
+            matches!(error, StorkvError::BackupCorruption { .. }),
+            "generation id {generation_id:?} returned {error:?}"
+        );
+    }
+
+    let mut manifest = BackupManifest::new("safe".into(), BackupKind::Full, 0, 1, 1, "none");
+    for path in [
+        "../escape.sst",
+        "..\\escape.sst",
+        "/absolute.sst",
+        "\\absolute.sst",
+        "C:/windows.sst",
+    ] {
+        manifest.files = vec![storkv_core::backup::BackupFileEntry {
+            size_bytes: 1,
+            min_seq: None,
+            max_seq: None,
+            path: path.to_string(),
+            kind: storkv_core::backup::BackupFileKind::Sst,
+            crc32c: "0x00000000".into(),
+        }];
+        let error = manifest.validate().expect_err("unsafe file path must fail");
+        assert!(
+            matches!(error, StorkvError::BackupCorruption { .. }),
+            "file path {path:?} returned {error:?}"
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn restore_rejects_symlink_in_backup_tree() {
+    use std::os::unix::fs::symlink;
+
+    let (mut temp, root, _scope_id, _base_seq) = prepare("restore_symlink");
+    temp.close();
+
+    let generation = generation_directories(&root).remove(0);
+    symlink("/etc/passwd", generation.join("escape")).expect("create symlink");
+
+    let target = temp.path.join("restored-symlink");
+    let error = Db::restore_from_backup(&root, &target, None)
+        .expect_err("a symlink must block the restore");
+    assert!(
+        matches!(error, StorkvError::BackupCorruption { .. }),
+        "unexpected error: {error:?}"
+    );
+    assert!(
+        !target.exists(),
+        "a failed restore must not create a target"
+    );
 }
 
 #[test]
@@ -134,6 +205,6 @@ fn restore_rejects_non_empty_target() {
     fs::write(target.join("keep.txt"), b"user data").unwrap();
 
     let error = Db::restore_from_backup(&root, &target, None).unwrap_err();
-    assert!(matches!(error, StorKvError::RestoreTargetNotEmpty(_)));
+    assert!(matches!(error, StorkvError::RestoreTargetNotEmpty(_)));
     assert_eq!(fs::read(target.join("keep.txt")).unwrap(), b"user data");
 }

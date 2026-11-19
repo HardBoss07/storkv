@@ -6,7 +6,7 @@ use super::RedisSession;
 use super::codec::Resp;
 use super::helpers::{
     cursor_from_key, decode_cursor, glob_match, parse_i64, parse_u64, storage_error, upper,
-    wrong_arity,
+    validate_glob_pattern, wrong_arity,
 };
 use super::keyspace::{self, Outcome};
 
@@ -121,6 +121,9 @@ impl RedisSession {
         let Some(pattern) = args.get(1) else {
             return wrong_arity("keys");
         };
+        if let Err(response) = validate_glob_pattern(pattern) {
+            return response;
+        }
         let scope = match self.scope() {
             Ok(scope) => scope,
             Err(response) => return response,
@@ -191,6 +194,7 @@ fn parse_scan_options(args: &[Bytes]) -> Result<(Option<&[u8]>, usize), Resp> {
                 let Some(value) = args.get(index + 1) else {
                     return Err(Resp::error("ERR syntax error"));
                 };
+                validate_glob_pattern(value)?;
                 pattern = Some(value);
                 index += 2;
             }

@@ -1,0 +1,10 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 70b70d2d887fe4927973ab7a45102c3564c15433a025d9d65f9b37269e9f8089 # shrinks to operations = [Merge { key: [97, 58, 48], delta: 0 }]
+cc 8245bd4d7ceb52db76ba8855d035878d9a40729cde480ffe3cd5736dbd72cfe6 # shrinks to operations = [Merge { key: [97, 58, 48], delta: -1 }, Reopen]
+cc 397db3984ece50dcb58552e8bf5836d284d0c8221cce2cb11f15d0e3eb60e014 # shrinks to operations = [Put { key: [100, 58, 53], value: [] }, DeleteRange { start: [100, 58, 53], end: [97, 58, 48] }]
+cc 7fac91b0018c1c44052d7b83e4f513364a0933c606151f64d1eab16984b11e42 # shrinks to operations = [Flush, Merge { key: [97, 58, 48], delta: 1 }, Flush]

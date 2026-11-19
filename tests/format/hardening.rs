@@ -1,10 +1,14 @@
+use std::time::Duration;
+
 use crate::common;
 use bytes::Bytes;
 use storkv_core::ScopeOptions;
+use storkv_core::format::{MAX_VAL_LEN, compute_crc32c};
 use storkv_core::sstable::{
     BloomFilterBuilder, BloomFilterReader, CompressionType, DataBlockReader, IndexBlockReader,
     compress_and_frame_block, decompress_and_verify_block,
 };
+use storkv_core::wal::WalBatchFrame;
 
 #[test]
 fn test_zero_length_keys_and_values_roundtrip() {
@@ -108,6 +112,67 @@ fn test_compression_single_bit_corruption_detected_at_every_offset() {
             );
         }
     }
+}
+
+fn oversized_block(compression: CompressionType, declared: u32) -> Vec<u8> {
+    let mut stored = Vec::new();
+    stored.extend_from_slice(&declared.to_le_bytes());
+    stored.extend_from_slice(&[0u8; 16]);
+    let mut checksum_input = stored.clone();
+    checksum_input.push(compression as u8);
+    let checksum = compute_crc32c(&checksum_input);
+    stored.push(compression as u8);
+    stored.extend_from_slice(&checksum.to_le_bytes());
+    stored
+}
+
+#[test]
+fn oversized_declared_block_length_is_rejected_before_allocation() {
+    let declared = (MAX_VAL_LEN as u32).saturating_add(1);
+    for compression in [CompressionType::Lz4, CompressionType::Zstd] {
+        let block = oversized_block(compression, declared);
+        let started = std::time::Instant::now();
+        let error = decompress_and_verify_block(&block)
+            .expect_err("an oversized declared length must fail");
+        assert!(
+            matches!(error, storkv_core::StorkvError::Corruption(_)),
+            "{compression:?} returned {error:?}"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "rejection must not allocate the declared payload"
+        );
+    }
+}
+
+#[test]
+fn oversized_declared_wal_payload_is_rejected_before_allocation() {
+    const FIXED_BODY: u32 = 16;
+    let declared = (MAX_VAL_LEN as u32).saturating_add(1);
+    let mut body = Vec::new();
+    body.extend_from_slice(&(FIXED_BODY + 4 + 8).to_le_bytes());
+    body.extend_from_slice(&0u64.to_le_bytes());
+    body.extend_from_slice(&1u32.to_le_bytes());
+    body.extend_from_slice(&1u16.to_le_bytes());
+    body.extend_from_slice(&0u16.to_le_bytes());
+    body.extend_from_slice(&declared.to_le_bytes());
+    body.extend_from_slice(&[0u8; 8]);
+
+    let checksum = compute_crc32c(&body);
+    let mut frame = Vec::new();
+    frame.extend_from_slice(&checksum.to_le_bytes());
+    frame.extend_from_slice(&body);
+
+    let started = std::time::Instant::now();
+    let error = WalBatchFrame::decode(&frame).expect_err("an oversized WAL payload must fail");
+    assert!(
+        matches!(error, storkv_core::StorkvError::Corruption(_)),
+        "unexpected error: {error:?}"
+    );
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "rejection must not allocate the declared payload"
+    );
 }
 
 #[test]

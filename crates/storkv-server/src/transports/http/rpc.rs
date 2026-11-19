@@ -32,7 +32,10 @@ pub(super) async fn handle(
             payload: MessagePayload::Request(request),
         })) => {
             let is_admin = state.is_admin(&headers);
-            let response = state.server.dispatch_request(request, is_admin);
+            let consistency = crate::server::ConnectionConsistency::new(state.server.consistency());
+            let response = state
+                .server
+                .dispatch_request(request, is_admin, &consistency);
             let encoded = Message::new_response(request_id, response).encode();
             (
                 StatusCode::OK,

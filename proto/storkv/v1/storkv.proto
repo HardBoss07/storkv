@@ -110,6 +110,8 @@ message ScopeOptions {
 message WatchRequest {
   uint32 scope_id = 1;
   bool all_scopes = 2;
+  // Resume after this sequence number. Zero starts from live events only.
+  uint64 from_seq = 3;
 }
 
 message ChangeEvent {
@@ -186,7 +188,7 @@ message ListBackupsReply {
   repeated BackupEntry entries = 1;
 }
 
-service StorKv {
+service Storkv {
   rpc Ping(Empty) returns (PingReply);
   rpc Health(Empty) returns (PingReply);
   rpc Get(GetRequest) returns (GetReply);
@@ -203,7 +205,7 @@ service StorKv {
   rpc Telemetry(Empty) returns (TelemetryReply);
 }
 
-service StorKvAdmin {
+service StorkvAdmin {
   rpc AdminStats(Empty) returns (TelemetryReply);
   rpc Checkpoint(CheckpointRequest) returns (Empty);
   rpc Compact(Empty) returns (Empty);

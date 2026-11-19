@@ -1,99 +1,99 @@
 use clap::Parser;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use storkv_core::backup::{
     BackupCompression, BackupConfig, BackupRetention, CommandPipeSinkConfig,
 };
-use storkv_server::{Server, TransportOptions, transports};
+use storkv_server::{ReplicationRole, Server, TransportOptions, transports};
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 
 #[derive(Parser, Debug)]
 #[command(name = "storkvd", about = "StorKV daemon")]
 struct Args {
-    #[arg(long, default_value = "./data/storkv")]
-    data_dir: PathBuf,
-
-    #[arg(long, default_value = "127.0.0.1:7878")]
-    listen: String,
-
-    #[arg(long)]
-    admin_sock: Option<String>,
-
-    /// Enable autonomous continuous backup into this directory.
-    #[arg(long)]
-    backup_dir: Option<PathBuf>,
-
-    /// Seconds between automatic full backups.
-    #[arg(long, default_value_t = 3600)]
-    backup_interval_secs: u64,
-
-    /// Number of full generations to retain.
-    #[arg(long, default_value_t = 7)]
-    backup_retention: usize,
-
     /// Ship sealed WAL segments continuously (point-in-time recovery).
     #[arg(long)]
     backup_ship_wal: bool,
-
-    /// Stream backup archives into this program instead of writing locally.
-    #[arg(long)]
-    backup_pipe_cmd: Option<String>,
-
-    /// Repeatable argument for --backup-pipe-cmd.
-    #[arg(long = "backup-pipe-arg")]
-    backup_pipe_args: Vec<String>,
-
-    /// Archive compression for the pipe sink: none, zstd, lz4.
-    #[arg(long, default_value = "none")]
-    backup_compression: String,
-
     /// Restrict admin-only requests to admin listeners or token holders.
     #[arg(long)]
     strict_admin: bool,
-
-    /// Shared secret granting admin privileges on auxiliary transports.
-    #[arg(long)]
-    admin_token: Option<String>,
-
-    /// Serve the HTTP/1.1 + HTTP/2 REST API on this address.
-    #[arg(long)]
-    http_listen: Option<String>,
-
-    /// Serve the WebSocket multiplexed API on this address.
-    #[arg(long)]
-    ws_listen: Option<String>,
-
-    /// Serve the gRPC API on this address.
-    #[arg(long)]
-    grpc_listen: Option<String>,
-
     /// Treat every HTTP connection as admin (dedicated admin listener).
     #[arg(long)]
     http_admin: bool,
-
     /// Treat every WebSocket connection as admin.
     #[arg(long)]
     ws_admin: bool,
-
     /// Treat every gRPC connection as admin.
     #[arg(long)]
     grpc_admin: bool,
-
+    /// Seconds between automatic full backups.
+    #[arg(long, default_value_t = 3600)]
+    backup_interval_secs: u64,
+    /// Number of full generations to retain.
+    #[arg(long, default_value_t = 7)]
+    backup_retention: usize,
+    #[arg(long, default_value = "./data/storkv")]
+    data_dir: PathBuf,
+    #[arg(long, default_value = "127.0.0.1:7878")]
+    listen: String,
+    #[arg(long)]
+    admin_sock: Option<String>,
+    /// Enable autonomous continuous backup into this directory.
+    #[arg(long)]
+    backup_dir: Option<PathBuf>,
+    /// Stream backup archives into this program instead of writing locally.
+    #[arg(long)]
+    backup_pipe_cmd: Option<String>,
+    /// Repeatable argument for --backup-pipe-cmd.
+    #[arg(long = "backup-pipe-arg")]
+    backup_pipe_args: Vec<String>,
+    /// Archive compression for the pipe sink: none, zstd, lz4.
+    #[arg(long, default_value = "none")]
+    backup_compression: String,
+    /// Shared secret granting admin privileges on auxiliary transports.
+    #[arg(long, env = "STORKV_ADMIN_TOKEN")]
+    admin_token: Option<String>,
+    /// Read the admin token from this file. The file must contain one line.
+    #[arg(long, value_name = "PATH")]
+    admin_token_file: Option<PathBuf>,
+    /// Serve the HTTP/1.1 + HTTP/2 REST API on this address.
+    #[arg(long)]
+    http_listen: Option<String>,
+    /// Serve the WebSocket multiplexed API on this address.
+    #[arg(long)]
+    ws_listen: Option<String>,
+    /// Serve the gRPC API on this address.
+    #[arg(long)]
+    grpc_listen: Option<String>,
     /// Serve the Redis RESP2/RESP3 API on this address.
     #[arg(long)]
     redis_listen: Option<String>,
-
     /// Serve the Memcached ASCII API on this address.
     #[arg(long)]
     memcached_listen: Option<String>,
+    /// Replication role: standalone, primary, or replica.
+    #[arg(long, default_value = "standalone")]
+    role: String,
+    /// Primary URI that a replica streams WAL frames from.
+    #[arg(long)]
+    primary_uri: Option<String>,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
-    let server = Arc::new(Server::new(args.data_dir)?.with_strict_admin(args.strict_admin));
+    let admin_token = resolve_admin_token(&args)?;
+    let role = ReplicationRole::parse(&args.role)
+        .map_err(|detail| std::io::Error::new(std::io::ErrorKind::InvalidInput, detail))?;
+    let server = Arc::new(
+        Server::new(args.data_dir)?
+            .with_role(role)
+            .with_primary_uri(args.primary_uri.clone())
+            .with_strict_admin(args.strict_admin),
+    );
 
     let backup_handle = if let Some(backup_dir) = &args.backup_dir {
         let compression = BackupCompression::parse(&args.backup_compression)?;
@@ -133,8 +133,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         #[cfg(unix)]
         if storkv_proto::is_unix_socket_addr(&admin_addr) {
             let path = storkv_proto::unix_socket_path(&admin_addr);
+            if let Some(parent) = path.parent()
+                && !parent.as_os_str().is_empty()
+            {
+                std::fs::create_dir_all(parent)?;
+                std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700))?;
+            }
             let _ = std::fs::remove_file(path);
             let admin_listener = tokio::net::UnixListener::bind(path)?;
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
             println!("storkvd admin listening on unix:{}", path);
             Some(tokio::spawn(async move {
                 let _ = server_admin.run_uds_listener(admin_listener, true).await;
@@ -159,10 +166,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let mut transport_tasks: Vec<JoinHandle<()>> = Vec::new();
+    let replica_task = server.spawn_replica();
+    if let Some(uri) = &args.primary_uri {
+        println!("storkvd role {:?}, primary {uri}", role);
+    }
 
     if let Some(address) = &args.http_listen {
         let listener = TcpListener::bind(address).await?;
-        let options = TransportOptions::new(args.http_admin, args.admin_token.clone());
+        let options = TransportOptions::new(args.http_admin, admin_token.clone());
         let task_server = server.clone();
         println!("storkvd http listening on {address}");
         transport_tasks.push(tokio::spawn(async move {
@@ -172,7 +183,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if let Some(address) = &args.ws_listen {
         let listener = TcpListener::bind(address).await?;
-        let options = TransportOptions::new(args.ws_admin, args.admin_token.clone());
+        let options = TransportOptions::new(args.ws_admin, admin_token.clone());
         let task_server = server.clone();
         println!("storkvd websocket listening on {address}");
         transport_tasks.push(tokio::spawn(async move {
@@ -182,7 +193,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if let Some(address) = &args.grpc_listen {
         let listener = TcpListener::bind(address).await?;
-        let options = TransportOptions::new(args.grpc_admin, args.admin_token.clone());
+        let options = TransportOptions::new(args.grpc_admin, admin_token.clone());
         let task_server = server.clone();
         println!("storkvd grpc listening on {address}");
         transport_tasks.push(tokio::spawn(async move {
@@ -224,6 +235,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for task in transport_tasks {
         let _ = task.await;
     }
+    if let Some(task) = replica_task {
+        task.abort();
+    }
 
     Ok(())
+}
+
+fn resolve_admin_token(args: &Args) -> Result<Option<String>, Box<dyn std::error::Error>> {
+    let Some(path) = &args.admin_token_file else {
+        return Ok(args.admin_token.clone());
+    };
+    if args.admin_token.is_some() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "use --admin-token or --admin-token-file, not both",
+        )
+        .into());
+    }
+    let contents = std::fs::read_to_string(path)?;
+    let token = contents.trim();
+    if token.is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "the admin token file is empty",
+        )
+        .into());
+    }
+    Ok(Some(token.to_string()))
 }

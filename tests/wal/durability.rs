@@ -16,6 +16,7 @@ fn test_durability_modes_and_strictest_precedence() {
                 },
                 retention: Retention::Permanent,
                 prefix_bloom_len: None,
+                storage_mode: storkv_core::StorageMode::Disk,
             },
         )
         .unwrap();
@@ -27,6 +28,7 @@ fn test_durability_modes_and_strictest_precedence() {
                 durability: EngineDurability::StrictFsync,
                 retention: Retention::Permanent,
                 prefix_bloom_len: None,
+                storage_mode: storkv_core::StorageMode::Disk,
             },
         )
         .unwrap();

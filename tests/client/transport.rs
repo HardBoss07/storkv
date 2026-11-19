@@ -77,7 +77,7 @@ async fn test_oversized_server_frame_is_rejected() {
     assert!(
         matches!(
             error,
-            ClientError::Server(storkv_proto::StorKvWireError::Protocol(_))
+            ClientError::Server(storkv_proto::StorkvWireError::Protocol(_))
         ),
         "expected wire Protocol error, got {error:?}"
     );

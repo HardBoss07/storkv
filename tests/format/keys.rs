@@ -17,7 +17,7 @@ fn test_key_and_value_size_limits() {
     let too_large_key = vec![b'k'; MAX_KEY_LEN + 1];
     let key_error = db.put(&scope, &too_large_key, &valid_value);
     assert!(
-        matches!(key_error, Err(storkv_core::StorKvError::KeyTooLarge { .. })),
+        matches!(key_error, Err(storkv_core::StorkvError::KeyTooLarge { .. })),
         "Expected KeyTooLarge error"
     );
 
@@ -25,7 +25,7 @@ fn test_key_and_value_size_limits() {
     assert!(
         matches!(
             delete_error,
-            Err(storkv_core::StorKvError::KeyTooLarge { .. })
+            Err(storkv_core::StorkvError::KeyTooLarge { .. })
         ),
         "Expected KeyTooLarge error on delete"
     );

@@ -61,7 +61,7 @@ async fn cli_restore_latest_and_target_sequence() {
     let error = CliRunner::restore(&root, &occupied, None).unwrap_err();
     assert!(matches!(
         error,
-        storkv_core::StorKvError::RestoreTargetNotEmpty(_)
+        storkv_core::StorkvError::RestoreTargetNotEmpty(_)
     ));
 
     let _ = server.shutdown_handle().send(());

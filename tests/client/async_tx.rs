@@ -1,6 +1,6 @@
 use bytes::Bytes;
 use storkv_client::{AsyncClient, ClientError};
-use storkv_proto::{StorKvWireError, WireDurability, WireRetention};
+use storkv_proto::{StorkvWireError, WireDurability, WireRetention};
 
 use super::support::spawn_test_server;
 
@@ -35,7 +35,7 @@ async fn test_async_client_transaction_occ_and_ryow() {
 
     let commit_error = transaction.commit().await.unwrap_err();
     match commit_error {
-        ClientError::Server(StorKvWireError::WriteConflict { .. }) => {}
+        ClientError::Server(StorkvWireError::WriteConflict { .. }) => {}
         other => panic!("Expected WriteConflict, got {:?}", other),
     }
 

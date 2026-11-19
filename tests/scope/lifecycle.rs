@@ -1,5 +1,5 @@
 use crate::common;
-use storkv_core::ScopeOptions;
+use storkv_core::{MAX_SCOPES, ScopeOptions, StorageMode, StorkvError};
 
 #[test]
 fn test_atomic_cross_scope_transactions() {
@@ -20,6 +20,31 @@ fn test_atomic_cross_scope_transactions() {
 
     assert_eq!(db.get(&scope1, b"key1").unwrap().unwrap().as_ref(), b"val1");
     assert_eq!(db.get(&scope2, b"key2").unwrap().unwrap().as_ref(), b"val2");
+
+    temp.close();
+}
+
+#[test]
+fn test_scope_creation_quota_is_enforced() {
+    let mut temp = common::TempDb::new("scope_quota");
+    let db = temp.db();
+    let options = ScopeOptions {
+        storage_mode: StorageMode::InMemory,
+        ..ScopeOptions::default()
+    };
+
+    for index in 0..MAX_SCOPES - 1 {
+        db.create_scope(format!("quota_{index}"), options.clone())
+            .unwrap_or_else(|error| panic!("scope {index} failed: {error}"));
+    }
+
+    let error = db
+        .create_scope("quota_overflow", options)
+        .expect_err("the scope quota must reject the extra scope");
+    assert!(
+        matches!(error, StorkvError::InvalidOperation(_)),
+        "unexpected error: {error:?}"
+    );
 
     temp.close();
 }

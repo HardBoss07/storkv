@@ -44,11 +44,13 @@ impl HttpState {
         self.server
             .stats
             .record_transport_request(TransportKind::Http.as_u8());
+        let consistency = crate::server::ConnectionConsistency::new(self.server.consistency());
         self.server
-            .dispatch_request(request, self.is_admin(headers))
+            .dispatch_request(request, self.is_admin(headers), &consistency)
     }
 }
 
+/// Build the HTTP router for the REST and JSON-RPC endpoints.
 pub fn router(server: Arc<Server>, options: TransportOptions) -> Router {
     let state = HttpState { server, options };
     Router::new()

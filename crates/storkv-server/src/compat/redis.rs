@@ -21,7 +21,7 @@ mod helpers;
 pub(crate) mod keyspace;
 
 use codec::Resp;
-use codec_decode::{into_arguments, parse};
+use codec_decode::{MAX_READ_BUFFER, into_arguments, parse};
 use codec_encode::encode;
 use commands::RedisSession;
 
@@ -76,7 +76,18 @@ async fn run_session(server: Arc<Server>, stream: TcpStream) -> std::io::Result<
                         return Ok(());
                     }
                 }
-                Ok(None) => break,
+                Ok(None) => {
+                    if buffer.len() > MAX_READ_BUFFER {
+                        write_error(
+                            &mut writer,
+                            session.resp_version(),
+                            "request exceeds maximum buffer size",
+                        )
+                        .await?;
+                        return Ok(());
+                    }
+                    break;
+                }
                 Err(error) => {
                     write_error(&mut writer, session.resp_version(), &error.to_string()).await?;
                     return Ok(());

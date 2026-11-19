@@ -1,13 +1,13 @@
 //! gRPC listener and shared service plumbing.
 //!
-//! The generated `storkv.v1` types live in [`generated`]. Request conversion
-//! helpers are in [`conversions`], while the data and admin RPC impls live in
-//! [`service`] and [`admin`].
+//! The generated `storkv.v1` types live in `generated`. Request conversion
+//! helpers are in `conversions`, while the data and admin RPC impls live in
+//! `service` and `admin`.
 
 use std::sync::Arc;
 use std::time::Duration;
 
-use storkv_proto::{Request, Response, StorKvWireError};
+use storkv_proto::{Request, Response, StorkvWireError};
 use tokio::net::TcpListener;
 use tokio_stream::wrappers::TcpListenerStream;
 use tonic::{Request as GrpcRequest, Response as GrpcResponse, Status};
@@ -20,8 +20,8 @@ mod conversions;
 mod generated;
 mod service;
 
-use generated::stor_kv_admin_server::StorKvAdminServer;
-use generated::stor_kv_server::StorKvServer;
+use generated::storkv_admin_server::StorkvAdminServer;
+use generated::storkv_server::StorkvServer;
 pub use generated::{
     BackupEntry, ChangeEvent, CommitReply, CommitRequest, CreateScopeRequest, DeleteRangeRequest,
     DeleteRequest, Empty, GetReply, GetRequest, ListBackupsReply, MergeRequest, Mutation, Pair,
@@ -61,8 +61,8 @@ pub async fn serve(
     let incoming = TcpListenerStream::new(listener);
     let mut shutdown_receiver = server.shutdown_sender.subscribe();
     tonic::transport::Server::builder()
-        .add_service(StorKvServer::new(service.clone()))
-        .add_service(StorKvAdminServer::new(service))
+        .add_service(StorkvServer::new(service.clone()))
+        .add_service(StorkvAdminServer::new(service))
         .serve_with_incoming_shutdown(incoming, async move {
             let _ = shutdown_receiver.recv().await;
         })
@@ -90,7 +90,11 @@ impl GrpcService {
         self.server
             .stats
             .record_transport_request(TransportKind::Grpc.as_u8());
-        match self.server.dispatch_request(payload, is_admin) {
+        let consistency = crate::server::ConnectionConsistency::new(self.server.consistency());
+        match self
+            .server
+            .dispatch_request(payload, is_admin, &consistency)
+        {
             Response::Error(error) => Err(status_from_wire(error)),
             other => Ok(other),
         }
@@ -106,20 +110,25 @@ impl GrpcService {
     }
 }
 
-fn status_from_wire(error: StorKvWireError) -> Status {
+fn status_from_wire(error: StorkvWireError) -> Status {
     let message = error.to_string();
     match error {
-        StorKvWireError::Unauthorized => Status::permission_denied(message),
-        StorKvWireError::ScopeNotFound(_)
-        | StorKvWireError::ScopeIdNotFound(_)
-        | StorKvWireError::SnapshotNotFound(_) => Status::not_found(message),
-        StorKvWireError::WriteConflict { .. } => Status::aborted(message),
-        StorKvWireError::ScopeAlreadyExists(_) => Status::already_exists(message),
-        StorKvWireError::KeyTooLarge { .. }
-        | StorKvWireError::ValueTooLarge { .. }
-        | StorKvWireError::InvalidOperation(_)
-        | StorKvWireError::Protocol(_) => Status::invalid_argument(message),
-        StorKvWireError::Io(_) | StorKvWireError::Corruption(_) => Status::internal(message),
+        StorkvWireError::Unauthorized => Status::permission_denied(message),
+        StorkvWireError::ScopeNotFound(_)
+        | StorkvWireError::ScopeIdNotFound(_)
+        | StorkvWireError::SnapshotNotFound(_) => Status::not_found(message),
+        StorkvWireError::WriteConflict { .. } => Status::aborted(message),
+        StorkvWireError::WatchCursorExpired { .. } => Status::out_of_range(message),
+        StorkvWireError::NotPrimary => Status::failed_precondition(message),
+        StorkvWireError::StaleReplica { .. } => Status::unavailable(message),
+        StorkvWireError::ScopeAlreadyExists(_) => Status::already_exists(message),
+        StorkvWireError::TooManySubscribers { .. }
+        | StorkvWireError::ReplayBudgetExceeded { .. } => Status::resource_exhausted(message),
+        StorkvWireError::KeyTooLarge { .. }
+        | StorkvWireError::ValueTooLarge { .. }
+        | StorkvWireError::InvalidOperation(_)
+        | StorkvWireError::Protocol(_) => Status::invalid_argument(message),
+        StorkvWireError::Io(_) | StorkvWireError::Corruption(_) => Status::internal(message),
         _ => Status::unknown(message),
     }
 }

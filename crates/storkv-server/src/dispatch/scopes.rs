@@ -1,6 +1,6 @@
-use storkv_core::{CompactionStyle, Durability, Retention, ScopeOptions};
+use storkv_core::{CompactionStyle, Durability, Retention, ScopeOptions, StorageMode};
 use storkv_proto::{
-    Response, StorKvWireError, WireCompactionStyle, WireDurability, WireRetention, WireScopeHandle,
+    Response, StorkvWireError, WireCompactionStyle, WireDurability, WireRetention, WireScopeHandle,
     WireScopeOptions,
 };
 
@@ -10,12 +10,12 @@ use crate::server::Server;
 impl Server {
     pub(super) fn handle_create_scope(&self, name: &str, options: WireScopeOptions) -> Response {
         let Some(durability) = durability_from_wire(options.durability) else {
-            return Response::Error(StorKvWireError::InvalidOperation(
+            return Response::Error(StorkvWireError::InvalidOperation(
                 "unsupported durability variant".into(),
             ));
         };
         let Some(retention) = retention_from_wire(options.retention) else {
-            return Response::Error(StorKvWireError::InvalidOperation(
+            return Response::Error(StorkvWireError::InvalidOperation(
                 "unsupported retention variant".into(),
             ));
         };
@@ -23,6 +23,7 @@ impl Server {
             durability,
             retention,
             prefix_bloom_len: options.prefix_bloom_len,
+            storage_mode: StorageMode::Disk,
         };
         match self.db.create_scope(name, scope_options) {
             Ok(handle) => Response::Scope(WireScopeHandle {

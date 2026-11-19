@@ -1,5 +1,5 @@
-use storkv_core::StorKvError;
-use storkv_proto::{Response, StorKvWireError};
+use storkv_core::StorkvError;
+use storkv_proto::{Response, StorkvWireError};
 
 pub(super) fn result_to_empty(result: storkv_core::Result<()>) -> Response {
     match result {
@@ -9,26 +9,43 @@ pub(super) fn result_to_empty(result: storkv_core::Result<()>) -> Response {
 }
 
 /// Convert a core engine error into the wire error type.
-pub fn core_error_to_wire(error: StorKvError) -> StorKvWireError {
+pub fn core_error_to_wire(error: StorkvError) -> StorkvWireError {
     match error {
-        StorKvError::DatabaseLocked(path) => {
-            StorKvWireError::DatabaseLocked(path.display().to_string())
+        StorkvError::DatabaseLocked(path) => {
+            StorkvWireError::DatabaseLocked(path.display().to_string())
         }
-        StorKvError::Corruption(message) => StorKvWireError::Corruption(message),
-        StorKvError::WriteConflict { scope_id, key } => {
-            StorKvWireError::WriteConflict { scope_id, key }
+        StorkvError::Corruption(message) => StorkvWireError::Corruption(message),
+        StorkvError::WriteConflict { scope_id, key } => {
+            StorkvWireError::WriteConflict { scope_id, key }
         }
-        StorKvError::ScopeNotFound(name) => StorKvWireError::ScopeNotFound(name),
-        StorKvError::ScopeIdNotFound(scope_id) => StorKvWireError::ScopeIdNotFound(scope_id),
-        StorKvError::ScopeAlreadyExists(name) => StorKvWireError::ScopeAlreadyExists(name),
-        StorKvError::ScopeDropped(scope_id) => StorKvWireError::ScopeDropped(scope_id),
-        StorKvError::SnapshotNotFound(name) => StorKvWireError::SnapshotNotFound(name),
-        StorKvError::KeyTooLarge { max, actual } => StorKvWireError::KeyTooLarge { max, actual },
-        StorKvError::ValueTooLarge { max, actual } => {
-            StorKvWireError::ValueTooLarge { max, actual }
+        StorkvError::ScopeNotFound(name) => StorkvWireError::ScopeNotFound(name),
+        StorkvError::ScopeIdNotFound(scope_id) => StorkvWireError::ScopeIdNotFound(scope_id),
+        StorkvError::ScopeAlreadyExists(name) => StorkvWireError::ScopeAlreadyExists(name),
+        StorkvError::ScopeDropped(scope_id) => StorkvWireError::ScopeDropped(scope_id),
+        StorkvError::SnapshotNotFound(name) => StorkvWireError::SnapshotNotFound(name),
+        StorkvError::WatchCursorExpired {
+            requested,
+            oldest_available,
+        } => StorkvWireError::WatchCursorExpired {
+            requested,
+            oldest_available,
+        },
+        StorkvError::NotPrimary => StorkvWireError::NotPrimary,
+        StorkvError::StaleReplica { lag_ms, max_lag_ms } => {
+            StorkvWireError::StaleReplica { lag_ms, max_lag_ms }
         }
-        StorKvError::InvalidOperation(message) => StorKvWireError::InvalidOperation(message),
-        StorKvError::Io(error) => StorKvWireError::Io(error.to_string()),
-        other => StorKvWireError::InvalidOperation(other.to_string()),
+        StorkvError::TooManySubscribers { count, max } => {
+            StorkvWireError::TooManySubscribers { count, max }
+        }
+        StorkvError::ReplayBudgetExceeded { events, bytes } => {
+            StorkvWireError::ReplayBudgetExceeded { events, bytes }
+        }
+        StorkvError::KeyTooLarge { max, actual } => StorkvWireError::KeyTooLarge { max, actual },
+        StorkvError::ValueTooLarge { max, actual } => {
+            StorkvWireError::ValueTooLarge { max, actual }
+        }
+        StorkvError::InvalidOperation(message) => StorkvWireError::InvalidOperation(message),
+        StorkvError::Io(error) => StorkvWireError::Io(error.to_string()),
+        other => StorkvWireError::InvalidOperation(other.to_string()),
     }
 }

@@ -6,7 +6,7 @@ use axum::response::{IntoResponse, Response as HttpResponse};
 use base64::Engine;
 use serde_json::{Value, json};
 use storkv_proto::{
-    Response, StorKvWireError, WireBackupEntry, WireBackupKind, WireBackupReport, WireBackupStatus,
+    Response, StorkvWireError, WireBackupEntry, WireBackupKind, WireBackupReport, WireBackupStatus,
     WireBackupVerifyReport, WireChangeEvent,
 };
 
@@ -29,46 +29,56 @@ pub(crate) fn json_error(status: StatusCode, code: &str, message: &str) -> HttpR
         .into_response()
 }
 
-pub(crate) fn error_from_wire(error: &StorKvWireError) -> HttpResponse {
+pub(crate) fn error_from_wire(error: &StorkvWireError) -> HttpResponse {
     let status = status_for_wire_error(error);
     let code = code_for_wire_error(error);
     json_error(status, code, &error.to_string())
 }
 
-fn status_for_wire_error(error: &StorKvWireError) -> StatusCode {
+fn status_for_wire_error(error: &StorkvWireError) -> StatusCode {
     match error {
-        StorKvWireError::ScopeNotFound(_)
-        | StorKvWireError::ScopeIdNotFound(_)
-        | StorKvWireError::SnapshotNotFound(_) => StatusCode::NOT_FOUND,
-        StorKvWireError::ScopeAlreadyExists(_) | StorKvWireError::WriteConflict { .. } => {
+        StorkvWireError::ScopeNotFound(_)
+        | StorkvWireError::ScopeIdNotFound(_)
+        | StorkvWireError::SnapshotNotFound(_) => StatusCode::NOT_FOUND,
+        StorkvWireError::ScopeAlreadyExists(_) | StorkvWireError::WriteConflict { .. } => {
             StatusCode::CONFLICT
         }
-        StorKvWireError::Unauthorized => StatusCode::FORBIDDEN,
-        StorKvWireError::DatabaseLocked(_) => StatusCode::SERVICE_UNAVAILABLE,
-        StorKvWireError::Corruption(_) | StorKvWireError::Io(_) => {
+        StorkvWireError::Unauthorized => StatusCode::FORBIDDEN,
+        StorkvWireError::WatchCursorExpired { .. } => StatusCode::GONE,
+        StorkvWireError::NotPrimary | StorkvWireError::StaleReplica { .. } => {
+            StatusCode::SERVICE_UNAVAILABLE
+        }
+        StorkvWireError::DatabaseLocked(_) => StatusCode::SERVICE_UNAVAILABLE,
+        StorkvWireError::TooManySubscribers { .. } => StatusCode::TOO_MANY_REQUESTS,
+        StorkvWireError::Corruption(_) | StorkvWireError::Io(_) => {
             StatusCode::INTERNAL_SERVER_ERROR
         }
         _ => StatusCode::BAD_REQUEST,
     }
 }
 
-pub(crate) fn code_for_wire_error(error: &StorKvWireError) -> &'static str {
+pub(crate) fn code_for_wire_error(error: &StorkvWireError) -> &'static str {
     match error {
-        StorKvWireError::DatabaseLocked(_) => "database_locked",
-        StorKvWireError::Corruption(_) => "corruption",
-        StorKvWireError::WriteConflict { .. } => "write_conflict",
-        StorKvWireError::ScopeNotFound(_) | StorKvWireError::ScopeIdNotFound(_) => {
+        StorkvWireError::DatabaseLocked(_) => "database_locked",
+        StorkvWireError::Corruption(_) => "corruption",
+        StorkvWireError::WriteConflict { .. } => "write_conflict",
+        StorkvWireError::ScopeNotFound(_) | StorkvWireError::ScopeIdNotFound(_) => {
             "scope_not_found"
         }
-        StorKvWireError::ScopeAlreadyExists(_) => "scope_already_exists",
-        StorKvWireError::ScopeDropped(_) => "scope_dropped",
-        StorKvWireError::SnapshotNotFound(_) => "snapshot_not_found",
-        StorKvWireError::KeyTooLarge { .. } => "key_too_large",
-        StorKvWireError::ValueTooLarge { .. } => "value_too_large",
-        StorKvWireError::InvalidOperation(_) => "invalid_operation",
-        StorKvWireError::Io(_) => "io",
-        StorKvWireError::Protocol(_) => "protocol",
-        StorKvWireError::Unauthorized => "unauthorized",
+        StorkvWireError::ScopeAlreadyExists(_) => "scope_already_exists",
+        StorkvWireError::ScopeDropped(_) => "scope_dropped",
+        StorkvWireError::SnapshotNotFound(_) => "snapshot_not_found",
+        StorkvWireError::KeyTooLarge { .. } => "key_too_large",
+        StorkvWireError::ValueTooLarge { .. } => "value_too_large",
+        StorkvWireError::InvalidOperation(_) => "invalid_operation",
+        StorkvWireError::Io(_) => "io",
+        StorkvWireError::Protocol(_) => "protocol",
+        StorkvWireError::Unauthorized => "unauthorized",
+        StorkvWireError::WatchCursorExpired { .. } => "watch_cursor_expired",
+        StorkvWireError::NotPrimary => "not_primary",
+        StorkvWireError::StaleReplica { .. } => "stale_replica",
+        StorkvWireError::TooManySubscribers { .. } => "too_many_subscribers",
+        StorkvWireError::ReplayBudgetExceeded { .. } => "replay_budget_exceeded",
         _ => "error",
     }
 }
@@ -234,6 +244,11 @@ pub(crate) fn watch_event_value(event: WireChangeEvent) -> Value {
         }),
         WireChangeEvent::DropScope { scope_id, seq } => json!({
             "kind": "drop_scope",
+            "scope_id": scope_id,
+            "seq": seq,
+        }),
+        WireChangeEvent::InvalidateScope { scope_id, seq } => json!({
+            "kind": "invalidate_scope",
             "scope_id": scope_id,
             "seq": seq,
         }),

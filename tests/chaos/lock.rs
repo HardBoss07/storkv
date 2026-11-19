@@ -1,5 +1,5 @@
 use std::fs;
-use storkv_core::{Db, DbOptions, StorKvError};
+use storkv_core::{Db, DbOptions, StorkvError};
 
 #[test]
 fn test_single_process_lock() {
@@ -11,7 +11,7 @@ fn test_single_process_lock() {
 
     let db2_result = Db::open(&temp, DbOptions::default());
     assert!(
-        matches!(db2_result, Err(StorKvError::DatabaseLocked(_))),
+        matches!(db2_result, Err(StorkvError::DatabaseLocked(_))),
         "Second open must fail with DatabaseLocked error"
     );
 

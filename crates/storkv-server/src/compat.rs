@@ -45,14 +45,14 @@ pub(crate) fn ensure_scope(
     }
     match db.create_scope(name.to_string(), options) {
         Ok(scope) => Ok(scope),
-        Err(storkv_core::StorKvError::ScopeAlreadyExists(_)) => {
+        Err(storkv_core::StorkvError::ScopeAlreadyExists(_)) => {
             let scope_id = db
                 .inner()
                 .scope_names
                 .read()
                 .get(name)
                 .copied()
-                .ok_or_else(|| storkv_core::StorKvError::ScopeNotFound(name.to_string()))?;
+                .ok_or_else(|| storkv_core::StorkvError::ScopeNotFound(name.to_string()))?;
             Ok(ScopeHandle {
                 scope_id,
                 name: name.to_string(),
@@ -71,6 +71,7 @@ pub(crate) fn redis_scope(db: &Db, database: u32) -> storkv_core::Result<ScopeHa
             durability: storkv_core::Durability::StrictFsync,
             retention: Retention::Permanent,
             prefix_bloom_len: Some(8),
+            storage_mode: storkv_core::StorageMode::Disk,
         },
     )
 }
@@ -86,6 +87,7 @@ pub(crate) fn memcached_scope(db: &Db) -> storkv_core::Result<ScopeHandle> {
                 compaction_style: CompactionStyle::Fifo,
             },
             prefix_bloom_len: Some(8),
+            storage_mode: storkv_core::StorageMode::Disk,
         },
     )
 }
@@ -98,26 +100,34 @@ pub(crate) fn etcd_scope(db: &Db) -> storkv_core::Result<ScopeHandle> {
             durability: storkv_core::Durability::StrictFsync,
             retention: Retention::Permanent,
             prefix_bloom_len: Some(8),
+            storage_mode: storkv_core::StorageMode::Disk,
         },
     )
 }
 
 /// Remove every key in a scope while keeping the scope itself.
-pub(crate) fn flush_scope(db: &Db, scope: &ScopeHandle) -> storkv_core::Result<usize> {
-    let pairs = db.scan(scope, None::<&[u8]>, None::<&[u8]>)?;
-    if pairs.is_empty() {
-        return Ok(0);
-    }
+///
+/// The method writes one range tombstone. It does not load the keys or the
+/// values into memory.
+///
+/// # Errors
+///
+/// Returns an error when the range delete fails.
+pub(crate) fn flush_scope(db: &Db, scope: &ScopeHandle) -> storkv_core::Result<()> {
+    let start: &[u8] = b"";
+    let end_key = vec![0xFFu8; storkv_core::format::MAX_KEY_LEN];
     let mut transaction = db.begin_tx();
-    for (key, _) in &pairs {
-        transaction.delete(scope, key)?;
-    }
-    transaction.commit()?;
-    Ok(pairs.len())
+    transaction.delete_range(scope, start, end_key.as_slice())?;
+    transaction.delete(scope, end_key.as_slice())?;
+    transaction.commit()
 }
 
 /// Flush every Redis-owned scope (used by `FLUSHALL`).
-pub(crate) fn flush_redis_scopes(db: &Db) -> storkv_core::Result<usize> {
+///
+/// # Errors
+///
+/// Returns an error when a scope flush fails.
+pub(crate) fn flush_redis_scopes(db: &Db) -> storkv_core::Result<()> {
     let names: Vec<String> = db
         .inner()
         .scope_names
@@ -126,17 +136,16 @@ pub(crate) fn flush_redis_scopes(db: &Db) -> storkv_core::Result<usize> {
         .filter(|name| *name == REDIS_DEFAULT_SCOPE || name.starts_with("redis_db_"))
         .cloned()
         .collect();
-    let mut removed = 0;
     for name in names {
         if let Some(scope_id) = db.inner().scope_names.read().get(&name).copied() {
             let scope = ScopeHandle {
                 scope_id,
                 name: name.clone(),
             };
-            removed += flush_scope(db, &scope)?;
+            flush_scope(db, &scope)?;
         }
     }
-    Ok(removed)
+    Ok(())
 }
 
 /// Serve the Redis RESP listener until the server shuts down.

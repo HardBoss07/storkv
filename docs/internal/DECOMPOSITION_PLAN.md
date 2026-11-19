@@ -1,68 +1,102 @@
-# File & Module Decomposition Plan
+# File and Module Decomposition Plan
 
-Baseline: `cargo test --workspace` passes 107 integration tests, `cargo clippy --workspace --all-targets -- -D warnings` is clean.
+## Purpose
 
-Every split preserves the existing public API. New submodules are private or `pub(crate)` unless they already exported public
-items; the parent `lib.rs`/`mod.rs` retains the identical `pub use` surface so no caller or test changes.
+This document records the current module layout. Every source file has one
+responsibility. Every file stays under about 250 lines, except generated
+protobuf files and `build.rs` output.
+
+## Rules
+
+- Use the Rust 2018 layout: `name.rs` plus `name/child.rs`. Never use `mod.rs`.
+- Keep one public API. Parent modules re-export child items.
+- Put a `///` comment on every public item. Fallible functions document
+  `# Errors`.
+- Do not panic in production code. Return a structured error.
+- Keep `storkv-core` free of async runtimes.
+- Keep tests in `tests/` and `bindings/`.
+
+## storkv-sdk
+
+| Parent       | Child modules                                      |
+| ------------ | -------------------------------------------------- |
+| `pool`       | `builder`, `routing`, `ops`                        |
+| `backend`    | `embedded`, `remote`                               |
+| `collection` | `codec`, `ops`                                     |
+| `options`    | `pool`, `policy`                                   |
+| `watch`      | `stream`, `invalidator`                            |
+| `scope`      | `cached`, `ops`                                    |
+| `cache`      | `store`, `events`                                  |
+| `transaction`| `read`, `write`                                    |
+
+The root `lib.rs` keeps these exports: `Collection`, `TypedWatchEvent`,
+`TypedWatchStream`, `Result`, `SdkError`, `CacheOptions`, `RetryPolicy`,
+`ScopeDefinition`, `StorkvPoolOptions`, `PoolConnection`, `StorkvPool`,
+`TxFuture`, `Scope`, `Transaction`, `WatchEvent`, `WatchEventKind`,
+`WatchStream`, `CompactionStyle`, `Durability`, `Retention`, `Consistency`.
 
 ## storkv-core
 
-| Current file         | Lines | New modules                                                                                                     | Preserved root exports                                                                            |
-| -------------------- | ----- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `manifest/record.rs` | 352   | `record/types.rs`, `record/edit.rs`, `record/encode.rs`, `record/decode.rs`                                     | `EditRecord`, `SstFileMeta`, `ScopeMeta`, `SnapshotMeta`, enum modes, magic/version               |
-| `db.rs`              | 274   | `db/handle.rs`, `db/inner.rs`, `db/open.rs`                                                                     | `Db`, `DbInner`, `ScopeHandle`                                                                    |
-| `db_ops.rs`          | 253   | `db_ops/scopes.rs`, `db_ops/read.rs`, `db_ops/maintenance.rs`, plus existing `commit.rs`, `flush.rs`, `scan.rs` | all `DbInner` methods and free helpers                                                            |
-| `sstable/mod.rs`     | 851   | `block.rs`, `bloom.rs`, `meta.rs`, `footer.rs`, `builder.rs`, `reader.rs`                                       | `SstWriter`, `SstReader`, `CompressionType`, `BlockHandle`, plus existing `pub` items re-exported |
-| `manifest/mod.rs`    | 641   | `record.rs`, `codec.rs`, `version_set.rs`, `manager.rs`                                                         | `ManifestManager`, `VersionEdit`, `EditRecord`, `SstFileMeta`, `CurrentManifest`                  |
-| `wal/mod.rs`         | 549   | `record.rs`, `codec.rs`, `writer.rs`, `recovery.rs`                                                             | `WalManager`, `WalRecovery`, `WalOp`, `WalBatchFrame`, `Durability`, segment helpers              |
-| `vfs/mod.rs`         | 350   | `traits.rs`, `posix.rs`, `fault_injecting.rs`                                                                   | `FileSystem`, `File`, `PosixFs`, `FaultInjectingFs`, fault policies                               |
-| `scope/mod.rs`       | 261   | `registry.rs`, `options.rs` (only if helper volume warrants)                                                    | `Scope`, `ScopeOptions`, `Retention`, `CompactionStyle`, `ScopeRegistry`                          |
-| `compaction/mod.rs`  | 200   | `leveled.rs`, `fifo.rs` (only if helper volume warrants)                                                        | `Compactor`, `CompactionStyle`, `CompactionResult`                                                |
-
-## storkv-proto
-
-| Current file | Lines | New modules                                                                                                                                                             | Preserved root exports                                                                             |
-| ------------ | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `src/lib.rs` | 1135  | `error.rs`, `frame.rs`, `endpoint.rs`, `request/` (`types`, `encode`, `decode`, `decode_tx`, `decode_scope`), `response/` (`types`, `encode`, `decode`, `decode_admin`) | All `Request`/`Response` variants, `Wire*` structs, frame helpers, error mapping, endpoint helpers |
-
-## storkv-server
-
-| Current file | Lines | New modules                                                                                                                       | Preserved root exports                                                                                |
-| ------------ | ----- | --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `src/lib.rs` | 678   | `config.rs`, `listener.rs`, `metrics.rs`, `server.rs`, `dispatch/` (`data`, `scopes`, `transactions`, `telemetry`, `conversions`) | `ServerConfig`, `ServerListener`, `AcceptedStream`, `ScopeMetrics`, `Server`, existing free functions |
+| Parent            | Child modules                                           |
+| ----------------- | ------------------------------------------------------- |
+| `db/handle`       | `handle_kv`, `handle_scopes`, `handle_backup`, `handle_streams` |
+| `backup/restore`  | `staging`, `replay`                                     |
+| `backup/verify`   | `files`, `records`                                      |
+| `backup/sink_pipe`| `archive`, `process`                                    |
+| `transaction`     | `read`, `write`                                         |
+| `db_ops/commit`   | `validate`, `apply`                                     |
+| `vfs/memory`      | `fs`, `file`                                            |
 
 ## storkv-client
 
-| Current file | Lines | New modules                                                                       | Preserved root exports                                                                                   |
-| ------------ | ----- | --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `src/lib.rs` | 743   | `transport.rs`, `async_client/` (`scope_ops`), `sync_client.rs`, `transaction.rs` | `AsyncClient`, `SyncClient`, `ClientStream`, `Transaction`, `WriteSet`, `ReadSet`, all method signatures |
+| Parent              | Child modules         |
+| ------------------- | --------------------- |
+| `backend/grpc`      | `admin`, `data`       |
+| `async_client`      | `scope_ops`, `admin_ops` |
 
-## storkv-cli / storkv-tui
+## storkv-ffi
 
-| Current file            | Lines | New modules                                      | Preserved root exports                                                          |
-| ----------------------- | ----- | ------------------------------------------------ | ------------------------------------------------------------------------------- |
-| `storkv-cli/src/lib.rs` | 232   | `health.rs`, `doctor.rs`, `backup.rs`, `ycsb.rs` | `run_health`, `run_doctor`, `run_backup`, `run_ycsb` and their argument structs |
-| `storkv-tui/src/lib.rs` | 323   | `model.rs`, `poller.rs`, `ui.rs`                 | `App`, `run`, model/poller types used by binaries                               |
+| Parent         | Child modules          |
+| -------------- | ---------------------- |
+| `transaction`  | `lifecycle`, `ops`     |
+| `scope`        | `point`, `scan`        |
+| `types`        | `options`, `results`   |
 
-## tests/
+## storkv-proto
 
-- Delete empty `tests/chaos/mod.rs` (`tests/chaos.rs` remains the target).
-- Split `tests/format.rs`, `server.rs`, `proto.rs`, `client.rs`, `mvcc.rs`, `tui.rs`, `chaos.rs`,
-  `compaction.rs`, `wal.rs`, and `scope.rs` into `tests/<suite>/` domain submodules, each included by
-  the thin `tests/<suite>.rs` harness via `#[path = "<suite>/<module>.rs"]`.
-- Move shared helpers into `tests/common/mod.rs`; keep suite-local helpers in `tests/<suite>/support.rs`.
-- Keep every test name, assertion, and test count identical.
+| Parent             | Child modules           |
+| ------------------ | ----------------------- |
+| `response/types`   | `core`, `admin`         |
+| `request/types`    | `enum_def`, `methods`   |
 
-## Function-level cleanup
+## storkv-server
 
-- Split functions over ~45 lines into single-responsibility helpers.
-- Rename terse identifiers (`buf`, `hdr`, `off`, `len`, `req`, `resp`, `tx`, `seq`, `k`, `v`, `f`, `s`, `res`, `tmp`)
-  to domain names (`frame_buffer`, `header_bytes`, `byte_offset`, `payload_length`, `client_request`,
-  `server_response`, `transaction`, `sequence_number`, `user_key`, `entry_value`, `file_system`, `scope`, etc.).
-- Keep borrowed slices, zero `#[cfg(test)]` in `crates/*/src/`, zero `.unwrap()`/`.expect()` in production code.
+| Parent                             | Child modules            |
+| ---------------------------------- | ------------------------ |
+| `compat/redis/commands_tx`         | `queue`, `exec`          |
+| `server`                           | `state`, `session`       |
+| `transports/ws/session`            | `loop_io`, `watchers`    |
+| `transports/http/rest_data`        | `keys`, `queries`        |
+| `compat/memcached/commands`        | `storage`, `ops`         |
+| `transports/grpc/service`          | `data`, `streams`        |
+| `compat/redis/helpers`             | `args`, `matchers`       |
+| `compat/redis/codec_decode`        | `scalars`, `aggregates`  |
+| `transports/ws/json_rpc`           | `dispatch`, `codec`      |
+| `compat/redis/commands_strings`    | `basic`, `mutate`        |
+| `bin/storkvd`                      | `args`, `bootstrap`      |
+
+## storkv-cli and storkv-tui
+
+The CLI and TUI crates already use focused modules. No further split is
+required.
 
 ## Verification
 
-After every crate: `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`.
-Final: `cargo fmt --all -- --check`, example/binary smoke checks, `project-structure.exe . --count -m`,
-delete `HARDENING_AUDIT.md` and `baseline_test.txt`.
+Run these commands after each change:
+
+```bash
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all -- --check
+project-structure.exe . --count --minimize ascii
+```

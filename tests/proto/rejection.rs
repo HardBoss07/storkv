@@ -1,5 +1,5 @@
 use bytes::BytesMut;
-use storkv_proto::{MAX_FRAME_SIZE, Message, StorKvWireError};
+use storkv_proto::{MAX_FRAME_SIZE, Message, StorkvWireError};
 
 use super::support::{frame_from_body, value_with_tag};
 
@@ -10,7 +10,7 @@ fn test_rejection_of_oversized_or_corrupted_frame() {
     buffer.extend_from_slice(&oversized_length.to_be_bytes());
     buffer.extend_from_slice(b"dummy");
     let error = Message::decode(&mut buffer).unwrap_err();
-    assert!(matches!(error, StorKvWireError::Protocol(_)));
+    assert!(matches!(error, StorkvWireError::Protocol(_)));
 
     let mut bad_magic = BytesMut::new();
     let length = 20u32;
@@ -20,7 +20,7 @@ fn test_rejection_of_oversized_or_corrupted_frame() {
     bad_magic.extend_from_slice(&0u64.to_le_bytes());
     bad_magic.extend_from_slice(&[1u8, 0u8]);
     let error = Message::decode(&mut bad_magic).unwrap_err();
-    assert!(matches!(error, StorKvWireError::Protocol(_)));
+    assert!(matches!(error, StorkvWireError::Protocol(_)));
 }
 
 #[test]

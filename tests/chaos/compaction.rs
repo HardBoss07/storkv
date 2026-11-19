@@ -68,7 +68,7 @@ fn failed_leveled_compaction_preserves_inputs_and_can_be_retried() {
         .run_compaction()
         .expect_err("injected write failure must abort compaction");
     assert!(
-        matches!(error, storkv_core::StorKvError::Io(_)),
+        matches!(error, storkv_core::StorkvError::Io(_)),
         "unexpected error: {error:?}"
     );
     faulty.set_fail_writes(false);

@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use storkv_core::mvcc::{TransactionContext, TxMutation};
-use storkv_core::{Db, ScopeHandle, SequenceNumber, StorKvError, TimestampMs};
+use storkv_core::{Db, ScopeHandle, SequenceNumber, StorkvError, TimestampMs};
 
 const MAX_RETRIES: usize = 16;
 
@@ -85,12 +85,12 @@ where
             Outcome::Reply(value) => return Ok(value),
             Outcome::Commit(value) => match db.inner().commit_tx(atomic.context) {
                 Ok(()) => return Ok(value),
-                Err(StorKvError::WriteConflict { .. }) => continue,
+                Err(StorkvError::WriteConflict { .. }) => continue,
                 Err(error) => return Err(error),
             },
         }
     }
-    Err(StorKvError::WriteConflict {
+    Err(StorkvError::WriteConflict {
         scope_id: 0,
         key: Vec::new(),
     })

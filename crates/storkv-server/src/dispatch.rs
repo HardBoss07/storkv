@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use storkv_proto::{Request, Response};
 
-use crate::server::Server;
+use crate::server::{ConnectionConsistency, Server};
 
 mod backup;
 mod conversions;
@@ -17,13 +17,21 @@ pub use conversions::core_error_to_wire;
 use conversions::result_to_empty;
 
 impl Server {
-    pub(crate) fn dispatch_request(&self, request: Request, is_admin: bool) -> Response {
+    pub(crate) fn dispatch_request(
+        &self,
+        request: Request,
+        is_admin: bool,
+        consistency: &ConnectionConsistency,
+    ) -> Response {
         if !is_admin && request.is_admin_only() && self.strict_admin() {
-            return Response::Error(storkv_proto::StorKvWireError::Unauthorized);
+            return Response::Error(storkv_proto::StorkvWireError::Unauthorized);
+        }
+        if let Some(error) = self.replica_rejection(&request, consistency) {
+            return Response::Error(error);
         }
         let is_write = is_write_request(&request);
         let started = Instant::now();
-        let response = self.route_request(request);
+        let response = self.route_request(request, consistency);
         if is_write {
             let elapsed_micros = started.elapsed().as_micros() as u64;
             self.stats.record_latency(elapsed_micros);
@@ -31,7 +39,33 @@ impl Server {
         response
     }
 
-    fn route_request(&self, request: Request) -> Response {
+    fn replica_rejection(
+        &self,
+        request: &Request,
+        consistency: &ConnectionConsistency,
+    ) -> Option<storkv_proto::StorkvWireError> {
+        if self.role() != crate::ReplicationRole::Replica {
+            return None;
+        }
+        if is_write_request(request) {
+            return Some(storkv_proto::StorkvWireError::NotPrimary);
+        }
+        if !is_data_read(request) {
+            return None;
+        }
+        match consistency.get() {
+            storkv_proto::Consistency::Strong => Some(storkv_proto::StorkvWireError::NotPrimary),
+            storkv_proto::Consistency::BoundedStaleness { max_lag_ms } => {
+                let lag_ms = self.replication_lag_ms();
+                (lag_ms > max_lag_ms)
+                    .then_some(storkv_proto::StorkvWireError::StaleReplica { lag_ms, max_lag_ms })
+            }
+            storkv_proto::Consistency::Eventual => None,
+            _ => None,
+        }
+    }
+
+    fn route_request(&self, request: Request, consistency: &ConnectionConsistency) -> Response {
         match request {
             Request::Ping => Response::Pong,
             Request::HealthCheck => Response::HealthOk,
@@ -77,8 +111,13 @@ impl Server {
             Request::VerifyBackup { target_seq } => self.handle_verify_backup(target_seq),
             Request::ListBackups => self.handle_list_backups(),
             Request::KeyMeta { scope_id, key } => self.handle_key_meta(scope_id, key),
-            Request::WatchSubscribe => Response::Empty,
-            other => Response::Error(storkv_proto::StorKvWireError::Protocol(format!(
+            Request::WatchSubscribe | Request::WatchFrom { .. } => Response::Empty,
+            Request::ReplicationStart { .. } => Response::Empty,
+            Request::ConfigureConsistency { consistency: level } => {
+                consistency.set(level);
+                Response::Empty
+            }
+            other => Response::Error(storkv_proto::StorkvWireError::Protocol(format!(
                 "Unsupported request: {other:?}"
             ))),
         }
@@ -105,5 +144,16 @@ fn is_write_request(request: &Request) -> bool {
             | Request::Merge { .. }
             | Request::TxCommit { .. }
             | Request::DropScope { .. }
+            | Request::CreateScope { .. }
+    )
+}
+
+fn is_data_read(request: &Request) -> bool {
+    matches!(
+        request,
+        Request::Get { .. }
+            | Request::Scan { .. }
+            | Request::ScanPrefix { .. }
+            | Request::KeyMeta { .. }
     )
 }

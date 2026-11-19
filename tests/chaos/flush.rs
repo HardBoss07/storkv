@@ -58,7 +58,7 @@ fn torn_memtable_flush_is_reported_and_recoverable_from_wal() {
         .commit()
         .expect_err("torn SSTable write must fail the commit");
     assert!(
-        matches!(error, storkv_core::StorKvError::Io(_)),
+        matches!(error, storkv_core::StorkvError::Io(_)),
         "unexpected error: {error:?}"
     );
     faulty.set_write_byte_limit(usize::MAX);

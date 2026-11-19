@@ -1,5 +1,7 @@
 mod common;
 
+#[path = "format/golden.rs"]
+mod golden;
 #[path = "format/hardening.rs"]
 mod hardening;
 #[path = "format/keys.rs"]

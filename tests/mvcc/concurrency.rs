@@ -2,7 +2,7 @@ use crate::common;
 use bytes::Bytes;
 use std::sync::Arc;
 use std::time::Duration;
-use storkv_core::{Durability, Retention, ScopeOptions, StorKvError};
+use storkv_core::{Durability, Retention, ScopeOptions, StorkvError};
 
 #[test]
 fn test_50_worker_occ_contention_storm_converges() {
@@ -17,6 +17,7 @@ fn test_50_worker_occ_contention_storm_converges() {
                 },
                 retention: Retention::Permanent,
                 prefix_bloom_len: None,
+                storage_mode: storkv_core::StorageMode::Disk,
             },
         )
         .unwrap();
@@ -46,7 +47,7 @@ fn test_50_worker_occ_contention_storm_converges() {
                             committed = true;
                             break;
                         }
-                        Err(StorKvError::WriteConflict { .. }) => continue,
+                        Err(StorkvError::WriteConflict { .. }) => continue,
                         Err(other) => panic!("unexpected commit error: {other:?}"),
                     }
                 }

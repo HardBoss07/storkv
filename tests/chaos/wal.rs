@@ -2,7 +2,7 @@ use bytes::Bytes;
 use std::fs;
 use std::io::{Read, Write};
 use std::sync::Arc;
-use storkv_core::StorKvError;
+use storkv_core::StorkvError;
 use storkv_core::vfs::{FileSystem, PosixFs};
 use storkv_core::wal::{
     Durability, WAL_HEADER_SIZE, WalBatchFrame, WalManager, WalOp, WalRecovery,
@@ -55,8 +55,8 @@ fn test_torn_wal_tail_truncation_vs_mid_segment_corruption() {
 
     let error = WalRecovery::recover_segment(fs_posix.clone(), &wal_path, false);
     assert!(
-        matches!(error, Err(StorKvError::Corruption(_))),
-        "Mid-segment corruption must fail with StorKvError::Corruption"
+        matches!(error, Err(StorkvError::Corruption(_))),
+        "Mid-segment corruption must fail with StorkvError::Corruption"
     );
 
     let _ = fs::remove_dir_all(&temp);
@@ -85,7 +85,7 @@ fn test_wal_every_byte_flip_recovers_without_panic() {
         let interior = WalRecovery::recover_segment(fs_posix.clone(), &wal_path, false);
         match interior {
             Ok(frames) => assert!(frames.len() <= 2),
-            Err(StorKvError::Corruption(_)) => {}
+            Err(StorkvError::Corruption(_)) => {}
             Err(other) => panic!("unexpected error for offset {offset}: {other:?}"),
         }
     }
@@ -118,11 +118,11 @@ fn test_wal_every_truncation_point_recovers_without_panic() {
         let interior = WalRecovery::recover_segment(fs_posix.clone(), &wal_path, false);
         if length < WAL_HEADER_SIZE {
             assert!(
-                matches!(interior, Err(StorKvError::Corruption(_))),
+                matches!(interior, Err(StorkvError::Corruption(_))),
                 "short interior segment {length} must be corruption"
             );
         } else {
-            assert!(interior.is_ok() || matches!(interior, Err(StorKvError::Corruption(_))));
+            assert!(interior.is_ok() || matches!(interior, Err(StorkvError::Corruption(_))));
         }
     }
 

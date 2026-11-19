@@ -1,29 +1,36 @@
+//! Native server state and configuration.
+
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 
-use bytes::BytesMut;
-use storkv_core::{Db, DbOptions, StorKvError};
-use storkv_proto::{Message, MessagePayload, Request, Response, WireChangeEvent};
-use tokio::io::{AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tokio::net::TcpListener;
+use storkv_core::{Db, DbOptions, StorkvError};
 use tokio::sync::broadcast;
-use tokio::task::JoinHandle;
 
-use crate::listener::ServerListener;
+use crate::ReplicationRole;
 use crate::metrics::ServerStats;
-use crate::transports::{ConnectionGuard, TransportKind};
+
+mod consistency;
+mod listener;
+mod session;
+
+pub(crate) use consistency::ConnectionConsistency;
 
 const READ_BUFFER_CAPACITY: usize = 8192;
 const WATCH_CHANNEL_CAPACITY: usize = 128;
 
-use std::sync::atomic::{AtomicBool, Ordering};
-
 /// One network server bound to a single database.
 pub struct Server {
+    pub(crate) role: ReplicationRole,
+    pub(crate) consistency: AtomicU8,
+    pub(crate) strict_admin: AtomicBool,
+    pub(crate) consistency_max_lag_ms: AtomicU64,
+    pub(crate) last_applied_seq: AtomicU64,
+    pub(crate) last_frame_sent_at_ms: AtomicU64,
+    pub(crate) primary_uri: Option<String>,
     pub(crate) db: Arc<Db>,
     pub(crate) shutdown_sender: broadcast::Sender<()>,
     pub(crate) stats: Arc<ServerStats>,
-    pub(crate) strict_admin: AtomicBool,
 }
 
 impl Server {
@@ -32,7 +39,7 @@ impl Server {
     /// # Errors
     ///
     /// Returns an error when the database cannot be opened.
-    pub fn new(data_dir: PathBuf) -> Result<Self, StorKvError> {
+    pub fn new(data_dir: PathBuf) -> Result<Self, StorkvError> {
         let db = Db::open(&data_dir, DbOptions::default())?;
         Ok(Self::with_db(Arc::new(db)))
     }
@@ -41,15 +48,79 @@ impl Server {
     pub fn with_db(db: Arc<Db>) -> Self {
         let (shutdown_sender, _) = broadcast::channel(1);
         Self {
+            role: ReplicationRole::Standalone,
+            consistency: AtomicU8::new(consistency_code(storkv_proto::Consistency::Strong)),
+            strict_admin: AtomicBool::new(false),
+            consistency_max_lag_ms: AtomicU64::new(0),
+            last_applied_seq: AtomicU64::new(db.newest_sequence()),
+            last_frame_sent_at_ms: AtomicU64::new(0),
+            primary_uri: None,
             db,
             shutdown_sender,
             stats: Arc::new(ServerStats::default()),
-            strict_admin: AtomicBool::new(false),
         }
     }
 
+    /// Set the replication role.
+    pub fn with_role(mut self, role: ReplicationRole) -> Self {
+        self.role = role;
+        if role == ReplicationRole::Replica {
+            self.set_consistency(storkv_proto::Consistency::Eventual);
+        }
+        self
+    }
+
+    /// Set the primary URI that a replica streams from.
+    pub fn with_primary_uri(mut self, primary_uri: Option<String>) -> Self {
+        self.primary_uri = primary_uri;
+        self
+    }
+
+    /// Return the configured replication role.
+    pub fn role(&self) -> ReplicationRole {
+        self.role
+    }
+
+    /// Return the configured primary URI, when set.
+    pub fn primary_uri(&self) -> Option<&str> {
+        self.primary_uri.as_deref()
+    }
+
+    /// Set the consistency level that later requests observe.
+    pub fn set_consistency(&self, consistency: storkv_proto::Consistency) {
+        let (mode, max_lag_ms) = consistency.to_wire();
+        self.consistency.store(mode, Ordering::Relaxed);
+        self.consistency_max_lag_ms
+            .store(max_lag_ms, Ordering::Relaxed);
+    }
+
+    /// Return the current consistency level.
+    pub fn consistency(&self) -> storkv_proto::Consistency {
+        let mode = self.consistency.load(Ordering::Relaxed);
+        let max_lag_ms = self.consistency_max_lag_ms.load(Ordering::Relaxed);
+        storkv_proto::Consistency::from_wire(mode, max_lag_ms)
+            .unwrap_or(storkv_proto::Consistency::Strong)
+    }
+
+    /// Return the newest sequence number that the replica applied.
+    pub fn last_applied_seq(&self) -> u64 {
+        self.last_applied_seq.load(Ordering::Relaxed)
+    }
+
+    /// Return the current replication lag in milliseconds.
+    ///
+    /// The lag is the age of the most recent frame from the primary. A node
+    /// that never received a frame reports zero lag.
+    pub fn replication_lag_ms(&self) -> u64 {
+        let sent_at_ms = self.last_frame_sent_at_ms.load(Ordering::Relaxed);
+        if sent_at_ms == 0 {
+            return 0;
+        }
+        now_millis().saturating_sub(sent_at_ms)
+    }
+
     /// Builder-style strict-admin toggle. When enabled, admin-only requests are
-    /// rejected with [`storkv_proto::StorKvWireError::Unauthorized`] unless the
+    /// rejected with [`storkv_proto::StorkvWireError::Unauthorized`] unless the
     /// connection was accepted on an admin listener or presented a valid token.
     pub fn with_strict_admin(self, strict_admin: bool) -> Self {
         self.strict_admin.store(strict_admin, Ordering::Relaxed);
@@ -75,216 +146,15 @@ impl Server {
     pub fn shutdown_handle(&self) -> broadcast::Sender<()> {
         self.shutdown_sender.clone()
     }
-
-    /// Accept native protocol connections from a TCP listener.
-    ///
-    /// # Errors
-    ///
-    /// Returns an I/O error when accept fails.
-    pub async fn run_tcp_listener(
-        self: Arc<Self>,
-        listener: TcpListener,
-        is_admin: bool,
-    ) -> Result<(), std::io::Error> {
-        self.run_listener(ServerListener::Tcp(listener), is_admin)
-            .await
-    }
-
-    /// Accept connections from either a TCP or a Unix-domain socket.
-    ///
-    /// A single accept loop/handler is shared by both transports; the
-    /// [`AcceptedStream`] enum dispatches `AsyncRead`/`AsyncWrite` to the
-    /// concrete stream type.
-    pub async fn run_listener(
-        self: Arc<Self>,
-        listener: ServerListener,
-        is_admin: bool,
-    ) -> Result<(), std::io::Error> {
-        let mut shutdown_receiver = self.shutdown_sender.subscribe();
-
-        loop {
-            tokio::select! {
-                accept_result = listener.accept() => {
-                    let stream = accept_result?;
-                    spawn_connection(self.clone(), stream, is_admin);
-                }
-                _ = shutdown_receiver.recv() => break,
-            }
-        }
-
-        Ok(())
-    }
-
-    #[cfg(unix)]
-    /// Accept native protocol connections from a Unix-domain socket listener.
-    ///
-    /// # Errors
-    ///
-    /// Returns an I/O error when accept fails.
-    pub async fn run_uds_listener(
-        self: Arc<Self>,
-        listener: tokio::net::UnixListener,
-        is_admin: bool,
-    ) -> Result<(), std::io::Error> {
-        self.run_listener(ServerListener::Unix(listener), is_admin)
-            .await
-    }
-
-    /// Handle one accepted connection until the peer closes or the server stops.
-    ///
-    /// # Errors
-    ///
-    /// Returns an I/O error when a read or write fails.
-    pub async fn handle_connection<Stream>(
-        self: Arc<Self>,
-        stream: Stream,
-        is_admin: bool,
-    ) -> Result<(), std::io::Error>
-    where
-        Stream: AsyncReadExt + AsyncWriteExt + Unpin + Send + 'static,
-    {
-        let mut read_buffer = BytesMut::with_capacity(READ_BUFFER_CAPACITY);
-        let (mut reader, writer) = tokio::io::split(stream);
-        let (watch_sender, mut watch_receiver) =
-            tokio::sync::mpsc::channel::<Message>(WATCH_CHANNEL_CAPACITY);
-        let mut session = ConnectionSession {
-            server: self,
-            writer,
-            watch_sender,
-            watch_task: None,
-            is_admin,
-        };
-        let mut read_chunk = [0u8; READ_BUFFER_CAPACITY];
-        let mut shutdown_receiver = session.server.shutdown_sender.subscribe();
-
-        loop {
-            tokio::select! {
-                read_result = reader.read(&mut read_chunk) => {
-                    let bytes_read = read_result?;
-                    if bytes_read == 0 {
-                        break;
-                    }
-                    read_buffer.extend_from_slice(&read_chunk[..bytes_read]);
-                    if !session.process_buffered_messages(&mut read_buffer).await? {
-                        return Ok(());
-                    }
-                }
-                Some(watch_message) = watch_receiver.recv() => {
-                    session.write_message(watch_message).await?;
-                }
-                _ = shutdown_receiver.recv() => {
-                    break;
-                }
-            }
-        }
-
-        session.stop_watch();
-        Ok(())
-    }
 }
 
-fn spawn_connection<Stream>(server: Arc<Server>, stream: Stream, is_admin: bool)
-where
-    Stream: AsyncReadExt + AsyncWriteExt + Unpin + Send + 'static,
-{
-    tokio::spawn(async move {
-        let _guard = ConnectionGuard::new(server.clone(), TransportKind::Native);
-        let _ = server.handle_connection(stream, is_admin).await;
-    });
+fn consistency_code(consistency: storkv_proto::Consistency) -> u8 {
+    consistency.to_wire().0
 }
 
-struct ConnectionSession<W> {
-    server: Arc<Server>,
-    writer: W,
-    watch_sender: tokio::sync::mpsc::Sender<Message>,
-    watch_task: Option<JoinHandle<()>>,
-    is_admin: bool,
-}
-
-impl<W: AsyncWrite + Unpin> ConnectionSession<W> {
-    async fn process_buffered_messages(
-        &mut self,
-        read_buffer: &mut BytesMut,
-    ) -> Result<bool, std::io::Error> {
-        loop {
-            let message = match Message::decode(read_buffer) {
-                Ok(Some(message)) => message,
-                Ok(None) => return Ok(true),
-                Err(wire_error) => {
-                    let error_response = Message::new_response(0, Response::Error(wire_error));
-                    self.write_message(error_response).await?;
-                    return Ok(false);
-                }
-            };
-            self.handle_message(message).await?;
-        }
-    }
-
-    async fn handle_message(&mut self, message: Message) -> Result<(), std::io::Error> {
-        let MessagePayload::Request(request) = message.payload else {
-            return Ok(());
-        };
-        self.server
-            .stats
-            .record_transport_request(TransportKind::Native.as_u8());
-        if request == Request::WatchSubscribe {
-            self.start_watch(message.request_id).await?;
-        } else {
-            let response = self.server.dispatch_request(request, self.is_admin);
-            self.write_message(Message::new_response(message.request_id, response))
-                .await?;
-        }
-        Ok(())
-    }
-
-    async fn start_watch(&mut self, request_id: u64) -> Result<(), std::io::Error> {
-        let watch_receiver = self.server.db.watch();
-        let watch_sender = self.watch_sender.clone();
-        self.watch_task = Some(tokio::task::spawn_blocking(move || {
-            while let Ok(event) = watch_receiver.recv() {
-                let Some(wire_event) = wire_change_event(event) else {
-                    continue;
-                };
-                let response = Message::new_response(request_id, Response::WatchEvent(wire_event));
-                if watch_sender.blocking_send(response).is_err() {
-                    break;
-                }
-            }
-        }));
-        self.write_message(Message::new_response(request_id, Response::Empty))
-            .await
-    }
-
-    async fn write_message(&mut self, message: Message) -> Result<(), std::io::Error> {
-        self.writer.write_all(&message.encode()).await
-    }
-
-    fn stop_watch(&mut self) {
-        if let Some(handle) = self.watch_task.take() {
-            handle.abort();
-        }
-    }
-}
-
-fn wire_change_event(event: storkv_core::watch::ChangeEvent) -> Option<WireChangeEvent> {
-    match event {
-        storkv_core::watch::ChangeEvent::Put {
-            scope_id,
-            key,
-            value,
-            seq,
-        } => Some(WireChangeEvent::Put {
-            scope_id,
-            key,
-            value,
-            seq,
-        }),
-        storkv_core::watch::ChangeEvent::Delete { scope_id, key, seq } => {
-            Some(WireChangeEvent::Delete { scope_id, key, seq })
-        }
-        storkv_core::watch::ChangeEvent::DropScope { scope_id, seq } => {
-            Some(WireChangeEvent::DropScope { scope_id, seq })
-        }
-        _ => None,
-    }
+fn now_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_millis() as u64)
+        .unwrap_or(0)
 }

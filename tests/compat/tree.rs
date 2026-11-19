@@ -1,5 +1,3 @@
-use storkv_core::compat::KvEngine;
-
 use crate::common::TempDb;
 
 #[test]

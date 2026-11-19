@@ -1,5 +1,5 @@
 use crate::common;
-use storkv_core::{ScopeOptions, StorKvError};
+use storkv_core::{ScopeOptions, StorkvError};
 
 #[test]
 fn test_occ_conflict_detection_and_blind_writes() {
@@ -36,7 +36,7 @@ fn test_occ_conflict_detection_and_blind_writes() {
         .unwrap();
     let result = transaction2.commit();
     assert!(
-        matches!(result, Err(StorKvError::WriteConflict { .. })),
+        matches!(result, Err(StorkvError::WriteConflict { .. })),
         "tx2 must abort with WriteConflict because ReadSet was concurrently modified"
     );
 

@@ -127,7 +127,7 @@ fn test_every_prefix_of_every_representative_frame() {
         ),
         Message::new_response(
             5,
-            Response::Error(storkv_proto::StorKvWireError::InvalidOperation("x".into())),
+            Response::Error(storkv_proto::StorkvWireError::InvalidOperation("x".into())),
         ),
     ];
 

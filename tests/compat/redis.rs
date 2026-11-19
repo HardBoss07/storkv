@@ -1,4 +1,123 @@
+use std::time::Duration;
+
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream;
+use tokio::time::timeout;
+
 use crate::support::{RedisClient, Resp, spawn};
+
+#[tokio::test]
+async fn redis_inline_line_over_64_kib_is_rejected() {
+    let server = spawn("compat_redis_inline_limit").await;
+    let mut stream = TcpStream::connect(&server.redis_addr)
+        .await
+        .expect("redis connect");
+    let oversized = vec![b'a'; 70 * 1024];
+    stream
+        .write_all(&oversized)
+        .await
+        .expect("write oversized inline command");
+
+    let mut reply = Vec::new();
+    timeout(Duration::from_secs(5), stream.read_to_end(&mut reply))
+        .await
+        .expect("inline rejection timeout")
+        .expect("inline rejection read");
+    let text = String::from_utf8_lossy(&reply);
+    assert!(
+        text.contains("Protocol error") && text.contains("inline command too long"),
+        "unexpected reply: {text}"
+    );
+}
+
+#[tokio::test]
+async fn redis_glob_match_completes_on_adversarial_pattern() {
+    let server = spawn("compat_redis_glob_dos").await;
+    let mut client = RedisClient::connect(&server.redis_addr).await;
+
+    let key = "a".repeat(512);
+    assert_eq!(
+        client.command(&[b"SET", key.as_bytes(), b"value"]).await,
+        Resp::Status("OK".into())
+    );
+
+    let mut pattern = String::new();
+    for _ in 0..40 {
+        pattern.push_str("*a");
+    }
+    pattern.push('b');
+
+    let response = timeout(
+        Duration::from_secs(5),
+        client.command(&[b"KEYS", pattern.as_bytes()]),
+    )
+    .await
+    .expect("KEYS must not run for an exponential time");
+    assert_eq!(response, Resp::Array(Some(Vec::new())));
+}
+
+#[tokio::test]
+async fn redis_flush_is_denied_under_strict_admin() {
+    let server = spawn("compat_redis_strict_flush").await;
+    server.server.set_strict_admin(true);
+    let mut client = RedisClient::connect(&server.redis_addr).await;
+
+    assert_eq!(
+        client.command(&[b"SET", b"kept", b"value"]).await,
+        Resp::Status("OK".into())
+    );
+    match client.command(&[b"FLUSHALL"]).await {
+        Resp::Error(message) => assert!(message.contains("NOPERM"), "unexpected error: {message}"),
+        other => panic!("FLUSHALL must be denied, got {other:?}"),
+    }
+    assert_eq!(
+        client.command(&[b"GET", b"kept"]).await,
+        Resp::Bulk(Some(b"value".to_vec()))
+    );
+
+    match client.command(&[b"FLUSHDB"]).await {
+        Resp::Error(message) => assert!(message.contains("NOPERM"), "unexpected error: {message}"),
+        other => panic!("FLUSHDB must be denied, got {other:?}"),
+    }
+    assert_eq!(
+        client.command(&[b"GET", b"kept"]).await,
+        Resp::Bulk(Some(b"value".to_vec()))
+    );
+}
+
+#[tokio::test]
+async fn redis_flush_removes_all_keys() {
+    let server = spawn("compat_redis_flush_keys").await;
+    let mut client = RedisClient::connect(&server.redis_addr).await;
+
+    assert_eq!(
+        client.command(&[b"SET", b"gone", b"value"]).await,
+        Resp::Status("OK".into())
+    );
+    assert_eq!(
+        client.command(&[b"FLUSHALL"]).await,
+        Resp::Status("OK".into())
+    );
+    assert_eq!(
+        client.command(&[b"GET", b"gone"]).await,
+        Resp::Bulk(None),
+        "GET must return nil after FLUSHALL"
+    );
+
+    assert_eq!(
+        client.command(&[b"SET", b"gone", b"value"]).await,
+        Resp::Status("OK".into())
+    );
+    assert_eq!(
+        client.command(&[b"FLUSHDB"]).await,
+        Resp::Status("OK".into())
+    );
+    assert_eq!(
+        client.command(&[b"GET", b"gone"]).await,
+        Resp::Bulk(None),
+        "GET must return nil after FLUSHDB"
+    );
+}
 
 #[tokio::test]
 async fn redis_string_commands_and_ttl() {

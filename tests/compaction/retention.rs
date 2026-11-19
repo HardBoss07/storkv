@@ -17,6 +17,7 @@ fn test_retention_modes_leveled_and_fifo() {
                     compaction_style: CompactionStyle::Fifo,
                 },
                 prefix_bloom_len: None,
+                storage_mode: storkv_core::StorageMode::Disk,
             },
         )
         .unwrap();

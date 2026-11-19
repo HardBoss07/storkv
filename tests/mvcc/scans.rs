@@ -1,7 +1,7 @@
 use crate::common;
 use bytes::Bytes;
 use std::time::Duration;
-use storkv_core::ScopeOptions;
+use storkv_core::{Db, DbOptions, ScopeOptions};
 
 #[test]
 fn test_delete_range_and_scans() {
@@ -105,5 +105,84 @@ fn test_range_tombstone_boundary_semantics() {
             b"a8".as_slice(),
             b"a9".as_slice(),
         ]
+    );
+}
+
+#[test]
+fn point_get_honors_range_tombstone_and_reinsert() {
+    let temp = common::TempDb::new("mvcc_range_get");
+    let db = temp.db();
+    let scope = db
+        .create_scope("range_get", ScopeOptions::default())
+        .unwrap();
+
+    db.put(&scope, b"a", b"one").unwrap();
+    db.put(&scope, b"b", b"two").unwrap();
+    db.put(&scope, b"c", b"three").unwrap();
+    db.delete_range(&scope, b"a", b"c").unwrap();
+
+    assert_eq!(db.get(&scope, b"a").unwrap(), None);
+    assert_eq!(db.get(&scope, b"b").unwrap(), None);
+    assert_eq!(
+        db.get(&scope, b"c").unwrap(),
+        Some(Bytes::from_static(b"three"))
+    );
+
+    db.put(&scope, b"b", b"new").unwrap();
+    assert_eq!(
+        db.get(&scope, b"b").unwrap(),
+        Some(Bytes::from_static(b"new")),
+        "a newer write must survive an older range tombstone"
+    );
+}
+
+#[test]
+fn point_get_honors_range_tombstone_after_flush_and_reopen() {
+    let mut temp = common::TempDb::new("mvcc_range_reopen");
+    {
+        let db = temp.db();
+        let scope = db
+            .create_scope("range_reopen", ScopeOptions::default())
+            .unwrap();
+        for index in 0..20 {
+            db.put(&scope, format!("key:{:02}", index).as_bytes(), b"value")
+                .unwrap();
+        }
+        db.delete_range(&scope, b"key:05", b"key:15").unwrap();
+        let scope_arc = db
+            .inner()
+            .scopes
+            .read()
+            .get(&scope.scope_id)
+            .cloned()
+            .unwrap();
+        db.inner().flush_scope_memtable(&scope_arc).unwrap();
+    }
+    temp.close();
+
+    let reopened = Db::open(&temp.path, DbOptions::default()).unwrap();
+    let scope_id = *reopened
+        .inner()
+        .scope_names
+        .read()
+        .get("range_reopen")
+        .expect("scope must survive reopen");
+    let scope = storkv_core::ScopeHandle {
+        scope_id,
+        name: "range_reopen".into(),
+    };
+    assert_eq!(
+        reopened.get(&scope, b"key:04").unwrap(),
+        Some(Bytes::from_static(b"value"))
+    );
+    assert_eq!(
+        reopened.get(&scope, b"key:05").unwrap(),
+        None,
+        "the tombstone must survive flush and reopen"
+    );
+    assert_eq!(reopened.get(&scope, b"key:14").unwrap(), None);
+    assert_eq!(
+        reopened.get(&scope, b"key:15").unwrap(),
+        Some(Bytes::from_static(b"value"))
     );
 }

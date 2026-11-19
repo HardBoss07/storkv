@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use storkv_core::backup::{self, BackupKind, BackupReport, BackupStatus, BackupVerifyReport};
 use storkv_proto::{
-    Response, StorKvWireError, WireBackupEntry, WireBackupKind, WireBackupReport, WireBackupStatus,
+    Response, StorkvWireError, WireBackupEntry, WireBackupKind, WireBackupReport, WireBackupStatus,
     WireBackupVerifyReport,
 };
 
@@ -53,7 +53,7 @@ impl Server {
 }
 
 fn not_configured() -> Response {
-    Response::Error(StorKvWireError::InvalidOperation(
+    Response::Error(StorkvWireError::InvalidOperation(
         "auto-backup is not configured".into(),
     ))
 }

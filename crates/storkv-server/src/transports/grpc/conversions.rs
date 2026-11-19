@@ -121,6 +121,13 @@ pub(super) fn convert_event(event: storkv_core::watch::ChangeEvent) -> Option<Ch
             value: Vec::new(),
             seq,
         }),
+        storkv_core::watch::ChangeEvent::InvalidateScope { scope_id, seq } => Some(ChangeEvent {
+            kind: 3,
+            scope_id,
+            key: Vec::new(),
+            value: Vec::new(),
+            seq,
+        }),
         _ => None,
     }
 }

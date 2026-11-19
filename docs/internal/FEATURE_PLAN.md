@@ -201,7 +201,7 @@ impl AutoBackupHandle {
 }
 ```
 
-`AutoBackupHandle` owns the worker `JoinHandle` and an `Arc<AtomicBool>` shutdown flag. `Db` keeps at most one controller in a `Mutex<Option<...>>`; `Drop` sends shutdown. A second `start_auto_backup` returns `StorKvError::InvalidOperation("auto backup already running")`.
+`AutoBackupHandle` owns the worker `JoinHandle` and an `Arc<AtomicBool>` shutdown flag. `Db` keeps at most one controller in a `Mutex<Option<...>>`; `Drop` sends shutdown. A second `start_auto_backup` returns `StorkvError::InvalidOperation("auto backup already running")`.
 
 ### 2.4 Scheduler data flow
 
@@ -230,7 +230,7 @@ impl AutoBackupHandle {
 
 - Full backups call `DbInner::checkpoint` into `<backup_root>/.tmp/full-<timestamp_ms>-<seq>/`, then atomically rename into `generations/`.
 - Sealed WAL detection is poll-based against `WalManager::current_file_num()` every second. No change to `WalManager`'s public surface or WAL format is required. The first tick records the baseline segment number so pre-existing segments are not re-shipped.
-- No `.unwrap()`/`.expect()`: every IO, channel, and join result maps into `StorKvError`; worker panics are reported as `backups_failed_total` + `last_error` rather than propagating.
+- No `.unwrap()`/`.expect()`: every IO, channel, and join result maps into `StorkvError`; worker panics are reported as `backups_failed_total` + `last_error` rather than propagating.
 - Counter updates use relaxed atomics on the existing `Telemetry` struct. Timestamps and last sequence use `AtomicU64`.
 
 ### 2.5 Sink trait
@@ -259,7 +259,7 @@ pub trait BackupSink: Send + Sync {
 - Archive framing: `STORKBAK` magic (8 bytes) + `u16` format version (1) + repeated entries `[u8 kind][u32 BE path_len][path][u64 LE data_len][u32 LE crc32c][data]` + `u8` end marker. Kind `1` = full generation file, `2` = WAL segment, `3` = manifest.
 - Compression is applied to the whole entry stream with `zstd` or `lz4_flex` (both already workspace dependencies); the archive header records the codec so `restore` can decompress.
 - Pipe sinks are append-only: `prune` returns `SinkStatus::RemoteManaged` / empty plan. Operators use object-store lifecycle rules. This is documented explicitly.
-- Child exit status, broken pipe, and write timeouts map to `StorKvError::BackupSink { sink, detail }`.
+- Child exit status, broken pipe, and write timeouts map to `StorkvError::BackupSink { sink, detail }`.
 
 ### 2.6 Backup on-disk contract (new files only)
 
@@ -338,7 +338,7 @@ restore_from_backup(root, target, target_seq):
   1. Reject target if it already exists and is non-empty (no destructive overwrite).
   2. Load + schema-validate every BACKUP_MANIFEST.json; validate sidecar CRCs.
   3. Choose base = retained full generation with max_seq <= target_seq (latest if target_seq is None).
-     - If none, return StorKvError::TargetSequenceUnavailable { requested, oldest, newest }.
+     - If none, return StorkvError::TargetSequenceUnavailable { requested, oldest, newest }.
   4. Verify the base: every file CRC32C, every SSTable footer/block via SstReader,
      MANIFEST header + VersionEdit replay, CURRENT points at an existing manifest.
   5. Materialize the base into <target>.restoring-<pid>/ (copy, not hard-link, so backup
@@ -396,7 +396,7 @@ Decoder reads them only when `source.len() >= 40`; otherwise defaults all five t
 
 `WireAdminStats` gains a trailing optional block: `u8 present` + `u32 transport_count` + repeated `{ u8 kind, u64 connections_total, u64 active_connections, u64 requests_total }` + backup counters. Old decoders ignore it; new decoders default to an empty transport list.
 
-Error additions to `StorKvWireError` and `StorKvError` (append-only variants):
+Error additions to `StorkvWireError` and `StorkvError` (append-only variants):
 `BackupSink { sink: String, detail: String }`, `BackupGenerationNotFound(String)`, `BackupCorruption { path: String, detail: String }`, `TargetSequenceUnavailable { requested: u64, oldest: u64, newest: u64 }`, `AutoBackupAlreadyRunning`, `AutoBackupNotRunning`, `RestoreTargetNotEmpty(PathBuf)`.
 
 ### 2.11 CLI / TUI integration
@@ -435,7 +435,7 @@ storkvctl migrate --from-redis redis://127.0.0.1:6379 --sock ... --scope migrate
 - `ServerConfig` gains `strict_admin: bool`, transport listen addresses, and optional admin token.
 - `Request::is_admin_only()` marks `Checkpoint`, `Compact`, `CreateSnapshot`, `UnpinSnapshot`, `TriggerBackup`, `VerifyBackup`, `DropScope`, and `ListBackups`.
 - When `strict_admin == false` (default), behavior is exactly today's: every connection may issue every request.
-- When `strict_admin == true`, `dispatch_request` returns `Response::Error(StorKvWireError::Unauthorized)` for admin-only requests on a connection whose `is_admin` is false. Native admin TCP/UDS listeners pass `is_admin = true`; native client listeners pass `false`.
+- When `strict_admin == true`, `dispatch_request` returns `Response::Error(StorkvWireError::Unauthorized)` for admin-only requests on a connection whose `is_admin` is false. Native admin TCP/UDS listeners pass `is_admin = true`; native client listeners pass `false`.
 - HTTP/WS/gRPC connections default to `is_admin = false`, or `true` when `--http-admin` / `--ws-admin` / `--grpc-admin` is set or a valid `--admin-token` is presented (`x-storkv-admin-token` header / `authorization: Bearer ...` metadata). This preserves existing native behavior while making remote admin opt-in.
 
 ### 3.2 Server module map
@@ -545,7 +545,7 @@ message BackupStatusReply { bool enabled = 1; uint64 last_backup_timestamp_ms = 
 message VerifyBackupRequest { bool has_target_seq = 1; uint64 target_seq = 2; }
 message VerifyBackupReply { uint32 generations_checked = 1; uint64 files_checked = 2; uint64 bytes_checked = 3; repeated string errors = 4; }
 
-service StorKv {
+service Storkv {
   rpc Ping(Empty) returns (PingReply);
   rpc Health(Empty) returns (PingReply);
   rpc Get(GetRequest) returns (GetReply);
@@ -562,7 +562,7 @@ service StorKv {
   rpc Telemetry(Empty) returns (TelemetryReply);
 }
 
-service StorKvAdmin {
+service StorkvAdmin {
   rpc AdminStats(Empty) returns (TelemetryReply);
   rpc Checkpoint(CheckpointRequest) returns (Empty);
   rpc Compact(Empty) returns (Empty);
@@ -641,7 +641,7 @@ RESP codec:
 - Encoder supports RESP2 and RESP3 (map, set, double, boolean, push).
 - Protocol limits: bulk ≤ 512 MiB, array ≤ 1M elements, nesting ≤ 32; violations return `-ERR Protocol error`.
 - Unknown commands: `-ERR unknown command '<name>'`.
-- All errors are structured `StorKvError` → RESP `-ERR`/`-WRONGTYPE`/`-EXECABORT`; no panics.
+- All errors are structured `StorkvError` → RESP `-ERR`/`-WRONGTYPE`/`-EXECABORT`; no panics.
 
 Exact TTL support (no new on-disk fields):
 

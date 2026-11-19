@@ -14,6 +14,7 @@ fn test_directory_structure_and_hex_naming() {
                 durability: EngineDurability::StrictFsync,
                 retention: Retention::Permanent,
                 prefix_bloom_len: None,
+                storage_mode: storkv_core::StorageMode::Disk,
             },
         )
         .unwrap();
@@ -27,6 +28,7 @@ fn test_directory_structure_and_hex_naming() {
                 },
                 retention: Retention::Permanent,
                 prefix_bloom_len: None,
+                storage_mode: storkv_core::StorageMode::Disk,
             },
         )
         .unwrap();

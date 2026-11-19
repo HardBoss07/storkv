@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use storkv_proto::{Response, StorKvWireError, WireTxMutation};
+use storkv_proto::{Response, StorkvWireError, WireTxMutation};
 
 use super::conversions::core_error_to_wire;
 use crate::server::Server;
@@ -53,7 +53,7 @@ fn apply_tx_mutation(
     scope_id: u32,
     user_key: Bytes,
     mutation: WireTxMutation,
-) -> Result<(), StorKvWireError> {
+) -> Result<(), StorkvWireError> {
     match mutation {
         WireTxMutation::Put { val, expires_at_ms } => {
             context.put(scope_id, user_key, val, expires_at_ms);
@@ -74,7 +74,7 @@ fn apply_tx_mutation(
             );
             Ok(())
         }
-        _ => Err(StorKvWireError::InvalidOperation(
+        _ => Err(StorkvWireError::InvalidOperation(
             "unsupported transaction mutation".into(),
         )),
     }

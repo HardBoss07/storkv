@@ -3,7 +3,7 @@ use std::fs;
 use std::sync::Arc;
 use storkv_core::manifest::ManifestManager;
 use storkv_core::vfs::PosixFs;
-use storkv_core::{Db, DbOptions, StorKvError};
+use storkv_core::{Db, DbOptions, StorkvError};
 
 #[test]
 fn test_atomic_manifest_rolling_current() {
@@ -44,7 +44,7 @@ fn test_corrupted_manifest_returns_corruption_not_panic() {
 
     let reopened = Db::open(&temp.path, DbOptions::default());
     assert!(
-        matches!(reopened, Err(StorKvError::Corruption(_))),
+        matches!(reopened, Err(StorkvError::Corruption(_))),
         "corrupted manifest must return Corruption, got {:?}",
         reopened.err()
     );
@@ -68,7 +68,7 @@ fn test_current_pointing_at_missing_or_invalid_manifest_fails_cleanly() {
     fs::write(invalid.join("CURRENT"), b"not-a-manifest\n").unwrap();
     let result = Db::open(&invalid, DbOptions::default());
     assert!(
-        matches!(result, Err(StorKvError::Corruption(_))),
+        matches!(result, Err(StorkvError::Corruption(_))),
         "invalid CURRENT must return Corruption"
     );
     let _ = fs::remove_dir_all(&invalid);
@@ -84,13 +84,13 @@ fn test_manifest_manager_rejects_bad_magic_and_short_header() {
     fs::write(root.join("MANIFEST-0000000000000002"), b"SHORT").unwrap();
     fs::write(root.join("CURRENT"), b"MANIFEST-0000000000000002\n").unwrap();
     let short = ManifestManager::open(fs_posix.clone(), &root);
-    assert!(matches!(short, Err(StorKvError::Corruption(_))));
+    assert!(matches!(short, Err(StorkvError::Corruption(_))));
 
     let mut header = b"BADMAGIC".to_vec();
     header.extend_from_slice(&[0u8; 8]);
     fs::write(root.join("MANIFEST-0000000000000002"), &header).unwrap();
     let bad_magic = ManifestManager::open(fs_posix.clone(), &root);
-    assert!(matches!(bad_magic, Err(StorKvError::Corruption(_))));
+    assert!(matches!(bad_magic, Err(StorkvError::Corruption(_))));
 
     let _ = fs::remove_dir_all(&root);
 }

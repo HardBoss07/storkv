@@ -137,6 +137,11 @@ async fn memcached_gets_cas_and_meta_commands() {
     let stats = client.send(b"stats\r\n", b"END\r\n").await;
     assert!(stats.starts_with(b"STAT "));
     assert_eq!(client.send(b"flush_all\r\n", b"\r\n").await, b"OK\r\n");
+    assert_eq!(
+        client.send(b"get item\r\n", b"END\r\n").await,
+        b"END\r\n",
+        "get must miss every key after flush_all"
+    );
 }
 
 #[tokio::test]
@@ -155,5 +160,27 @@ async fn memcached_expiry_removes_entries() {
     assert_eq!(
         client.send(b"get ephemeral\r\n", b"END\r\n").await,
         b"END\r\n"
+    );
+}
+
+#[tokio::test]
+async fn memcached_flush_all_is_denied_under_strict_admin() {
+    let server = spawn("compat_memcached_strict_flush").await;
+    server.server.set_strict_admin(true);
+    let mut client = MemcachedClient::connect(&server.memcached_addr).await;
+
+    assert_eq!(
+        client.send(b"set kept 0 0 5\r\nvalue\r\n", b"\r\n").await,
+        b"STORED\r\n"
+    );
+    let reply = client.send(b"flush_all\r\n", b"\r\n").await;
+    assert!(
+        reply.starts_with(b"CLIENT_ERROR"),
+        "flush_all must be denied: {:?}",
+        String::from_utf8_lossy(&reply)
+    );
+    assert_eq!(
+        client.send(b"get kept\r\n", b"END\r\n").await,
+        b"VALUE kept 0 5\r\nvalue\r\nEND\r\n"
     );
 }

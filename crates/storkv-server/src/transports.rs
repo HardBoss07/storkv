@@ -2,7 +2,7 @@
 //! Memcached protocols.
 //!
 //! Each front end converts its wire format into a [`storkv_proto::Request`] and
-//! calls [`crate::Server::dispatch_request`]. Per-transport counters are keyed
+//! calls `Server::dispatch_request`. Per-transport counters are keyed
 //! by [`TransportKind`].
 
 use std::sync::Arc;

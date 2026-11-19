@@ -40,6 +40,7 @@ fn test_wall_clock_ttl_read_invisibility() {
                     compaction_style: CompactionStyle::Fifo,
                 },
                 prefix_bloom_len: None,
+                storage_mode: storkv_core::StorageMode::Disk,
             },
         )
         .unwrap();

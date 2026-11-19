@@ -2,7 +2,7 @@ use crate::common;
 use bytes::Bytes;
 use std::sync::Arc;
 use storkv_proto::{
-    Request, Response, StorKvWireError, WireDurability, WireRetention, WireScopeOptions,
+    Request, Response, StorkvWireError, WireDurability, WireRetention, WireScopeOptions,
     WireTxMutation,
 };
 use storkv_server::Server;
@@ -96,7 +96,7 @@ async fn test_cross_scope_transactions_and_occ_conflict() {
     .await;
 
     match tx_response {
-        Response::Error(StorKvWireError::WriteConflict { .. }) => {}
+        Response::Error(StorkvWireError::WriteConflict { .. }) => {}
         other => panic!("Expected WriteConflict error, got {:?}", other),
     }
 

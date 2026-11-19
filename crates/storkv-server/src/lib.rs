@@ -18,10 +18,11 @@ mod config;
 mod dispatch;
 mod listener;
 mod metrics;
+mod replication;
 mod server;
 pub mod transports;
 
-pub use config::ServerConfig;
+pub use config::{ReplicationRole, ServerConfig};
 pub use dispatch::core_error_to_wire;
 pub use listener::{AcceptedStream, ServerListener};
 pub use server::Server;
