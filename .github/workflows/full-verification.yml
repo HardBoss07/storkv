@@ -1,0 +1,53 @@
+name: Full verification
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: full-verification-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  verification:
+    name: Headers, full tests, dist, bindings
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 23
+
+      - name: Verify generated C header
+        run: cargo xtask verify-headers
+
+      - name: Full test tier
+        run: cargo xtask test full
+
+      - name: Build release bundle
+        run: cargo xtask dist --strict-sdks
+
+      - name: Language binding tests
+        run: cargo xtask test bindings --with-server
