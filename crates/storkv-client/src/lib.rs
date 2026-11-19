@@ -29,13 +29,15 @@
 
 mod async_client;
 mod backend;
+/// gRPC transport helpers.
 pub mod grpc;
 mod sync_client;
 mod transaction;
 mod transport;
 mod uri;
 
-pub use async_client::{AsyncClient, WatchStream};
+pub use async_client::{AsyncClient, ReplicationStream, WatchStream};
+pub use storkv_proto::Consistency;
 pub use sync_client::SyncClient;
 pub use transaction::AsyncTransaction;
 pub use transport::{ClientError, ClientResult, ClientStream, ScopeHandle};

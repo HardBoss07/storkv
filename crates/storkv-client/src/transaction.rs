@@ -12,8 +12,8 @@ type WriteSet = BTreeMap<(u32, Bytes), WireTxMutation>;
 
 /// Client-side transaction with read-your-own-writes and OCC commit.
 pub struct AsyncTransaction {
-    client: AsyncClient,
     read_seq: u64,
+    client: AsyncClient,
     read_set: ReadSet,
     write_set: WriteSet,
 }
@@ -42,6 +42,35 @@ impl AsyncTransaction {
         }
 
         self.client.get(scope, key).await
+    }
+
+    /// Read an ordered key range and add every returned key to the OCC read set.
+    pub async fn scan<K: AsRef<[u8]>>(
+        &mut self,
+        scope: &ScopeHandle,
+        start_key: Option<K>,
+        end_key: Option<K>,
+    ) -> ClientResult<Vec<(Bytes, Bytes)>> {
+        let entries = self.client.scan(scope, start_key, end_key).await?;
+        self.record_scan(scope, &entries);
+        Ok(entries)
+    }
+
+    /// Read every key with `prefix` and add every returned key to the OCC read set.
+    pub async fn scan_prefix<K: AsRef<[u8]>>(
+        &mut self,
+        scope: &ScopeHandle,
+        prefix: K,
+    ) -> ClientResult<Vec<(Bytes, Bytes)>> {
+        let entries = self.client.scan_prefix(scope, prefix).await?;
+        self.record_scan(scope, &entries);
+        Ok(entries)
+    }
+
+    fn record_scan(&mut self, scope: &ScopeHandle, entries: &[(Bytes, Bytes)]) {
+        for (key, _) in entries {
+            self.read_set.insert((scope.scope_id, key.clone()));
+        }
     }
 
     /// Read-your-own-writes: inspect the pending write set before the server.

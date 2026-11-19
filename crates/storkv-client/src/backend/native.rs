@@ -79,4 +79,20 @@ impl NativeBackend {
             self.read_buf.extend_from_slice(&chunk[..bytes_read]);
         }
     }
+
+    pub(crate) async fn next_replication(&mut self) -> ClientResult<Option<Response>> {
+        loop {
+            if let Some(message) = Message::decode(&mut self.read_buf)? {
+                if let MessagePayload::Response(response) = message.payload {
+                    return Ok(Some(response));
+                }
+            }
+            let mut chunk = [0u8; READ_CHUNK_SIZE];
+            let bytes_read = self.stream.read(&mut chunk).await?;
+            if bytes_read == 0 {
+                return Ok(None);
+            }
+            self.read_buf.extend_from_slice(&chunk[..bytes_read]);
+        }
+    }
 }

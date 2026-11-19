@@ -1,7 +1,7 @@
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use storkv_proto::StorKvWireError;
+use storkv_proto::StorkvWireError;
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::net::TcpStream;
@@ -64,7 +64,7 @@ impl AsyncWrite for ClientStream {
 pub enum ClientError {
     /// The server returned a protocol error.
     #[error("Server returned error: {0}")]
-    Server(#[from] StorKvWireError),
+    Server(#[from] StorkvWireError),
     /// An input or output operation failed.
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),

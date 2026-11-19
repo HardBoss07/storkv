@@ -51,5 +51,6 @@ tonic-prost.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+rcgen.workspace = true
 storkv-core.workspace = true
 storkv-server.workspace = true

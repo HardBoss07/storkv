@@ -47,10 +47,18 @@ impl Backend {
         }
     }
 
-    pub(crate) async fn start_watch(&mut self, request_id: u64) -> ClientResult<()> {
+    pub(crate) async fn start_watch(
+        &mut self,
+        request_id: u64,
+        from_seq: Option<u64>,
+    ) -> ClientResult<()> {
         match self {
             Backend::Native(_) | Backend::Ws(_) => {
-                let response = self.send(request_id, Request::WatchSubscribe).await?;
+                let request = match from_seq {
+                    Some(from_seq) => Request::WatchFrom { from_seq },
+                    None => Request::WatchSubscribe,
+                };
+                let response = self.send(request_id, request).await?;
                 if response == Response::Empty {
                     Ok(())
                 } else {
@@ -59,7 +67,7 @@ impl Backend {
                     )))
                 }
             }
-            Backend::Grpc(grpc) => grpc.start_watch().await,
+            Backend::Grpc(grpc) => grpc.start_watch(from_seq).await,
             Backend::Http(_) => Err(ClientError::Unsupported(
                 "watch is not available over plain HTTP".into(),
             )),
@@ -75,6 +83,39 @@ impl Backend {
             Backend::Grpc(grpc) => grpc.next_event().await,
             Backend::Http(_) => Err(ClientError::Unsupported(
                 "watch is not available on this transport".into(),
+            )),
+        }
+    }
+
+    pub(crate) async fn start_replication(
+        &mut self,
+        request_id: u64,
+        from_seq: u64,
+    ) -> ClientResult<()> {
+        match self {
+            Backend::Native(_) => {
+                let response = self
+                    .send(request_id, Request::ReplicationStart { from_seq })
+                    .await?;
+                if response == Response::Empty {
+                    Ok(())
+                } else {
+                    Err(ClientError::Protocol(format!(
+                        "Unexpected response: {response:?}"
+                    )))
+                }
+            }
+            _ => Err(ClientError::Unsupported(
+                "replication needs the native transport".into(),
+            )),
+        }
+    }
+
+    pub(crate) async fn next_replication(&mut self) -> ClientResult<Option<Response>> {
+        match self {
+            Backend::Native(native) => native.next_replication().await,
+            _ => Err(ClientError::Unsupported(
+                "replication needs the native transport".into(),
             )),
         }
     }

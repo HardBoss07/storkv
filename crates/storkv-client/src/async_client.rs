@@ -2,8 +2,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use storkv_proto::{
-    Request, Response, WireAdminStats, WireBackupEntry, WireBackupReport, WireBackupStatus,
-    WireBackupVerifyReport, WireTelemetrySnapshot,
+    Consistency, Request, Response, WireAdminStats, WireBackupEntry, WireBackupReport,
+    WireBackupStatus, WireBackupVerifyReport, WireTelemetrySnapshot,
 };
 use tokio::sync::Mutex;
 
@@ -69,11 +69,19 @@ impl AsyncClient {
     /// Native and WebSocket connections receive `WatchEvent` frames on the same
     /// connection; the returned stream decodes them until it is dropped.
     pub async fn subscribe_watch(&self) -> ClientResult<WatchStream> {
+        self.subscribe_watch_from(None).await
+    }
+
+    /// Resume a watch subscription after the sequence `from_seq`.
+    ///
+    /// Retained server events after the cursor arrive before live events.
+    /// Native, WebSocket, and gRPC transports support cursor replay.
+    pub async fn subscribe_watch_from(&self, from_seq: Option<u64>) -> ClientResult<WatchStream> {
         let backend = self.backend.clone();
         let request_id = self.next_request_id();
         {
             let mut backend = backend.lock().await;
-            backend.start_watch(request_id).await?;
+            backend.start_watch(request_id, from_seq).await?;
         }
         Ok(WatchStream { backend })
     }
@@ -81,6 +89,31 @@ impl AsyncClient {
     /// Send a ping and require a pong reply.
     pub async fn ping(&self) -> ClientResult<()> {
         expect_variant(self.send_request(Request::Ping).await?, Response::Pong)
+    }
+
+    /// Select the consistency level for later data operations on this server.
+    pub async fn set_consistency(&self, consistency: Consistency) -> ClientResult<()> {
+        expect_variant(
+            self.send_request(Request::ConfigureConsistency { consistency })
+                .await?,
+            Response::Empty,
+        )
+    }
+
+    /// Start a replication frame stream after the sequence `from_seq`.
+    ///
+    /// Only the native transport supports replication.
+    pub async fn subscribe_replication_from(
+        &self,
+        from_seq: u64,
+    ) -> ClientResult<ReplicationStream> {
+        let backend = self.backend.clone();
+        let request_id = self.next_request_id();
+        {
+            let mut backend = backend.lock().await;
+            backend.start_replication(request_id, from_seq).await?;
+        }
+        Ok(ReplicationStream { backend })
     }
 
     /// Run a health check and require a healthy reply.
@@ -201,6 +234,20 @@ impl WatchStream {
     pub async fn next(&mut self) -> ClientResult<Option<storkv_proto::WireChangeEvent>> {
         let mut backend = self.backend.lock().await;
         backend.next_watch_event().await
+    }
+}
+
+/// Stream of replication frames pushed by a primary server.
+pub struct ReplicationStream {
+    backend: Arc<Mutex<Backend>>,
+}
+
+impl ReplicationStream {
+    /// Receive the next replication response. Yields `None` when the
+    /// connection ends.
+    pub async fn next(&mut self) -> ClientResult<Option<Response>> {
+        let mut backend = self.backend.lock().await;
+        backend.next_replication().await
     }
 }
 
