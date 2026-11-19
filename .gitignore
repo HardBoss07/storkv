@@ -1,1 +1,60 @@
+# Rust / Cargo build artifacts
 target/
+
+# TypeScript / Node dependency downloads and build output
+bindings/ts/node_modules/
+bindings/ts/dist/
+bindings/ts/*.tsbuildinfo
+bindings/ts/*.tgz
+
+# Java compiled classes and build tools
+bindings/java/out/
+bindings/java/build/
+bindings/java/.gradle/
+bindings/java/**/*.class
+bindings/java/**/*.jar
+
+# Python virtual environments, packaging, and caches
+bindings/python/.venv/
+bindings/python/venv/
+bindings/python/build/
+bindings/python/dist/
+bindings/python/*.egg-info/
+bindings/python/**/__pycache__/
+bindings/python/**/*.py[cod]
+bindings/python/**/.pytest_cache/
+
+# C / C++ build artifacts and test binaries
+bindings/**/*.o
+bindings/**/*.obj
+bindings/**/*.exe
+bindings/**/*.dll
+bindings/**/*.so
+bindings/**/*.dylib
+bindings/**/*.lib
+bindings/**/*.exp
+bindings/**/*.ilk
+bindings/**/*.pdb
+bindings/c/test_c_ffi
+bindings/cpp/test_cpp_ffi
+
+# Local database data and scratch directories
+*.db
+*.wal
+*.sst
+!tests/format/fixtures/*.wal
+!tests/format/fixtures/*.sst
+/data/
+/tmp/
+/storkv-c-test-*/
+*.log
+diff.txt
+
+# Release packaging output (cargo xtask dist)
+/dist/
+
+# OS and editor metadata
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
