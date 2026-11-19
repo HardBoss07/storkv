@@ -15,6 +15,9 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
     ///
     /// Returns an error when the SSTable cannot be written or logged.
     pub fn flush_scope_memtable(&self, scope: &Arc<Scope<FS>>) -> crate::Result<()> {
+        if scope.options.storage_mode == crate::StorageMode::InMemory {
+            return Ok(());
+        }
         let memtable = scope.rotate_memtable();
         if memtable.is_empty() {
             return Ok(());
@@ -42,7 +45,7 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
         file_num: u64,
     ) -> crate::Result<SstFileMeta> {
         let sst_path = scope.scope_dir.join(format!("{:016x}.sst", file_num));
-        let mut file = self.fs.create_file(&sst_path)?;
+        let mut file = scope.fs.create_file(&sst_path)?;
 
         let mut writer = SstWriter::new(
             &mut file,
@@ -70,6 +73,8 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
 
 fn log_sst_file<FS: FileSystem>(db: &DbInner<FS>, sst_meta: SstFileMeta) -> crate::Result<()> {
     let mut edit = VersionEdit::new();
+    let next_seq = db.last_visible_seq.load(Ordering::Acquire);
+    edit.add(EditRecord::SetNextSequence(next_seq));
     edit.add(EditRecord::AddSstFile(sst_meta));
     db.manifest_mgr.log_edit(edit)
 }

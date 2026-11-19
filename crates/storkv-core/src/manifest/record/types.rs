@@ -32,29 +32,42 @@ pub enum CompactionStyleMode {
     Fifo = 1,
 }
 
+/// Storage residency mode stored in the manifest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StorageModeMode {
+    /// Every structure lives on disk.
+    Disk = 0,
+    /// Every structure lives in RAM and the WAL is skipped.
+    InMemory = 1,
+    /// Memtables and SSTables live in RAM and mutations use the disk WAL.
+    InMemoryPersistent = 2,
+}
+
 /// Persistent metadata of one scope.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScopeMeta {
-    // Widest fields first: two u64, one owning String, two u32, three 1-byte
-    // enums and a bool. Declaration order is not part of the on-disk format.
+    /// True after the scope is dropped.
+    pub dropped: bool,
+    /// Storage residency mode.
+    pub storage_mode: StorageModeMode,
+    /// Opaque scope identifier.
+    pub scope_id: u32,
+    /// Buffered durability sync interval in milliseconds.
+    pub sync_ms: u32,
+    // Fields ascend by binary width. Declaration order is not part of the
+    // on-disk format.
     /// Default key lifetime in milliseconds. `0` means no expiry.
     pub default_ttl_ms: u64,
     /// Sequence number at which the scope was dropped. `0` means live.
     pub drop_seq: u64,
     /// Unique scope name.
     pub name: String,
-    /// Opaque scope identifier.
-    pub scope_id: u32,
-    /// Buffered durability sync interval in milliseconds.
-    pub sync_ms: u32,
     /// Durability mode.
     pub durability: DurabilityMode,
     /// Retention mode.
     pub retention: RetentionMode,
     /// Compaction style.
     pub compaction_style: CompactionStyleMode,
-    /// True after the scope is dropped.
-    pub dropped: bool,
 }
 
 impl ScopeMeta {
@@ -67,7 +80,11 @@ impl ScopeMeta {
 /// Persistent metadata of one SSTable file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SstFileMeta {
-    // Five u64 counters, then two owning byte strings, then the identifiers.
+    /// Compaction level from L0 through L6.
+    pub level: u8,
+    /// Identifier of the owning scope.
+    pub scope_id: u32,
+    // Fields ascend by binary width.
     /// SSTable file number.
     pub file_num: u64,
     /// File size in bytes.
@@ -82,10 +99,6 @@ pub struct SstFileMeta {
     pub min_key: Bytes,
     /// Largest user key in the file.
     pub max_key: Bytes,
-    /// Identifier of the owning scope.
-    pub scope_id: u32,
-    /// Compaction level from L0 through L6.
-    pub level: u8,
 }
 
 impl SstFileMeta {
@@ -131,6 +144,8 @@ pub enum EditRecord {
         default_ttl_ms: u64,
         /// Compaction style code.
         compaction_style: u8,
+        /// Storage residency mode code.
+        storage_mode: u8,
         /// Unique scope name.
         name: String,
     },
@@ -165,5 +180,16 @@ pub enum EditRecord {
     UnpinSnapshot {
         /// Name of the snapshot to release.
         name: String,
+    },
+    /// Register a range tombstone in the persistent index.
+    AddRangeTombstone {
+        /// Identifier of the owning scope.
+        scope_id: u32,
+        /// Sequence number of the delete.
+        seq: u64,
+        /// Inclusive start key.
+        start_key: Bytes,
+        /// Exclusive end key.
+        end_key: Bytes,
     },
 }

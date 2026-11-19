@@ -9,5 +9,6 @@ mod state;
 pub use meta::KeyMeta;
 pub use options::{
     CompactionStyle, DEFAULT_MAX_WAL_PIN_AGE, DEFAULT_MAX_WAL_PIN_BYTES, Retention, ScopeOptions,
+    StorageMode,
 };
 pub use state::Scope;

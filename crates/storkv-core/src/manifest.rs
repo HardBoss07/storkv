@@ -10,6 +10,6 @@ pub use codec::VersionEdit;
 pub use manager::ManifestManager;
 pub use record::{
     CompactionStyleMode, DurabilityMode, EditRecord, MANIFEST_MAGIC, MANIFEST_VERSION,
-    RetentionMode, ScopeMeta, SnapshotMeta, SstFileMeta,
+    RetentionMode, ScopeMeta, SnapshotMeta, SstFileMeta, StorageModeMode,
 };
 pub use version_set::ManifestState;

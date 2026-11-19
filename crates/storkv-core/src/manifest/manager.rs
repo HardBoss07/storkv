@@ -5,7 +5,7 @@ use std::sync::atomic::AtomicU64;
 use bytes::BufMut;
 use bytes::BytesMut;
 
-use crate::error::{Result, StorKvError};
+use crate::error::{Result, StorkvError};
 use crate::vfs::{File, FileSystem};
 
 use super::codec::VersionEdit;
@@ -34,7 +34,7 @@ impl<FS: FileSystem> ManifestManager<FS> {
     ///
     /// # Errors
     ///
-    /// Returns [`StorKvError::Corruption`] on an invalid `CURRENT` file or
+    /// Returns [`StorkvError::Corruption`] on an invalid `CURRENT` file or
     /// manifest header, or an I/O error.
     pub fn open(fs: Arc<FS>, db_root: &Path) -> Result<Self> {
         let current_path = db_root.join(CURRENT_FILENAME);
@@ -112,10 +112,10 @@ fn read_current_filename<FS: FileSystem>(fs: &FS, current_path: &Path) -> Result
     let mut current_bytes = Vec::new();
     current_file.read_to_end(&mut current_bytes)?;
     let contents = String::from_utf8(current_bytes)
-        .map_err(|error| StorKvError::Corruption(error.to_string()))?;
+        .map_err(|error| StorkvError::Corruption(error.to_string()))?;
     let manifest_filename = contents.trim().to_string();
     if !manifest_filename.starts_with(MANIFEST_PREFIX) {
-        return Err(StorKvError::Corruption(
+        return Err(StorkvError::Corruption(
             "Invalid CURRENT file content".into(),
         ));
     }
@@ -125,7 +125,7 @@ fn read_current_filename<FS: FileSystem>(fs: &FS, current_path: &Path) -> Result
 fn parse_manifest_number(manifest_filename: &str) -> Result<u64> {
     let number_text = &manifest_filename[MANIFEST_PREFIX.len()..];
     u64::from_str_radix(number_text, 16)
-        .map_err(|_| StorKvError::Corruption("Invalid manifest file number in CURRENT".into()))
+        .map_err(|_| StorkvError::Corruption("Invalid manifest file number in CURRENT".into()))
 }
 
 fn read_manifest_bytes<FS: FileSystem>(fs: &FS, manifest_path: &Path) -> Result<Vec<u8>> {
@@ -137,10 +137,10 @@ fn read_manifest_bytes<FS: FileSystem>(fs: &FS, manifest_path: &Path) -> Result<
 
 fn validate_manifest_header(manifest_bytes: &[u8]) -> Result<()> {
     if manifest_bytes.len() < MANIFEST_HEADER_SIZE {
-        return Err(StorKvError::Corruption("Manifest header too short".into()));
+        return Err(StorkvError::Corruption("Manifest header too short".into()));
     }
     if &manifest_bytes[0..8] != MANIFEST_MAGIC {
-        return Err(StorKvError::Corruption("Invalid Manifest magic".into()));
+        return Err(StorkvError::Corruption("Invalid Manifest magic".into()));
     }
     Ok(())
 }

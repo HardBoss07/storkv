@@ -35,6 +35,7 @@ impl<FS: FileSystem> Scope<FS> {
         let mut versions = Vec::new();
 
         if collect_memtable_versions(
+            self,
             &self.active_memtable.read(),
             user_key,
             &search_start,
@@ -47,6 +48,7 @@ impl<FS: FileSystem> Scope<FS> {
 
         for memtable in self.flush_queue.all().iter().rev() {
             if collect_memtable_versions(
+                self,
                 memtable,
                 user_key,
                 &search_start,
@@ -100,7 +102,8 @@ fn user_key_search_start(user_key: &[u8]) -> Bytes {
     .encode()
 }
 
-fn collect_memtable_versions(
+fn collect_memtable_versions<FS: FileSystem>(
+    scope: &Scope<FS>,
     memtable: &MemTable,
     user_key: &[u8],
     search_start: &Bytes,
@@ -119,6 +122,9 @@ fn collect_memtable_versions(
             continue;
         }
         if is_expired(&internal_key, now_ms) {
+            continue;
+        }
+        if hidden_by_range(scope, user_key, &internal_key, read_seq) {
             continue;
         }
         let is_terminal = internal_key.value_type != ValueType::MergeOperand;
@@ -171,6 +177,9 @@ fn collect_file_versions<FS: FileSystem>(
         if is_expired(&internal_key, now_ms) {
             continue;
         }
+        if hidden_by_range(scope, user_key, &internal_key, read_seq) {
+            continue;
+        }
         let is_terminal = internal_key.value_type != ValueType::MergeOperand;
         versions.push((internal_key.value_type, value));
         if is_terminal {
@@ -178,6 +187,18 @@ fn collect_file_versions<FS: FileSystem>(
         }
     }
     false
+}
+
+fn hidden_by_range<FS: FileSystem>(
+    scope: &Scope<FS>,
+    user_key: &[u8],
+    internal_key: &InternalKey,
+    read_seq: SequenceNumber,
+) -> bool {
+    if internal_key.value_type == ValueType::RangeTombstone {
+        return false;
+    }
+    scope.is_range_deleted(user_key, internal_key.seq, read_seq.get())
 }
 
 fn file_may_contain_key(file_meta: &SstFileMeta, user_key: &[u8]) -> bool {

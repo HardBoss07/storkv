@@ -1,6 +1,8 @@
 use crate::format::{InternalKey, ValueType};
-use crate::manifest::{CompactionStyleMode, DurabilityMode, RetentionMode, ScopeMeta, SstFileMeta};
-use crate::scope::{CompactionStyle, Retention, Scope, ScopeOptions};
+use crate::manifest::{
+    CompactionStyleMode, DurabilityMode, RetentionMode, ScopeMeta, SstFileMeta, StorageModeMode,
+};
+use crate::scope::{CompactionStyle, Retention, Scope, ScopeOptions, StorageMode};
 use crate::vfs::FileSystem;
 use crate::wal::{Durability, WalOp, WalRecovery};
 use bytes::Bytes;
@@ -20,22 +22,26 @@ pub(crate) fn load_scopes<FS: FileSystem + 'static>(
     scopes_dir: &Path,
     manifest_scopes: &HashMap<u32, ScopeMeta>,
     manifest_sst_files: &BTreeMap<(u32, u8, u64), SstFileMeta>,
+    manifest_range_tombstones: &BTreeMap<(u32, u64, Bytes), Bytes>,
 ) -> crate::Result<LoadedScopes<FS>> {
     let mut scopes = HashMap::new();
     let mut scope_names = HashMap::new();
 
     for (&scope_id, meta) in manifest_scopes {
+        let scope_fs = scope_filesystem(fs.clone(), meta);
         let scope = Arc::new(Scope::new(
             scope_id,
             meta.name.clone(),
             scope_options_from_meta(meta),
-            fs.clone(),
+            scope_fs,
             scopes_dir,
         )?);
         if meta.dropped {
             scope.mark_dropped(meta.drop_seq);
         }
-        populate_scope_levels(&scope, scope_id, manifest_sst_files);
+        if meta.storage_mode == StorageModeMode::Disk {
+            populate_scope_levels(&scope, scope_id, manifest_sst_files);
+        }
 
         scopes.insert(scope_id, scope);
         if !meta.dropped {
@@ -58,11 +64,24 @@ pub(crate) fn load_scopes<FS: FileSystem + 'static>(
         true
     };
 
+    for ((scope_id, seq, start_key), end_key) in manifest_range_tombstones {
+        if let Some(scope) = scopes.get(scope_id) {
+            scope.record_range_tombstone(start_key.clone(), end_key.clone(), *seq);
+        }
+    }
+
     Ok(LoadedScopes {
         scopes,
         scope_names,
         created_default,
     })
+}
+
+fn scope_filesystem<FS: FileSystem>(fs: Arc<FS>, meta: &ScopeMeta) -> Arc<FS> {
+    if meta.storage_mode == StorageModeMode::Disk {
+        return fs;
+    }
+    fs.memory_view().unwrap_or(fs)
 }
 
 fn scope_options_from_meta(meta: &ScopeMeta) -> ScopeOptions {
@@ -86,6 +105,15 @@ fn scope_options_from_meta(meta: &ScopeMeta) -> ScopeOptions {
         durability,
         retention,
         prefix_bloom_len: None,
+        storage_mode: storage_mode_from_meta(meta.storage_mode),
+    }
+}
+
+fn storage_mode_from_meta(mode: StorageModeMode) -> StorageMode {
+    match mode {
+        StorageModeMode::InMemory => StorageMode::InMemory,
+        StorageModeMode::InMemoryPersistent => StorageMode::InMemoryPersistent,
+        StorageModeMode::Disk => StorageMode::Disk,
     }
 }
 
@@ -130,7 +158,7 @@ pub(crate) fn replay_wal<FS: FileSystem + 'static>(
     max_seq
 }
 
-fn scan_wal_segments<FS: FileSystem>(fs: &FS, wal_dir: &Path) -> Vec<u64> {
+pub(crate) fn scan_wal_segments<FS: FileSystem>(fs: &FS, wal_dir: &Path) -> Vec<u64> {
     fs.read_dir(wal_dir)
         .unwrap_or_default()
         .into_iter()
@@ -142,10 +170,20 @@ fn scan_wal_segments<FS: FileSystem>(fs: &FS, wal_dir: &Path) -> Vec<u64> {
         .collect()
 }
 
-fn apply_wal_op<FS: FileSystem>(scopes: &HashMap<u32, Arc<Scope<FS>>>, op: WalOp, op_seq: u64) {
+pub(crate) fn apply_wal_op<FS: FileSystem>(
+    scopes: &HashMap<u32, Arc<Scope<FS>>>,
+    op: WalOp,
+    op_seq: u64,
+) {
     let Some(scope) = scopes.get(&scope_id_of(&op)) else {
         return;
     };
+    if scope.options.storage_mode == StorageMode::InMemory {
+        return;
+    }
+    if op_seq <= scope.snapshot_seq.load(std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
 
     match op {
         WalOp::Put {
@@ -177,6 +215,7 @@ fn apply_wal_op<FS: FileSystem>(scopes: &HashMap<u32, Arc<Scope<FS>>>, op: WalOp
         WalOp::DeleteRange {
             start_key, end_key, ..
         } => {
+            scope.record_range_tombstone(start_key.clone(), end_key.clone(), op_seq);
             let internal_key = InternalKey::new(start_key, op_seq, ValueType::RangeTombstone, 0);
             scope
                 .active_memtable

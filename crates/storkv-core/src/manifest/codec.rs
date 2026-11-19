@@ -1,6 +1,6 @@
 use bytes::{Buf, BufMut, BytesMut};
 
-use crate::error::{Result, StorKvError};
+use crate::error::{Result, StorkvError};
 use crate::format::compute_crc32c;
 
 use super::record::EditRecord;
@@ -49,15 +49,15 @@ impl VersionEdit {
     ///
     /// # Errors
     ///
-    /// Returns [`StorKvError::Corruption`] on a short frame, checksum mismatch,
+    /// Returns [`StorkvError::Corruption`] on a short frame, checksum mismatch,
     /// or invalid record.
     pub fn decode(source: &[u8]) -> Result<(Self, usize)> {
         let (checksum, payload_length) = decode_frame_header(source)?;
         let total_frame_len = FRAME_HEADER_SIZE
             .checked_add(payload_length)
-            .ok_or_else(|| StorKvError::Corruption("VersionEdit frame length overflow".into()))?;
+            .ok_or_else(|| StorkvError::Corruption("VersionEdit frame length overflow".into()))?;
         if source.len() < total_frame_len {
-            return Err(StorKvError::Corruption(
+            return Err(StorkvError::Corruption(
                 "Truncated VersionEdit frame payload".into(),
             ));
         }
@@ -66,7 +66,7 @@ impl VersionEdit {
 
         let mut payload = &source[FRAME_HEADER_SIZE..total_frame_len];
         if payload.remaining() < EDIT_COUNT_SIZE {
-            return Err(StorKvError::Corruption("Incomplete edit_count".into()));
+            return Err(StorkvError::Corruption("Incomplete edit_count".into()));
         }
         let edit_count = payload.get_u16_le() as usize;
         let mut edits = Vec::with_capacity(edit_count);
@@ -80,19 +80,19 @@ impl VersionEdit {
 
 fn decode_frame_header(source: &[u8]) -> Result<(u32, usize)> {
     if source.len() < FRAME_HEADER_SIZE {
-        return Err(StorKvError::Corruption(
+        return Err(StorkvError::Corruption(
             "Truncated VersionEdit frame header".into(),
         ));
     }
     let checksum = u32::from_le_bytes(
         source[0..4]
             .try_into()
-            .map_err(|_| StorKvError::Corruption("Invalid VersionEdit CRC field".into()))?,
+            .map_err(|_| StorkvError::Corruption("Invalid VersionEdit CRC field".into()))?,
     );
     let payload_length = u32::from_le_bytes(
         source[4..8]
             .try_into()
-            .map_err(|_| StorKvError::Corruption("Invalid VersionEdit length field".into()))?,
+            .map_err(|_| StorkvError::Corruption("Invalid VersionEdit length field".into()))?,
     ) as usize;
     Ok((checksum, payload_length))
 }
@@ -100,7 +100,7 @@ fn decode_frame_header(source: &[u8]) -> Result<(u32, usize)> {
 fn verify_checksum(expected: u32, payload_with_length: &[u8]) -> Result<()> {
     let computed = compute_crc32c(payload_with_length);
     if expected != computed {
-        return Err(StorKvError::Corruption(format!(
+        return Err(StorkvError::Corruption(format!(
             "VersionEdit CRC mismatch: expected 0x{:08x}, computed 0x{:08x}",
             expected, computed
         )));

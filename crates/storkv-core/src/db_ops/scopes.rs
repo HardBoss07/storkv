@@ -5,16 +5,19 @@ use crate::scope::Scope;
 use crate::vfs::FileSystem;
 use crate::wal::{Durability, WalBatchFrame, WalOp};
 use crate::watch::ChangeEvent;
-use crate::{CompactionStyle, Retention, StorKvError};
+use crate::{CompactionStyle, Retention, StorkvError};
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 impl<FS: FileSystem + 'static> DbInner<FS> {
     /// Create a scope and persist it in the manifest.
     ///
+    /// The database holds at most [`crate::MAX_SCOPES`] scopes.
+    ///
     /// # Errors
     ///
-    /// Returns [`StorKvError::ScopeAlreadyExists`] when the name is taken.
+    /// Returns [`StorkvError::ScopeAlreadyExists`] when the name is taken, or
+    /// [`StorkvError::InvalidOperation`] when the scope count is at the limit.
     pub fn create_scope(
         &self,
         name: String,
@@ -22,17 +25,29 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
     ) -> crate::Result<ScopeHandle> {
         let mut names = self.scope_names.write();
         if names.contains_key(&name) {
-            return Err(StorKvError::ScopeAlreadyExists(name));
+            return Err(StorkvError::ScopeAlreadyExists(name));
         }
 
         let mut scopes = self.scopes.write();
+        if scopes.len() >= crate::MAX_SCOPES {
+            return Err(StorkvError::InvalidOperation(format!(
+                "the database reached the scope limit of {}",
+                crate::MAX_SCOPES
+            )));
+        }
         let scope_id = (scopes.len() as u32) + 1;
+
+        let scope_fs = if options.storage_mode == crate::StorageMode::Disk {
+            self.fs.clone()
+        } else {
+            self.fs.memory_view().unwrap_or_else(|| self.fs.clone())
+        };
 
         let scope = Arc::new(Scope::new(
             scope_id,
             name.clone(),
             options.clone(),
-            self.fs.clone(),
+            scope_fs,
             &self.scopes_dir,
         )?);
         scopes.insert(scope_id, scope);
@@ -49,8 +64,9 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
     ///
     /// # Errors
     ///
-    /// Returns [`StorKvError::ScopeNotFound`] when the name is unknown.
+    /// Returns [`StorkvError::ScopeNotFound`] when the name is unknown.
     pub fn drop_scope(&self, name: &str) -> crate::Result<()> {
+        let _commit_guard = self.commit_lock.lock();
         let scope_id = remove_scope_name(self, name)?;
         let drop_seq = self.last_visible_seq.fetch_add(1, Ordering::SeqCst) + 1;
 
@@ -60,6 +76,10 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
 
         write_drop_scope_to_wal(self, scope_id, drop_seq)?;
         log_drop_scope_edit(self, scope_id, drop_seq)?;
+        self.replication_registry.broadcast(WalBatchFrame::new(
+            drop_seq,
+            vec![WalOp::DropScope { scope_id }],
+        ));
         self.watch_registry.broadcast(ChangeEvent::DropScope {
             scope_id,
             seq: drop_seq,
@@ -92,7 +112,7 @@ fn remove_scope_name<FS: FileSystem>(db: &DbInner<FS>, name: &str) -> crate::Res
     let mut names = db.scope_names.write();
     names
         .remove(name)
-        .ok_or_else(|| StorKvError::ScopeNotFound(name.to_string()))
+        .ok_or_else(|| StorkvError::ScopeNotFound(name.to_string()))
 }
 
 fn write_drop_scope_to_wal<FS: FileSystem>(
@@ -146,6 +166,11 @@ fn scope_creation_edit(scope_id: u32, name: &str, options: &crate::ScopeOptions)
         retention,
         default_ttl_ms,
         compaction_style,
+        storage_mode: match options.storage_mode {
+            crate::StorageMode::Disk => 0,
+            crate::StorageMode::InMemory => 1,
+            crate::StorageMode::InMemoryPersistent => 2,
+        },
         name: name.to_string(),
     });
     edit

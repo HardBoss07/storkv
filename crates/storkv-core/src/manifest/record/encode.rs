@@ -19,9 +19,14 @@ pub(super) fn encode_edit_record(record: &EditRecord, destination: &mut BytesMut
             retention,
             default_ttl_ms,
             compaction_style,
+            storage_mode,
             name,
         } => {
-            destination.put_u8(0x03);
+            if *storage_mode == 0 {
+                destination.put_u8(0x03);
+            } else {
+                destination.put_u8(0x09);
+            }
             destination.put_u32_le(*scope_id);
             destination.put_u8(*durability);
             destination.put_u32_le(*sync_ms);
@@ -29,6 +34,9 @@ pub(super) fn encode_edit_record(record: &EditRecord, destination: &mut BytesMut
             destination.put_u64_le(*default_ttl_ms);
             destination.put_u8(*compaction_style);
             put_name(destination, name);
+            if *storage_mode != 0 {
+                destination.put_u8(*storage_mode);
+            }
         }
         EditRecord::DropScope { scope_id, drop_seq } => {
             destination.put_u8(0x04);
@@ -62,6 +70,18 @@ pub(super) fn encode_edit_record(record: &EditRecord, destination: &mut BytesMut
         EditRecord::UnpinSnapshot { name } => {
             destination.put_u8(0x08);
             put_name(destination, name);
+        }
+        EditRecord::AddRangeTombstone {
+            scope_id,
+            seq,
+            start_key,
+            end_key,
+        } => {
+            destination.put_u8(0x0a);
+            destination.put_u32_le(*scope_id);
+            destination.put_u64_le(*seq);
+            put_bytes_field(destination, start_key);
+            put_bytes_field(destination, end_key);
         }
     }
 }

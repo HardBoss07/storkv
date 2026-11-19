@@ -1,7 +1,7 @@
 use bytes::{Buf, Bytes};
 
 use super::types::{EditRecord, SstFileMeta};
-use crate::error::{Result, StorKvError};
+use crate::error::{Result, StorkvError};
 
 pub(super) fn decode_edit_record(source: &mut impl Buf) -> Result<EditRecord> {
     let tag = read_tag(source)?;
@@ -11,13 +11,15 @@ pub(super) fn decode_edit_record(source: &mut impl Buf) -> Result<EditRecord> {
             "SetNextSequence",
         )?)),
         0x02 => Ok(EditRecord::SetWalNumber(read_u64(source, "SetWalNumber")?)),
-        0x03 => decode_create_scope(source),
+        0x03 => decode_create_scope(source, 0),
         0x04 => decode_drop_scope(source),
         0x05 => decode_add_sst_file(source),
         0x06 => decode_delete_sst_file(source),
         0x07 => decode_pin_snapshot(source),
         0x08 => decode_unpin_snapshot(source),
-        _ => Err(StorKvError::Corruption(format!(
+        0x09 => decode_create_scope_with_storage(source),
+        0x0a => decode_add_range_tombstone(source),
+        _ => Err(StorkvError::Corruption(format!(
             "Unknown EditRecord tag: 0x{:02x}",
             tag
         ))),
@@ -26,37 +28,37 @@ pub(super) fn decode_edit_record(source: &mut impl Buf) -> Result<EditRecord> {
 
 fn read_tag(source: &mut impl Buf) -> Result<u8> {
     if source.remaining() < 1 {
-        return Err(StorKvError::Corruption("Incomplete EditRecord tag".into()));
+        return Err(StorkvError::Corruption("Incomplete EditRecord tag".into()));
     }
     Ok(source.get_u8())
 }
 
 fn read_u64(source: &mut impl Buf, field: &str) -> Result<u64> {
     if source.remaining() < 8 {
-        return Err(StorKvError::Corruption(format!("Incomplete {}", field)));
+        return Err(StorkvError::Corruption(format!("Incomplete {}", field)));
     }
     Ok(source.get_u64_le())
 }
 
 fn read_name(source: &mut impl Buf, field: &str) -> Result<String> {
     if source.remaining() < 2 {
-        return Err(StorKvError::Corruption(format!("Incomplete {}", field)));
+        return Err(StorkvError::Corruption(format!("Incomplete {}", field)));
     }
     let name_length = source.get_u16_le() as usize;
     if source.remaining() < name_length {
-        return Err(StorKvError::Corruption(format!(
+        return Err(StorkvError::Corruption(format!(
             "Incomplete {} name",
             field
         )));
     }
     let mut name_bytes = vec![0u8; name_length];
     source.copy_to_slice(&mut name_bytes);
-    String::from_utf8(name_bytes).map_err(|error| StorKvError::Corruption(error.to_string()))
+    String::from_utf8(name_bytes).map_err(|error| StorkvError::Corruption(error.to_string()))
 }
 
-fn decode_create_scope(source: &mut impl Buf) -> Result<EditRecord> {
+fn decode_create_scope(source: &mut impl Buf, storage_mode: u8) -> Result<EditRecord> {
     if source.remaining() < 4 + 1 + 4 + 1 + 8 + 1 + 2 {
-        return Err(StorKvError::Corruption("Incomplete CreateScope".into()));
+        return Err(StorkvError::Corruption("Incomplete CreateScope".into()));
     }
     let scope_id = source.get_u32_le();
     let durability = source.get_u8();
@@ -72,13 +74,31 @@ fn decode_create_scope(source: &mut impl Buf) -> Result<EditRecord> {
         retention,
         default_ttl_ms,
         compaction_style,
+        storage_mode,
         name,
     })
 }
 
+fn decode_create_scope_with_storage(source: &mut impl Buf) -> Result<EditRecord> {
+    let mut record = decode_create_scope(source, 0)?;
+    if source.remaining() < 1 {
+        return Err(StorkvError::Corruption(
+            "Incomplete CreateScope storage mode".into(),
+        ));
+    }
+    let storage_mode = source.get_u8();
+    if let EditRecord::CreateScope {
+        storage_mode: slot, ..
+    } = &mut record
+    {
+        *slot = storage_mode;
+    }
+    Ok(record)
+}
+
 fn decode_drop_scope(source: &mut impl Buf) -> Result<EditRecord> {
     if source.remaining() < 4 + 8 {
-        return Err(StorKvError::Corruption("Incomplete DropScope".into()));
+        return Err(StorkvError::Corruption("Incomplete DropScope".into()));
     }
     Ok(EditRecord::DropScope {
         scope_id: source.get_u32_le(),
@@ -88,7 +108,7 @@ fn decode_drop_scope(source: &mut impl Buf) -> Result<EditRecord> {
 
 fn decode_add_sst_file(source: &mut impl Buf) -> Result<EditRecord> {
     if source.remaining() < 4 + 1 + 8 + 8 + 8 + 8 + 8 + 2 {
-        return Err(StorKvError::Corruption("Incomplete AddSstFile".into()));
+        return Err(StorkvError::Corruption("Incomplete AddSstFile".into()));
     }
     let scope_id = source.get_u32_le();
     let level = source.get_u8();
@@ -115,11 +135,11 @@ fn decode_add_sst_file(source: &mut impl Buf) -> Result<EditRecord> {
 
 fn read_bytes_field(source: &mut impl Buf, field: &str) -> Result<Vec<u8>> {
     if source.remaining() < 2 {
-        return Err(StorKvError::Corruption(format!("Incomplete {}", field)));
+        return Err(StorkvError::Corruption(format!("Incomplete {}", field)));
     }
     let field_length = source.get_u16_le() as usize;
     if source.remaining() < field_length {
-        return Err(StorKvError::Corruption(format!("Incomplete {}", field)));
+        return Err(StorkvError::Corruption(format!("Incomplete {}", field)));
     }
     let mut field_bytes = vec![0u8; field_length];
     source.copy_to_slice(&mut field_bytes);
@@ -128,7 +148,7 @@ fn read_bytes_field(source: &mut impl Buf, field: &str) -> Result<Vec<u8>> {
 
 fn decode_delete_sst_file(source: &mut impl Buf) -> Result<EditRecord> {
     if source.remaining() < 4 + 1 + 8 {
-        return Err(StorKvError::Corruption("Incomplete DeleteSstFile".into()));
+        return Err(StorkvError::Corruption("Incomplete DeleteSstFile".into()));
     }
     Ok(EditRecord::DeleteSstFile {
         scope_id: source.get_u32_le(),
@@ -139,7 +159,7 @@ fn decode_delete_sst_file(source: &mut impl Buf) -> Result<EditRecord> {
 
 fn decode_pin_snapshot(source: &mut impl Buf) -> Result<EditRecord> {
     if source.remaining() < 8 + 8 + 2 {
-        return Err(StorKvError::Corruption("Incomplete PinSnapshot".into()));
+        return Err(StorkvError::Corruption("Incomplete PinSnapshot".into()));
     }
     let seq = source.get_u64_le();
     let created_at_ms = source.get_u64_le();
@@ -154,4 +174,22 @@ fn decode_pin_snapshot(source: &mut impl Buf) -> Result<EditRecord> {
 fn decode_unpin_snapshot(source: &mut impl Buf) -> Result<EditRecord> {
     let name = read_name(source, "UnpinSnapshot")?;
     Ok(EditRecord::UnpinSnapshot { name })
+}
+
+fn decode_add_range_tombstone(source: &mut impl Buf) -> Result<EditRecord> {
+    if source.remaining() < 4 + 8 + 2 + 2 {
+        return Err(StorkvError::Corruption(
+            "Incomplete AddRangeTombstone".into(),
+        ));
+    }
+    let scope_id = source.get_u32_le();
+    let seq = source.get_u64_le();
+    let start_key = read_bytes_field(source, "AddRangeTombstone start_key")?;
+    let end_key = read_bytes_field(source, "AddRangeTombstone end_key")?;
+    Ok(EditRecord::AddRangeTombstone {
+        scope_id,
+        seq,
+        start_key: Bytes::from(start_key),
+        end_key: Bytes::from(end_key),
+    })
 }

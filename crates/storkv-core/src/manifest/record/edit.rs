@@ -15,7 +15,7 @@ impl EditRecord {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::StorKvError::Corruption`] on a short or invalid record.
+    /// Returns [`crate::StorkvError::Corruption`] on a short or invalid record.
     pub fn decode(source: &mut impl Buf) -> Result<Self> {
         decode_edit_record(source)
     }

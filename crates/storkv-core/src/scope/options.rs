@@ -31,15 +31,30 @@ pub enum CompactionStyle {
     Fifo,
 }
 
+/// Storage residency mode for one scope.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub enum StorageMode {
+    /// Store every structure on disk. This is the default mode.
+    #[default]
+    Disk,
+    /// Keep all data in RAM. Skip the WAL and the SSTables.
+    InMemory,
+    /// Keep memtables and SSTables in RAM and write mutations to the disk WAL.
+    InMemoryPersistent,
+}
+
 /// Configuration of one scope.
 #[derive(Debug, Clone)]
 pub struct ScopeOptions {
+    /// Prefix Bloom filter size in bytes. `None` disables the filter.
+    pub prefix_bloom_len: Option<usize>,
     /// Durability policy for commits in the scope.
     pub durability: Durability,
     /// Retention policy for keys in the scope.
     pub retention: Retention,
-    /// Prefix Bloom filter size in bytes. `None` disables the filter.
-    pub prefix_bloom_len: Option<usize>,
+    /// Storage residency mode for the scope.
+    pub storage_mode: StorageMode,
 }
 
 impl Default for ScopeOptions {
@@ -48,6 +63,7 @@ impl Default for ScopeOptions {
             durability: Durability::StrictFsync,
             retention: Retention::Permanent,
             prefix_bloom_len: None,
+            storage_mode: StorageMode::Disk,
         }
     }
 }

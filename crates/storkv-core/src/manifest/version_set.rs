@@ -1,9 +1,11 @@
 use std::collections::{BTreeMap, HashMap};
 
+use bytes::Bytes;
+
 use super::codec::VersionEdit;
 use super::record::{
     CompactionStyleMode, DurabilityMode, EditRecord, RetentionMode, ScopeMeta, SnapshotMeta,
-    SstFileMeta,
+    SstFileMeta, StorageModeMode,
 };
 
 /// In-memory engine state reconstructed from MANIFEST
@@ -21,6 +23,8 @@ pub struct ManifestState {
     pub sst_files: BTreeMap<(u32, u8, u64), SstFileMeta>,
     /// Pinned snapshots keyed by name.
     pub pinned_snapshots: HashMap<String, SnapshotMeta>,
+    /// Range tombstones keyed by scope, sequence number, and start key.
+    pub range_tombstones: BTreeMap<(u32, u64, Bytes), Bytes>,
 }
 
 impl ManifestState {
@@ -75,6 +79,15 @@ impl ManifestState {
             EditRecord::UnpinSnapshot { name } => {
                 self.pinned_snapshots.remove(name);
             }
+            EditRecord::AddRangeTombstone {
+                scope_id,
+                seq,
+                start_key,
+                end_key,
+            } => {
+                self.range_tombstones
+                    .insert((*scope_id, *seq, start_key.clone()), end_key.clone());
+            }
         }
     }
 
@@ -86,6 +99,7 @@ impl ManifestState {
             retention,
             default_ttl_ms,
             compaction_style,
+            storage_mode,
             name,
         } = record
         else {
@@ -101,6 +115,7 @@ impl ManifestState {
             name: name.clone(),
             dropped: false,
             drop_seq: 0,
+            storage_mode: storage_mode_mode(*storage_mode),
         };
         self.scopes.insert(*scope_id, metadata);
         self.scope_by_name.insert(name.clone(), *scope_id);
@@ -133,5 +148,13 @@ fn compaction_style_mode(value: u8) -> CompactionStyleMode {
     match value {
         0 => CompactionStyleMode::Leveled,
         _ => CompactionStyleMode::Fifo,
+    }
+}
+
+fn storage_mode_mode(value: u8) -> StorageModeMode {
+    match value {
+        1 => StorageModeMode::InMemory,
+        2 => StorageModeMode::InMemoryPersistent,
+        _ => StorageModeMode::Disk,
     }
 }

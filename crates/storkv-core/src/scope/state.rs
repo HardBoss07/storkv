@@ -2,6 +2,7 @@ use crate::error::Result;
 use crate::manifest::SstFileMeta;
 use crate::memtable::{FlushQueue, MemTable};
 use crate::vfs::FileSystem;
+use bytes::Bytes;
 use parking_lot::RwLock;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -30,6 +31,13 @@ pub struct Scope<FS: FileSystem> {
     pub dropped: RwLock<bool>,
     /// Sequence number of the drop.
     pub drop_seq: AtomicU64,
+    /// Sequence number covered by the recovery snapshot.
+    pub snapshot_seq: AtomicU64,
+    /// Range tombstones keyed by start key and sequence number.
+    ///
+    /// The map value holds the exclusive end key. Point reads consult this
+    /// index because a range tombstone has no entry at the covered keys.
+    pub range_tombstones: RwLock<BTreeMap<(Bytes, u64), Bytes>>,
     /// Filesystem backend.
     pub fs: Arc<FS>,
     /// Directory that holds the scope files.
@@ -66,6 +74,8 @@ impl<FS: FileSystem> Scope<FS> {
             sst_levels: RwLock::new(levels),
             dropped: RwLock::new(false),
             drop_seq: AtomicU64::new(0),
+            snapshot_seq: AtomicU64::new(0),
+            range_tombstones: RwLock::new(BTreeMap::new()),
             fs,
             scope_dir,
         })
@@ -81,6 +91,32 @@ impl<FS: FileSystem> Scope<FS> {
         let mut dropped = self.dropped.write();
         *dropped = true;
         self.drop_seq.store(drop_seq, Ordering::SeqCst);
+    }
+
+    /// Record a range tombstone in the in-memory index.
+    ///
+    /// The method drops an older tombstone that the new range contains. This
+    /// makes repeated whole-scope deletes cheap. A duplicate tombstone is
+    /// ignored, so WAL replay is safe.
+    pub fn record_range_tombstone(&self, start_key: Bytes, end_key: Bytes, seq: u64) {
+        let mut tombstones = self.range_tombstones.write();
+        tombstones.retain(|(old_start, old_seq), old_end| {
+            !(*old_seq <= seq
+                && old_start.as_ref() >= start_key.as_ref()
+                && old_end.as_ref() <= end_key.as_ref())
+        });
+        tombstones.entry((start_key, seq)).or_insert(end_key);
+    }
+
+    /// Return true when a range tombstone hides a key version.
+    ///
+    /// The tombstone must be visible at `read_seq` and must be at or after the
+    /// version sequence. The key must lie in the half-open tombstone range.
+    pub fn is_range_deleted(&self, key: &[u8], version_seq: u64, read_seq: u64) -> bool {
+        let tombstones = self.range_tombstones.read();
+        tombstones.iter().any(|((start, seq), end)| {
+            *seq <= read_seq && *seq >= version_seq && key >= start.as_ref() && key < end.as_ref()
+        })
     }
 
     /// Replace the active memtable and queue the old one for flush.

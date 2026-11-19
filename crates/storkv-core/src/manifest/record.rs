@@ -5,5 +5,5 @@ mod types;
 
 pub use types::{
     CompactionStyleMode, DurabilityMode, EditRecord, MANIFEST_MAGIC, MANIFEST_VERSION,
-    RetentionMode, ScopeMeta, SnapshotMeta, SstFileMeta,
+    RetentionMode, ScopeMeta, SnapshotMeta, SstFileMeta, StorageModeMode,
 };
