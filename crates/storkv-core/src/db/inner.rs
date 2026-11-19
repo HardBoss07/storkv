@@ -12,6 +12,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 
+/// Default maximum number of scopes in one database.
+pub const MAX_SCOPES: usize = 1024;
+
 /// Shared inner state of one database.
 pub struct DbInner<FS: FileSystem> {
     /// Filesystem backend.
@@ -40,6 +43,8 @@ pub struct DbInner<FS: FileSystem> {
     pub commit_lock: Mutex<()>,
     /// Change event subscribers.
     pub watch_registry: WatchRegistry,
+    /// Replication frame subscribers.
+    pub replication_registry: crate::ReplicationRegistry,
     /// Runtime counters.
     pub telemetry: Telemetry,
     /// Read sequence numbers of open transactions.

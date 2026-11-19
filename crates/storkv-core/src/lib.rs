@@ -44,34 +44,53 @@
     clippy::suspicious_open_options
 )]
 
+/// Continuous backup, WAL shipping, verification, and restore.
 pub mod backup;
+/// Background compaction scheduling and statistics.
 pub mod compaction;
+/// Embedded `Tree` and `Batch` adapters.
 pub mod compat;
+/// Error and result types.
 pub mod error;
+/// Internal key encoding and decoding.
 pub mod format;
+/// Manifest log and version metadata.
 pub mod manifest;
+/// In-memory write buffer.
 pub mod memtable;
+/// Multi-version concurrency control and merge operators.
 pub mod mvcc;
+/// Database configuration options.
 pub mod options;
+/// Scope definitions and retention policies.
 pub mod scope;
+/// Sorted string table readers, writers, and metadata.
 pub mod sstable;
+/// Runtime counters and telemetry.
 pub mod telemetry;
+/// Strongly-typed identifiers.
 pub mod types;
+/// Filesystem abstraction and fault injection.
 pub mod vfs;
+/// Write-ahead log records, writer, and recovery.
 pub mod wal;
+/// Change streams and watch registration.
 pub mod watch;
 
 mod checkpoint;
 mod db;
 mod db_ops;
 mod recovery;
+mod replication;
+mod snapshot;
 mod transaction;
 
-pub use db::{Db, DbInner, ScopeHandle};
-pub use error::{Result, StorKvError};
+pub use db::{Db, DbInner, MAX_SCOPES, ScopeHandle};
+pub use error::{Result, StorkvError};
 pub use mvcc::MergeOp;
 pub use options::DbOptions;
-pub use scope::{CompactionStyle, Retention, ScopeOptions};
+pub use replication::ReplicationRegistry;
+pub use scope::{CompactionStyle, Retention, ScopeOptions, StorageMode};
 pub use transaction::Transaction;
 pub use types::{FileNumber, ScopeId, SequenceNumber, TimestampMs};
 pub use wal::Durability;
