@@ -24,7 +24,7 @@ const SEALED_FLAG_SET: [u8; 2] = 1u16.to_le_bytes();
 
 /// One open WAL segment file.
 pub struct WalSegment<FS: FileSystem> {
-    // Widest fields first; the generic fields are dropped last.
+    // Fields ascend by binary width; the generic fields are dropped last.
     /// Segment file number.
     pub file_num: u64,
     /// Bytes written to the segment, including the header.

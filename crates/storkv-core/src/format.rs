@@ -42,14 +42,14 @@ impl ValueType {
 /// Internal key: user key, commit sequence, value type, and expiry time.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct InternalKey {
-    /// User key bytes.
-    pub user_key: Bytes,
     /// Commit sequence number.
     pub seq: u64,
-    /// Entry kind.
-    pub value_type: ValueType,
     /// Absolute expiry time in milliseconds, or `0`.
     pub expires_at_ms: u64,
+    /// User key bytes.
+    pub user_key: Bytes,
+    /// Entry kind.
+    pub value_type: ValueType,
 }
 
 impl Ord for InternalKey {

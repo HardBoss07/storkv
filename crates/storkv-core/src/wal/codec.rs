@@ -1,7 +1,7 @@
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
-use crate::error::{Result, StorKvError};
-use crate::format::compute_crc32c;
+use crate::error::{Result, StorkvError};
+use crate::format::{MAX_VAL_LEN, compute_crc32c};
 
 use super::record::{WalBatchFrame, WalOp};
 
@@ -78,30 +78,30 @@ fn maybe_compress(payload: BytesMut, compress: bool) -> (u16, Bytes) {
 
 fn decode_frame_header(source: &[u8]) -> Result<(u32, usize)> {
     if source.len() < WAL_FRAME_HEADER_SIZE {
-        return Err(StorKvError::Corruption("Truncated WAL frame header".into()));
+        return Err(StorkvError::Corruption("Truncated WAL frame header".into()));
     }
 
     let expected_crc = u32::from_le_bytes(
         source[0..4]
             .try_into()
-            .map_err(|_| StorKvError::Corruption("Invalid WAL CRC field".into()))?,
+            .map_err(|_| StorkvError::Corruption("Invalid WAL CRC field".into()))?,
     );
     let frame_length = u32::from_le_bytes(
         source[4..8]
             .try_into()
-            .map_err(|_| StorKvError::Corruption("Invalid WAL frame length field".into()))?,
+            .map_err(|_| StorkvError::Corruption("Invalid WAL frame length field".into()))?,
     ) as usize;
     let total_frame_len = FRAME_LENGTH_AND_CRC_FIELDS
         .checked_add(frame_length)
-        .ok_or_else(|| StorKvError::Corruption("WAL frame length overflow".into()))?;
+        .ok_or_else(|| StorkvError::Corruption("WAL frame length overflow".into()))?;
 
     if source.len() < total_frame_len {
-        return Err(StorKvError::Corruption(
+        return Err(StorkvError::Corruption(
             "Truncated WAL frame payload".into(),
         ));
     }
     if frame_length < FIXED_BODY_SIZE {
-        return Err(StorKvError::Corruption(
+        return Err(StorkvError::Corruption(
             "WAL frame length smaller than fixed header".into(),
         ));
     }
@@ -111,7 +111,7 @@ fn decode_frame_header(source: &[u8]) -> Result<(u32, usize)> {
 fn verify_frame_crc(expected_crc: u32, frame_body: &[u8]) -> Result<()> {
     let computed_crc = compute_crc32c(frame_body);
     if expected_crc != computed_crc {
-        return Err(StorKvError::Corruption(format!(
+        return Err(StorkvError::Corruption(format!(
             "WAL frame CRC mismatch: expected 0x{:08x}, got 0x{:08x}",
             expected_crc, computed_crc
         )));
@@ -128,21 +128,30 @@ fn decode_payload(mut body: &[u8], flags: u16) -> Result<Bytes> {
 
 fn decode_compressed_payload(body: &mut &[u8]) -> Result<Bytes> {
     if body.remaining() < 4 {
-        return Err(StorKvError::Corruption(
+        return Err(StorkvError::Corruption(
             "Truncated compressed WAL payload".into(),
         ));
     }
-    let _uncompressed_len = body.get_u32_le();
-    let mut compressed_bytes = vec![0u8; body.remaining()];
-    body.copy_to_slice(&mut compressed_bytes);
-    let decompressed = lz4_flex::decompress_size_prepended(&compressed_bytes)
-        .map_err(|error| StorKvError::Corruption(error.to_string()))?;
+    let uncompressed_len = body.get_u32_le() as usize;
+    if uncompressed_len > MAX_VAL_LEN {
+        return Err(StorkvError::Corruption(format!(
+            "WAL payload length {uncompressed_len} exceeds the limit {MAX_VAL_LEN}"
+        )));
+    }
+    let stored: &[u8] = body;
+    if stored.len() < 4 {
+        return Err(StorkvError::Corruption(
+            "Truncated compressed WAL payload".into(),
+        ));
+    }
+    let decompressed = lz4_flex::decompress(&stored[4..], uncompressed_len)
+        .map_err(|error| StorkvError::Corruption(error.to_string()))?;
     Ok(Bytes::from(decompressed))
 }
 
 fn decode_ops(payload: Bytes, op_count: usize) -> Result<Vec<WalOp>> {
     if op_count > payload.len() / MIN_ENCODED_OP_SIZE {
-        return Err(StorKvError::Corruption(
+        return Err(StorkvError::Corruption(
             "WAL op count exceeds available payload bytes".into(),
         ));
     }

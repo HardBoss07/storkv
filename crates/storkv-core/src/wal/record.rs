@@ -1,7 +1,7 @@
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use std::time::Duration;
 
-use crate::error::{Result, StorKvError};
+use crate::error::{Result, StorkvError};
 use crate::format::{MAX_KEY_LEN, MAX_VAL_LEN};
 
 /// Durability policy for committed writes.
@@ -80,7 +80,7 @@ impl WalOp {
     ///
     /// # Errors
     ///
-    /// Returns [`StorKvError::KeyTooLarge`] or [`StorKvError::ValueTooLarge`]
+    /// Returns [`StorkvError::KeyTooLarge`] or [`StorkvError::ValueTooLarge`]
     /// when a field exceeds the format limit.
     pub fn encode(&self, destination: &mut BytesMut) -> Result<()> {
         match self {
@@ -133,10 +133,10 @@ impl WalOp {
     ///
     /// # Errors
     ///
-    /// Returns [`StorKvError::Corruption`] on a short header or unknown opcode.
+    /// Returns [`StorkvError::Corruption`] on a short header or unknown opcode.
     pub fn decode(source: &mut impl Buf) -> Result<Self> {
         if source.remaining() < 17 {
-            return Err(StorKvError::Corruption("Incomplete WalOp header".into()));
+            return Err(StorkvError::Corruption("Incomplete WalOp header".into()));
         }
         let opcode = source.get_u8();
         let scope_id = source.get_u32_le();
@@ -163,7 +163,7 @@ impl WalOp {
                 end_key: value,
             }),
             0x05 => Ok(WalOp::DropScope { scope_id }),
-            _ => Err(StorKvError::Corruption(format!(
+            _ => Err(StorkvError::Corruption(format!(
                 "Unknown WalOp opcode: 0x{:02x}",
                 opcode
             ))),
@@ -177,6 +177,7 @@ impl WalOp {
 /// | (u32 LE) | (u32 LE)  | (u64 LE)  | (u32 LE) | (u16) | (u16)    | ([u8; ...])        |
 /// +----------+-----------+-----------+----------+-------+----------+--------------------+
 /// One atomic WAL batch.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WalBatchFrame {
     /// Monotonic batch sequence number.
     pub batch_seq: u64,
@@ -193,7 +194,7 @@ impl WalBatchFrame {
 
 fn validate_key(key: &[u8]) -> Result<()> {
     if key.len() > MAX_KEY_LEN {
-        return Err(StorKvError::KeyTooLarge {
+        return Err(StorkvError::KeyTooLarge {
             max: MAX_KEY_LEN,
             actual: key.len(),
         });
@@ -203,7 +204,7 @@ fn validate_key(key: &[u8]) -> Result<()> {
 
 fn validate_value(value: &[u8]) -> Result<()> {
     if value.len() > MAX_VAL_LEN {
-        return Err(StorKvError::ValueTooLarge {
+        return Err(StorkvError::ValueTooLarge {
             max: MAX_VAL_LEN,
             actual: value.len(),
         });
@@ -224,14 +225,14 @@ fn put_sized_bytes(destination: &mut BytesMut, field: &[u8]) {
 
 fn read_sized_bytes(source: &mut impl Buf, field: &str) -> Result<Bytes> {
     if source.remaining() < 4 {
-        return Err(StorKvError::Corruption(format!(
+        return Err(StorkvError::Corruption(format!(
             "Incomplete WalOp {} length",
             field
         )));
     }
     let field_length = source.get_u32_le() as usize;
     if source.remaining() < field_length {
-        return Err(StorKvError::Corruption(format!(
+        return Err(StorkvError::Corruption(format!(
             "Incomplete WalOp {}",
             field
         )));

@@ -1,11 +1,11 @@
-use crate::error::{Result, StorKvError};
+use crate::error::{Result, StorkvError};
 use crate::format::compute_crc32c;
 use bytes::Bytes;
 
 /// Builder for a prefix Bloom filter block.
 pub struct BloomFilterBuilder {
-    bits_per_key: usize,
     num_probes: u8,
+    bits_per_key: usize,
     hashes: Vec<u32>,
 }
 
@@ -65,22 +65,22 @@ impl BloomFilterReader {
     ///
     /// # Errors
     ///
-    /// Returns [`StorKvError::Corruption`] on a short or invalid block.
+    /// Returns [`StorkvError::Corruption`] on a short or invalid block.
     pub fn new(data: Bytes) -> Result<Self> {
         if data.len() < 8 {
-            return Err(StorKvError::Corruption("Filter block too short".into()));
+            return Err(StorkvError::Corruption("Filter block too short".into()));
         }
         let num_probes = data[0];
         let bitset_length = u32::from_le_bytes(
             data[4..8]
                 .try_into()
-                .map_err(|_| StorKvError::Corruption("Invalid filter length field".into()))?,
+                .map_err(|_| StorkvError::Corruption("Invalid filter length field".into()))?,
         ) as usize;
         let bitset_end = 8usize
             .checked_add(bitset_length)
-            .ok_or_else(|| StorKvError::Corruption("Filter bitset length overflow".into()))?;
+            .ok_or_else(|| StorkvError::Corruption("Filter bitset length overflow".into()))?;
         if data.len() < bitset_end {
-            return Err(StorKvError::Corruption("Truncated filter bitset".into()));
+            return Err(StorkvError::Corruption("Truncated filter bitset".into()));
         }
         let bitset = data.slice(8..bitset_end);
         Ok(Self { num_probes, bitset })

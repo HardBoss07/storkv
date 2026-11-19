@@ -1,4 +1,4 @@
-use crate::error::{Result, StorKvError};
+use crate::error::{Result, StorkvError};
 use bytes::{BufMut, Bytes, BytesMut};
 
 /// Number of entries between restart points in a data block.
@@ -8,10 +8,10 @@ pub const TARGET_BLOCK_SIZE: usize = 4096;
 
 /// Builder for one prefix-compressed SSTable data block.
 pub struct DataBlockBuilder {
+    entry_index: usize,
     buffer: BytesMut,
     restarts: Vec<u32>,
     pub(crate) last_key: Vec<u8>,
-    entry_index: usize,
 }
 
 impl DataBlockBuilder {
@@ -85,26 +85,26 @@ impl DataBlockReader {
     ///
     /// # Errors
     ///
-    /// Returns [`StorKvError::Corruption`] on a truncated or invalid block.
+    /// Returns [`StorkvError::Corruption`] on a truncated or invalid block.
     pub fn new(data: Bytes) -> Result<Self> {
         if data.len() < 4 {
-            return Err(StorKvError::Corruption("Data block too short".into()));
+            return Err(StorkvError::Corruption("Data block too short".into()));
         }
         let restart_count = u32::from_le_bytes(
             data[data.len() - 4..]
                 .try_into()
-                .map_err(|_| StorKvError::Corruption("Invalid restart count field".into()))?,
+                .map_err(|_| StorkvError::Corruption("Invalid restart count field".into()))?,
         ) as usize;
         let restart_array_length = restart_count.checked_mul(4).ok_or_else(|| {
-            StorKvError::Corruption("Restart array length overflow in data block".into())
+            StorkvError::Corruption("Restart array length overflow in data block".into())
         })?;
         if data.len() < 4 + restart_array_length {
-            return Err(StorKvError::Corruption(
+            return Err(StorkvError::Corruption(
                 "Corrupted restart array in data block".into(),
             ));
         }
         if restart_count == 0 {
-            return Err(StorKvError::Corruption(
+            return Err(StorkvError::Corruption(
                 "Data block declares zero restart points".into(),
             ));
         }
@@ -115,10 +115,10 @@ impl DataBlockReader {
             let position = restart_offset_start + index * 4;
             let offset =
                 u32::from_le_bytes(data[position..position + 4].try_into().map_err(|_| {
-                    StorKvError::Corruption("Invalid restart offset field in data block".into())
+                    StorkvError::Corruption("Invalid restart offset field in data block".into())
                 })?);
             if offset as usize > restart_offset_start {
-                return Err(StorKvError::Corruption(
+                return Err(StorkvError::Corruption(
                     "Restart offset points outside the data section".into(),
                 ));
             }
@@ -132,19 +132,19 @@ impl DataBlockReader {
     ///
     /// # Errors
     ///
-    /// Returns [`StorKvError::Corruption`] when the entry stream is invalid.
+    /// Returns [`StorkvError::Corruption`] when the entry stream is invalid.
     pub fn entries(&self) -> Result<Vec<(Bytes, Bytes)>> {
         let entry_start = *self.restarts.first().ok_or_else(|| {
-            StorKvError::Corruption("Data block contains no restart points".into())
+            StorkvError::Corruption("Data block contains no restart points".into())
         })? as usize;
         let restart_bytes = self.restarts.len().checked_mul(4).ok_or_else(|| {
-            StorKvError::Corruption("Restart array length overflow in data block".into())
+            StorkvError::Corruption("Restart array length overflow in data block".into())
         })?;
         let entry_end = (self.data.len())
             .checked_sub(4 + restart_bytes)
-            .ok_or_else(|| StorKvError::Corruption("Corrupted data block layout".into()))?;
+            .ok_or_else(|| StorkvError::Corruption("Corrupted data block layout".into()))?;
         if entry_start > entry_end {
-            return Err(StorKvError::Corruption(
+            return Err(StorkvError::Corruption(
                 "Restart section starts beyond the entry region".into(),
             ));
         }
@@ -170,36 +170,36 @@ impl DataBlockReader {
     ) -> Result<(Bytes, Bytes, usize)> {
         let header_end = offset
             .checked_add(8)
-            .ok_or_else(|| StorKvError::Corruption("Entry offset overflow".into()))?;
+            .ok_or_else(|| StorkvError::Corruption("Entry offset overflow".into()))?;
         if header_end > entry_end {
-            return Err(StorKvError::Corruption("Truncated entry header".into()));
+            return Err(StorkvError::Corruption("Truncated entry header".into()));
         }
 
         let shared = u16::from_le_bytes(
             self.data[offset..offset + 2]
                 .try_into()
-                .map_err(|_| StorKvError::Corruption("Invalid shared prefix length".into()))?,
+                .map_err(|_| StorkvError::Corruption("Invalid shared prefix length".into()))?,
         ) as usize;
         let unshared = u16::from_le_bytes(
             self.data[offset + 2..offset + 4]
                 .try_into()
-                .map_err(|_| StorKvError::Corruption("Invalid unshared length".into()))?,
+                .map_err(|_| StorkvError::Corruption("Invalid unshared length".into()))?,
         ) as usize;
         let value_length = u32::from_le_bytes(
             self.data[offset + 4..offset + 8]
                 .try_into()
-                .map_err(|_| StorKvError::Corruption("Invalid value length".into()))?,
+                .map_err(|_| StorkvError::Corruption("Invalid value length".into()))?,
         ) as usize;
 
         let payload_end = header_end
             .checked_add(unshared)
             .and_then(|end| end.checked_add(value_length))
-            .ok_or_else(|| StorKvError::Corruption("Entry payload length overflow".into()))?;
+            .ok_or_else(|| StorkvError::Corruption("Entry payload length overflow".into()))?;
         if payload_end > entry_end {
-            return Err(StorKvError::Corruption("Truncated entry key/val".into()));
+            return Err(StorkvError::Corruption("Truncated entry key/val".into()));
         }
         if shared > current_key.len() {
-            return Err(StorKvError::Corruption(
+            return Err(StorkvError::Corruption(
                 "Shared prefix exceeds previous key length".into(),
             ));
         }
@@ -216,7 +216,7 @@ impl DataBlockReader {
     ///
     /// # Errors
     ///
-    /// Returns [`StorKvError::Corruption`] when the block cannot be decoded.
+    /// Returns [`StorkvError::Corruption`] when the block cannot be decoded.
     pub fn seek_ge(&self, target_internal_key: &[u8]) -> Result<Option<(Bytes, Bytes)>> {
         for (key, value) in self.entries()? {
             if key.as_ref() >= target_internal_key {

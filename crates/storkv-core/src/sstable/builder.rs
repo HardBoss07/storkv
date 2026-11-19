@@ -4,7 +4,7 @@ use super::footer::{
     BLOCK_TRAILER_SIZE, BlockHandle, CompressionType, Footer, compress_and_frame_block,
 };
 use super::meta::{IndexBlockBuilder, MetaBlock};
-use crate::error::{Result, StorKvError};
+use crate::error::{Result, StorkvError};
 use crate::vfs::File;
 use bytes::Bytes;
 
@@ -12,6 +12,7 @@ use bytes::Bytes;
 pub struct SstWriter<'a> {
     file: &'a mut Box<dyn File>,
     offset: u64,
+    prefix_bloom_len: Option<usize>,
     current_block: Option<DataBlockBuilder>,
     index_builder: IndexBlockBuilder,
     filter_builder: BloomFilterBuilder,
@@ -19,7 +20,6 @@ pub struct SstWriter<'a> {
     min_key: Option<Bytes>,
     max_key: Option<Bytes>,
     compression: CompressionType,
-    prefix_bloom_len: Option<usize>,
 }
 
 impl<'a> SstWriter<'a> {
@@ -71,7 +71,7 @@ impl<'a> SstWriter<'a> {
         self.add_to_filter(user_key);
 
         let builder = self.current_block.as_mut().ok_or_else(|| {
-            StorKvError::InvalidOperation("SSTable writer has no active data block".into())
+            StorkvError::InvalidOperation("SSTable writer has no active data block".into())
         })?;
         builder.add(internal_key, value);
 

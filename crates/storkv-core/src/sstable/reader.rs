@@ -4,7 +4,7 @@ use super::footer::{
     BLOCK_TRAILER_SIZE, BlockHandle, FOOTER_SIZE, Footer, decompress_and_verify_block,
 };
 use super::meta::{IndexBlockReader, MetaBlock};
-use crate::error::{Result, StorKvError};
+use crate::error::{Result, StorkvError};
 use crate::vfs::File;
 use bytes::Bytes;
 use std::io::SeekFrom;
@@ -26,11 +26,11 @@ impl SstReader {
     ///
     /// # Errors
     ///
-    /// Returns [`StorKvError::Corruption`] on a short file or invalid block.
+    /// Returns [`StorkvError::Corruption`] on a short file or invalid block.
     pub fn open(file: &mut Box<dyn File>) -> Result<Self> {
         let file_length = file.file_size()?;
         if file_length < FOOTER_SIZE as u64 {
-            return Err(StorKvError::Corruption(
+            return Err(StorkvError::Corruption(
                 "SSTable file smaller than footer".into(),
             ));
         }
@@ -68,12 +68,12 @@ impl SstReader {
     ///
     /// # Errors
     ///
-    /// Returns [`StorKvError::Corruption`] on an overflow or a short read.
+    /// Returns [`StorkvError::Corruption`] on an overflow or a short read.
     pub fn read_raw_block(file: &mut Box<dyn File>, handle: BlockHandle) -> Result<Vec<u8>> {
         let total_size = usize::try_from(handle.size)
             .ok()
             .and_then(|size| size.checked_add(BLOCK_TRAILER_SIZE))
-            .ok_or_else(|| StorKvError::Corruption("Block handle size overflow".into()))?;
+            .ok_or_else(|| StorkvError::Corruption("Block handle size overflow".into()))?;
         file.seek(SeekFrom::Start(handle.offset))?;
         let mut block_bytes = vec![0u8; total_size];
         file.read_exact(&mut block_bytes)?;
@@ -84,7 +84,7 @@ impl SstReader {
     ///
     /// # Errors
     ///
-    /// Returns [`StorKvError::Corruption`] on a checksum or decode failure.
+    /// Returns [`StorkvError::Corruption`] on a checksum or decode failure.
     pub fn read_data_block(
         &self,
         file: &mut Box<dyn File>,
@@ -98,7 +98,7 @@ impl SstReader {
     ///
     /// # Errors
     ///
-    /// Returns [`StorKvError::Corruption`] when a block cannot be decoded.
+    /// Returns [`StorkvError::Corruption`] when a block cannot be decoded.
     pub fn read_all_entries(&self, file: &mut Box<dyn File>) -> Result<Vec<(Bytes, Bytes)>> {
         let mut entries = Vec::new();
         for index_entry in &self.index.entries {

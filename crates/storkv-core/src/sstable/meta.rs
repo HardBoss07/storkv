@@ -1,10 +1,14 @@
 use super::footer::BlockHandle;
-use crate::error::{Result, StorKvError};
+use crate::error::{Result, StorkvError};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
 /// Per-SSTable metadata block.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MetaBlock {
+    /// Compaction level from L0 through L6.
+    pub level: u8,
+    /// Identifier of the owning scope.
+    pub scope_id: u32,
     /// Number of entries in the file.
     pub entry_count: u64,
     /// Number of tombstone entries.
@@ -21,10 +25,6 @@ pub struct MetaBlock {
     pub raw_key_bytes: u64,
     /// Total value bytes.
     pub raw_val_bytes: u64,
-    /// Identifier of the owning scope.
-    pub scope_id: u32,
-    /// Compaction level from L0 through L6.
-    pub level: u8,
 }
 
 const _: () = assert!(std::mem::size_of::<MetaBlock>() <= 72);
@@ -51,10 +51,10 @@ impl MetaBlock {
     ///
     /// # Errors
     ///
-    /// Returns [`StorKvError::Corruption`] when fewer than 69 bytes are present.
+    /// Returns [`StorkvError::Corruption`] when fewer than 69 bytes are present.
     pub fn decode(mut data: &[u8]) -> Result<Self> {
         if data.remaining() < 69 {
-            return Err(StorKvError::Corruption("MetaBlock too short".into()));
+            return Err(StorkvError::Corruption("MetaBlock too short".into()));
         }
         Ok(Self {
             scope_id: data.get_u32_le(),
@@ -125,14 +125,14 @@ impl IndexBlockReader {
     ///
     /// # Errors
     ///
-    /// Returns [`StorKvError::Corruption`] on a truncated or inconsistent block.
+    /// Returns [`StorkvError::Corruption`] on a truncated or inconsistent block.
     pub fn decode(mut data: &[u8]) -> Result<Self> {
         if data.remaining() < 4 {
-            return Err(StorKvError::Corruption("Index block too short".into()));
+            return Err(StorkvError::Corruption("Index block too short".into()));
         }
         let entry_count = data.get_u32_le() as usize;
         if entry_count > data.remaining() / 18 {
-            return Err(StorKvError::Corruption(
+            return Err(StorkvError::Corruption(
                 "Index block entry count exceeds available bytes".into(),
             ));
         }
@@ -140,11 +140,11 @@ impl IndexBlockReader {
         let mut entries = Vec::with_capacity(entry_count);
         for _ in 0..entry_count {
             if data.remaining() < 2 {
-                return Err(StorKvError::Corruption("Truncated index key length".into()));
+                return Err(StorkvError::Corruption("Truncated index key length".into()));
             }
             let key_length = data.get_u16_le() as usize;
             if data.remaining() < key_length + 16 {
-                return Err(StorKvError::Corruption("Truncated index entry".into()));
+                return Err(StorkvError::Corruption("Truncated index entry".into()));
             }
             let mut key_bytes = vec![0u8; key_length];
             data.copy_to_slice(&mut key_bytes);

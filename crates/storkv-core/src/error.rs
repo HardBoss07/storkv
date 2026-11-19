@@ -2,12 +2,12 @@ use std::path::PathBuf;
 use thiserror::Error;
 
 /// Result alias for StorKV operations.
-pub type Result<T> = std::result::Result<T, StorKvError>;
+pub type Result<T> = std::result::Result<T, StorkvError>;
 
 /// Error type for all StorKV operations.
 #[derive(Error, Debug)]
 #[non_exhaustive]
-pub enum StorKvError {
+pub enum StorkvError {
     /// Another process holds the database directory lock.
     #[error("Database is locked by another process: {0}")]
     DatabaseLocked(PathBuf),
@@ -113,6 +113,46 @@ pub enum StorKvError {
     /// The restore destination directory holds files.
     #[error("Restore target directory is not empty: {0}")]
     RestoreTargetNotEmpty(PathBuf),
+
+    /// The requested watch cursor is older than the retained WAL history.
+    #[error("Watch cursor {requested} expired (oldest available: {oldest_available})")]
+    WatchCursorExpired {
+        /// Cursor sequence requested by the subscriber.
+        requested: u64,
+        /// Oldest sequence still available for replay.
+        oldest_available: u64,
+    },
+
+    /// This node is a replica and cannot accept writes.
+    #[error("This node is a replica and cannot accept writes")]
+    NotPrimary,
+
+    /// The replica lags behind the primary by more than the allowed maximum.
+    #[error("Replica lag {lag_ms} ms exceeds the maximum of {max_lag_ms} ms")]
+    StaleReplica {
+        /// Observed replication lag in milliseconds.
+        lag_ms: u64,
+        /// Maximum permitted lag in milliseconds.
+        max_lag_ms: u64,
+    },
+
+    /// A stream registry reached its subscriber limit.
+    #[error("Too many subscribers: {count} active (maximum: {max})")]
+    TooManySubscribers {
+        /// Number of active subscribers.
+        count: usize,
+        /// Maximum number of subscribers.
+        max: usize,
+    },
+
+    /// A stream replay would exceed the event or byte budget.
+    #[error("Replay budget exceeded: {events} events and {bytes} bytes")]
+    ReplayBudgetExceeded {
+        /// Number of events in the replay request.
+        events: usize,
+        /// Total payload bytes in the replay request.
+        bytes: usize,
+    },
 
     /// A serialization or deserialization operation failed.
     #[error("Serialization error: {0}")]

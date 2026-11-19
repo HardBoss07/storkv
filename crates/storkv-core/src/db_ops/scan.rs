@@ -1,4 +1,4 @@
-use crate::StorKvError;
+use crate::StorkvError;
 use crate::db::DbInner;
 use crate::format::{InternalKey, ValueType};
 use crate::memtable::MemTable;
@@ -15,7 +15,7 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
     ///
     /// # Errors
     ///
-    /// Returns [`StorKvError::ScopeIdNotFound`] when the scope is unknown.
+    /// Returns [`StorkvError::ScopeIdNotFound`] when the scope is unknown.
     pub fn scan(
         &self,
         scope_id: u32,
@@ -28,7 +28,7 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
             .read()
             .get(&scope_id)
             .cloned()
-            .ok_or(StorKvError::ScopeIdNotFound(scope_id))?;
+            .ok_or(StorkvError::ScopeIdNotFound(scope_id))?;
 
         if is_dropped_before_read(&scope, read_seq) {
             return Ok(Vec::new());
@@ -48,7 +48,7 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
     ///
     /// # Errors
     ///
-    /// Returns [`StorKvError::ScopeIdNotFound`] when the scope is unknown.
+    /// Returns [`StorkvError::ScopeIdNotFound`] when the scope is unknown.
     pub fn scan_prefix(
         &self,
         scope_id: u32,
@@ -159,7 +159,7 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
         state: &mut ScanState,
     ) {
         let sst_path = scope.scope_dir.join(format!("{:016x}.sst", file_num));
-        let Ok(mut file) = self.fs.open_file(&sst_path) else {
+        let Ok(mut file) = scope.fs.open_file(&sst_path) else {
             return;
         };
         let Ok(reader) = SstReader::open(&mut file) else {

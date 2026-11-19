@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::error::{Result, StorKvError};
+use crate::error::{Result, StorkvError};
 use crate::vfs::FileSystem;
 
 use super::record::WalBatchFrame;
@@ -15,7 +15,7 @@ impl WalRecovery {
     /// Read every complete batch from one WAL segment.
     ///
     /// A torn tail on the last segment is truncated and ignored. A checksum
-    /// failure in a non-last segment returns [`StorKvError::Corruption`].
+    /// failure in a non-last segment returns [`StorkvError::Corruption`].
     ///
     /// # Errors
     ///
@@ -43,13 +43,13 @@ fn validate_segment_header(data: &[u8], is_last_segment: bool) -> Result<()> {
         return if is_last_segment {
             Ok(())
         } else {
-            Err(StorKvError::Corruption(
+            Err(StorkvError::Corruption(
                 "Truncated WAL segment header".into(),
             ))
         };
     }
     if &data[0..8] != WAL_MAGIC {
-        return Err(StorKvError::Corruption("Invalid WAL magic".into()));
+        return Err(StorkvError::Corruption("Invalid WAL magic".into()));
     }
     Ok(())
 }

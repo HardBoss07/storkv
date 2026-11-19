@@ -7,9 +7,9 @@ use std::time::Instant;
 
 /// Concurrent in-memory write buffer ordered by internal key.
 pub struct MemTable {
+    created_at: Instant,
     map: SkipMap<Bytes, Bytes>,
     approx_bytes: AtomicUsize,
-    created_at: Instant,
     oldest_seq: parking_lot::RwLock<Option<u64>>,
 }
 
