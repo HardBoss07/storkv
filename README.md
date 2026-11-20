@@ -292,6 +292,7 @@ cargo xtask test fast
 cargo xtask test pr
 cargo xtask test full
 cargo xtask test bindings
+cargo xtask test all
 ```
 
 The tiers run these checks:
@@ -300,24 +301,39 @@ The tiers run these checks:
 - `pr` runs `fast`, the C header check, and a documentation build.
 - `full` runs `pr` and a release build of the workspace.
 - `bindings` builds the FFI library and runs the C, C++, Python, Java, and TypeScript tests.
+- `all` runs the complete verification suite in one pass: formatting, clippy, the C header check, rustdoc, all Rust workspace tests including chaos and doctests, and all five language binding suites. It does not repeat any check.
 
-The `bindings` tier skips a language when its tool is not on the `PATH`. To test against a running server, pass the server URI:
+Use `cargo xtask test all` as the single command for full verification before a release or a large change:
+
+```bash
+cargo xtask test all
+```
+
+The `all` tier sets `PROPTEST_CASES` for the workspace test pass. The default is `2000` cases. Override it with `--proptest-cases`:
+
+```bash
+cargo xtask test all --proptest-cases 256
+```
+
+The `bindings` and `all` tiers skip a language when its tool is not on the `PATH`. To test against a running server, pass the server URI:
 
 ```bash
 cargo xtask test bindings --live-uri storkv://127.0.0.1:7878
+cargo xtask test all --live-uri storkv://127.0.0.1:7878
 ```
 
 To start a server for the test, use this command:
 
 ```bash
 cargo xtask test bindings --with-server
+cargo xtask test all --with-server
 ```
 
-The `scripts/test.sh` file is a thin wrapper around the same command.
+The `scripts/test.sh` file is a thin wrapper around the same command. Read [Testing](docs/operations/testing.md) for prerequisites, tier details, and binding toolchain notes.
 
 ### Run the sandbox
 
-The `sandbox` command starts a local server and waits in the foreground. Press Enter to stop the server and remove its data.
+The `sandbox` command starts a local server and waits in the foreground. Press `Ctrl+C` to stop the server and remove its data.
 
 ```bash
 cargo xtask sandbox
@@ -344,7 +360,7 @@ cargo xtask sandbox --tls
 
 - `--strict-admin` rejects admin-only requests on client connections.
 - `--admin-token` sets the shared admin secret. The sandbox creates a token when `--strict-admin` is set and no token is given.
-- `--tls` writes a self-signed certificate and key to `target/sandbox/tls/`. `storkvd` has no TLS listener yet, so the files are only for client tests.
+- `--tls` writes a self-signed certificate and key to `target/sandbox/tls/`. The sandbox starts the native listener with TLS, using these files. A TLS client connects to port 7878.
 
 The `scripts/sandbox.sh` file is a thin wrapper around the same command.
 

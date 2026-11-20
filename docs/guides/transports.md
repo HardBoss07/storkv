@@ -159,7 +159,15 @@ On Unix, the `--admin-sock` directory uses mode `0700` and the socket file uses 
 
 ## TLS
 
-StorKV has no built-in TLS. The `https://` and `wss://` URI schemes use the plaintext backends. Put a TLS proxy in front of the listener when you need encryption:
+The native TCP listener supports built-in TLS. Start `storkvd` with a PEM certificate and key:
+
+```bash
+storkvd --tls-cert server.crt --tls-key server.key
+```
+
+You must pass both flags. TLS applies to the native listener only.
+
+The HTTP, WebSocket, gRPC, Redis, and Memcached listeners stay plaintext. The `https://` and `wss://` URI schemes in the Rust client still use the plaintext backends. Put a TLS proxy in front of those listeners when you need encryption:
 
 ```text
 client -> TLS proxy (443) -> storkvd HTTP (8080)

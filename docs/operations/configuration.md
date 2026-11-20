@@ -10,6 +10,8 @@ StorKV has no configuration file. You set every option with a command line flag 
 | :----------------------- | :--------------- | :------------------------------------------------ |
 | `--data-dir`             | `./data/storkv`  | Directory that holds the database                 |
 | `--listen`               | `127.0.0.1:7878` | Native TCP listener                               |
+| `--tls-cert`             | none             | PEM certificate for the native TLS listener       |
+| `--tls-key`              | none             | PEM private key for the native TLS listener       |
 | `--admin-sock`           | none             | Native admin listener; accepts TCP or a Unix path |
 | `--http-listen`          | none             | HTTP REST and binary RPC listener                 |
 | `--ws-listen`            | none             | WebSocket listener                                |
@@ -66,6 +68,22 @@ On Unix, use a socket path:
 An existing socket file at the path is removed before the bind.
 
 On Unix, `storkvd` sets the socket directory mode to `0700` and the socket file mode to `0600`. Only the server user can connect. Startup fails when the server cannot apply these modes.
+
+## Enable TLS on the native listener
+
+The native TCP listener supports built-in TLS. Pass both the certificate and the key:
+
+```bash
+./target/release/storkvd \
+  --data-dir ./data/storkv \
+  --listen 127.0.0.1:7878 \
+  --tls-cert /etc/storkv/server.crt \
+  --tls-key /etc/storkv/server.key
+```
+
+Both files use PEM format. You must pass both flags together. Startup fails when only one flag is set or when the server cannot read a file. The server also checks that the certificate and key form a valid server identity.
+
+TLS applies to the native TCP listener only. The HTTP, WebSocket, gRPC, Redis, and Memcached listeners stay plaintext. Put a TLS proxy in front of those listeners when you need encrypted access.
 
 ## Protect auxiliary transports
 

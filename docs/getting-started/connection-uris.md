@@ -74,6 +74,7 @@ Use the REST API query strings for REST options such as `ttl_ms`, `prefix`, `sta
 
 The client URI parser has no user-info or TLS option fields.
 
+- The native TCP listener on `storkvd` supports built-in TLS with `--tls-cert` and `--tls-key`. The Rust client has no TLS option for `storkv://` or `tcp://`, so these URIs open a plaintext socket. Use a TLS proxy when the client must encrypt native traffic.
 - The parser accepts `https://` and `wss://` schemes, but the current HTTP and WebSocket backends do not add a TLS layer. Use a local TLS proxy in front of `storkvd` and connect to the proxy with `http://` or `ws://`.
 - gRPC uses h2c over plaintext. A `grpc://host:port` target connects with `http://host:port`.
 - Admin tokens are request headers, not URI fields. Use `x-storkv-admin-token` or an `Authorization: Bearer` header on HTTP requests.
