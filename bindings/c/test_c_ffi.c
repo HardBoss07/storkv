@@ -39,13 +39,6 @@ static StorkvSlice slice_of(const char *text) {
     return slice;
 }
 
-static StorkvSlice slice_of_bytes(const void *data, size_t len) {
-    StorkvSlice slice;
-    slice.data = (const uint8_t *)data;
-    slice.len = len;
-    return slice;
-}
-
 static int bytes_equal(StorkvBytes value, const char *expected) {
     size_t expected_len = strlen(expected);
     if (value.len != expected_len) {
