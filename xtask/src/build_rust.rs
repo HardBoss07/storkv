@@ -55,12 +55,22 @@ pub fn verify_header(root: &Path) -> Result<()> {
     let original = std::fs::read(&header)?;
     generate_header(root)?;
     let regenerated = std::fs::read(&header)?;
-    if original == regenerated {
+    if original != regenerated {
+        std::fs::write(&header, &original)?;
+    }
+    if normalize_eol(&original) == normalize_eol(&regenerated) {
         return Ok(());
     }
-    std::fs::write(&header, original)?;
     Err(XtaskError::StaleHeader(format!(
         "{} differs from the generated header; run cargo xtask dist",
         header.display()
     )))
+}
+
+fn normalize_eol(bytes: &[u8]) -> Vec<u8> {
+    bytes
+        .iter()
+        .copied()
+        .filter(|&byte| byte != b'\r')
+        .collect()
 }

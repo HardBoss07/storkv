@@ -12,7 +12,9 @@ fn committed_header_matches_cbindgen() {
         .expect("generate header");
     let mut generated = Vec::new();
     bindings.write(&mut generated);
-    let generated = String::from_utf8(generated).expect("utf8 header");
+    let generated = String::from_utf8(generated)
+        .expect("utf8 header")
+        .replace("\r\n", "\n");
     let header_path = manifest
         .join("..")
         .join("..")
@@ -20,7 +22,8 @@ fn committed_header_matches_cbindgen() {
         .join("c")
         .join("storkv.h");
     let committed = std::fs::read_to_string(&header_path)
-        .unwrap_or_else(|error| panic!("read {}: {error}", header_path.display()));
+        .unwrap_or_else(|error| panic!("read {}: {error}", header_path.display()))
+        .replace("\r\n", "\n");
     assert_eq!(
         committed, generated,
         "bindings/c/storkv.h is stale; run cargo run -p storkv-ffi --example generate_header"
