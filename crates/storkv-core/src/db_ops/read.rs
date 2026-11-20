@@ -56,7 +56,7 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
     }
 }
 
-fn split_versions(versions: Vec<(ValueType, Bytes)>) -> (Option<Bytes>, Vec<Bytes>) {
+pub(super) fn split_versions(versions: Vec<(ValueType, Bytes)>) -> (Option<Bytes>, Vec<Bytes>) {
     let mut operands = Vec::new();
     let mut base_value = None;
 

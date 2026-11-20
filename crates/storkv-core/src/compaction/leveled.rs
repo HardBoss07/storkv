@@ -105,17 +105,31 @@ fn write_compacted_sstable<FS: FileSystem>(
         scope.options.prefix_bloom_len,
     );
 
-    let mut version_count_per_user_key: BTreeMap<Bytes, usize> = BTreeMap::new();
+    // Entries arrive newest-first per user key. A newer terminal version (a
+    // value or point tombstone) makes older versions obsolete. A run of merge
+    // operands is not terminal. The value or tombstone below the operands is
+    // the base for `full_merge`. If it is dropped, the merge starts from
+    // `None` and a counter can resolve to `"0"` after compaction.
+    let mut current_user_key: Option<Bytes> = None;
+    let mut seen_terminal = false;
     for (internal_key, value) in source_entries {
         if is_expired(&internal_key, now_ms) {
             continue;
         }
-        let version_count = version_count_per_user_key
-            .entry(internal_key.user_key.clone())
-            .or_insert(0);
-        *version_count += 1;
-        let droppable = internal_key.value_type != ValueType::RangeTombstone;
-        if droppable && *version_count > 1 && internal_key.seq < gc_safe_seq.get() {
+        if current_user_key.as_ref() != Some(&internal_key.user_key) {
+            current_user_key = Some(internal_key.user_key.clone());
+            seen_terminal = false;
+        }
+
+        // Keep merge operands and range tombstones as inputs. Only a plain
+        // value or point tombstone starts a new baseline and makes older
+        // versions obsolete.
+        let is_terminal = matches!(
+            internal_key.value_type,
+            ValueType::Value | ValueType::Tombstone
+        );
+        let droppable = is_terminal;
+        if droppable && seen_terminal && internal_key.seq < gc_safe_seq.get() {
             continue;
         }
 
@@ -128,6 +142,9 @@ fn write_compacted_sstable<FS: FileSystem>(
             internal_key.value_type == ValueType::Tombstone,
             &value,
         )?;
+        if is_terminal {
+            seen_terminal = true;
+        }
     }
 
     let (_footer, metadata, min_key, max_key) = writer.finish()?;

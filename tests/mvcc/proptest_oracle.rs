@@ -1,7 +1,7 @@
 //! Stateful model oracle: run random operation sequences against a real `Db`
 //! and compare every visible read with a plain `BTreeMap` model.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 use proptest::prelude::*;
@@ -69,40 +69,25 @@ fn signed_counter(bytes: &[u8]) -> i64 {
         .unwrap_or(0)
 }
 
-fn apply(
-    db: &Db,
-    scope: &ScopeHandle,
-    model: &mut BTreeMap<Vec<u8>, Vec<u8>>,
-    merge_only: &mut BTreeSet<Vec<u8>>,
-    pending: &mut bool,
-    op: &Operation,
-) {
+fn apply(db: &Db, scope: &ScopeHandle, model: &mut BTreeMap<Vec<u8>, Vec<u8>>, op: &Operation) {
     match op {
         Operation::Put { key, value } => {
             db.put(scope, key, value).expect("model put");
             model.insert(key.clone(), value.clone());
-            merge_only.remove(key);
-            *pending = true;
         }
         Operation::PutWithTtl { key, value } => {
             db.put_with_ttl(scope, key, value, Duration::from_secs(3600))
                 .expect("model put with ttl");
             model.insert(key.clone(), value.clone());
-            merge_only.remove(key);
-            *pending = true;
         }
         Operation::Delete { key } => {
             db.delete(scope, key).expect("model delete");
             model.remove(key);
-            merge_only.remove(key);
-            *pending = true;
         }
         Operation::DeleteRange { start, end } => {
             db.delete_range(scope, start, end)
                 .expect("model delete range");
             model.retain(|key, _| key < start || key >= end);
-            merge_only.retain(|key| key < start || key >= end);
-            *pending = true;
         }
         Operation::Merge { key, delta } => {
             db.merge(scope, key, MergeOp::CounterAdd(*delta))
@@ -110,23 +95,8 @@ fn apply(
             let total = signed_counter(model.get(key).map(Vec::as_slice).unwrap_or_default())
                 .wrapping_add(*delta);
             model.insert(key.clone(), total.to_string().into_bytes());
-            // Scans show only `Value` entries. The newest entry of a merged key
-            // is a `MergeOperand`, so scans hide the key until a later write.
-            // Point reads still resolve the operand. Track that difference here.
-            merge_only.insert(key.clone());
-            *pending = true;
         }
-        Operation::Flush => {
-            // A flush of an empty memtable leaves that memtable in the flush
-            // queue, and the next flush then writes the newer memtable but
-            // drops the empty one. The queued copy makes merge operands count
-            // twice. Skip no-op flushes so the oracle does not depend on that
-            // engine gap.
-            if *pending {
-                db.flush().expect("model flush");
-                *pending = false;
-            }
-        }
+        Operation::Flush => db.flush().expect("model flush"),
         Operation::Compact => db.compact().expect("model compact"),
         Operation::Reopen => {}
     }
@@ -138,12 +108,7 @@ fn reopen(temp: &mut common::TempDb) {
     temp.db = Some(db);
 }
 
-fn assert_reads(
-    db: &Db,
-    scope: &ScopeHandle,
-    model: &BTreeMap<Vec<u8>, Vec<u8>>,
-    merge_only: &BTreeSet<Vec<u8>>,
-) {
+fn assert_reads(db: &Db, scope: &ScopeHandle, model: &BTreeMap<Vec<u8>, Vec<u8>>) {
     for (key, expected) in model {
         let actual = db.get(scope, key).expect("model get");
         assert_eq!(actual.as_deref(), Some(expected.as_slice()), "key {key:?}");
@@ -157,7 +122,6 @@ fn assert_reads(
         .collect();
     let expected_all: Vec<(Vec<u8>, Vec<u8>)> = model
         .iter()
-        .filter(|(key, _)| !merge_only.contains(*key))
         .map(|(key, value)| (key.clone(), value.clone()))
         .collect();
     assert_eq!(actual_all, expected_all, "full scan");
@@ -169,7 +133,7 @@ fn assert_reads(
             .collect();
         let expected: Vec<(Vec<u8>, Vec<u8>)> = model
             .iter()
-            .filter(|(key, _)| key.starts_with(prefix) && !merge_only.contains(*key))
+            .filter(|(key, _)| key.starts_with(prefix))
             .map(|(key, value)| (key.clone(), value.clone()))
             .collect();
         assert_eq!(actual, expected, "prefix scan {prefix:?}");
@@ -183,31 +147,14 @@ fn run_sequence(operations: &[Operation]) {
         .create_scope("oracle", ScopeOptions::default())
         .expect("create oracle scope");
     let mut model = BTreeMap::new();
-    let mut merge_only = BTreeSet::new();
-    let mut pending = false;
 
     for operation in operations {
         if matches!(operation, Operation::Reopen) {
-            if merge_only.is_empty() {
-                reopen(&mut temp);
-            } else {
-                // Known engine gap: closing the last `Db` flushes pending merge
-                // operands into an SSTable, then reopen replays the same WAL
-                // operands again. Do not combine the two steps until a later
-                // write replaces every pending operand.
-                continue;
-            }
+            reopen(&mut temp);
         } else {
-            apply(
-                temp.db(),
-                &scope,
-                &mut model,
-                &mut merge_only,
-                &mut pending,
-                operation,
-            );
+            apply(temp.db(), &scope, &mut model, operation);
         }
-        assert_reads(temp.db(), &scope, &model, &merge_only);
+        assert_reads(temp.db(), &scope, &model);
     }
 }
 

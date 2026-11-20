@@ -18,10 +18,14 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
         if scope.options.storage_mode == crate::StorageMode::InMemory {
             return Ok(());
         }
-        let memtable = scope.rotate_memtable();
-        if memtable.is_empty() {
+        // Do not rotate an empty memtable. Rotation queues the memtable for
+        // flush but writes nothing. A later non-empty flush writes the newer
+        // memtable and pops the empty one. The written memtable then stays in
+        // the queue, and the code counts its merge operands a second time.
+        if scope.active_memtable.read().is_empty() {
             return Ok(());
         }
+        let memtable = scope.rotate_memtable();
 
         let file_num = self.next_file_num.fetch_add(1, Ordering::SeqCst);
         let sst_meta = self.write_memtable_sstable(scope, &memtable, file_num)?;

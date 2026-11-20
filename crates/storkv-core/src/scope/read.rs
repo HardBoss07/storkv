@@ -196,7 +196,12 @@ fn hidden_by_range<FS: FileSystem>(
     read_seq: SequenceNumber,
 ) -> bool {
     if internal_key.value_type == ValueType::RangeTombstone {
-        return false;
+        // StorKV stores a range tombstone at its start key, but the record is
+        // not a point write for that key. `is_range_deleted` decides whether
+        // the tombstone hides older versions, so the record must not end the
+        // version chain. This also keeps an empty range (`start == end`) a
+        // no-op. The record does not delete the key at the start bound.
+        return true;
     }
     scope.is_range_deleted(user_key, internal_key.seq, read_seq.get())
 }

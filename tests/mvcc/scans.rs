@@ -109,6 +109,40 @@ fn test_range_tombstone_boundary_semantics() {
 }
 
 #[test]
+fn empty_delete_range_is_a_noop_at_the_start_bound() {
+    let mut temp = common::TempDb::new("mvcc_empty_range");
+    let db = temp.db();
+    let scope = db
+        .create_scope("empty_range", ScopeOptions::default())
+        .unwrap();
+
+    db.put_with_ttl(&scope, b"k", b"value", Duration::from_secs(3600))
+        .unwrap();
+    db.delete_range(&scope, b"k", b"k").unwrap();
+
+    assert_eq!(
+        db.get(&scope, b"k").unwrap(),
+        Some(Bytes::from_static(b"value"))
+    );
+    assert_eq!(
+        db.scan(&scope, None::<&[u8]>, None::<&[u8]>).unwrap(),
+        vec![(Bytes::from_static(b"k"), Bytes::from_static(b"value"))]
+    );
+
+    db.flush().unwrap();
+    temp.close();
+    let reopened = Db::open(&temp.path, DbOptions::default()).unwrap();
+    assert_eq!(
+        reopened.get(&scope, b"k").unwrap(),
+        Some(Bytes::from_static(b"value"))
+    );
+    assert_eq!(
+        reopened.scan(&scope, None::<&[u8]>, None::<&[u8]>).unwrap(),
+        vec![(Bytes::from_static(b"k"), Bytes::from_static(b"value"))]
+    );
+}
+
+#[test]
 fn point_get_honors_range_tombstone_and_reinsert() {
     let temp = common::TempDb::new("mvcc_range_get");
     let db = temp.db();

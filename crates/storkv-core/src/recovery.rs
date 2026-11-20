@@ -123,13 +123,23 @@ fn populate_scope_levels<FS: FileSystem>(
     manifest_sst_files: &BTreeMap<(u32, u8, u64), SstFileMeta>,
 ) {
     let mut levels = scope.sst_levels.write();
+    let mut persisted_seq = 0;
     for ((file_scope_id, level, _file_num), sst_meta) in manifest_sst_files {
         if *file_scope_id == scope_id {
+            persisted_seq = persisted_seq.max(sst_meta.max_seq);
             if let Some(files) = levels.get_mut(level) {
                 files.push(sst_meta.clone());
             }
         }
     }
+    // Every record up to the newest sequence in an SSTable is already durable.
+    // Set that manifest watermark as the replay floor. A reopen then does not
+    // apply flushed WAL records (notably merge operands) a second time. A clean
+    // close flushes every scope before the handle drops, so the watermark
+    // covers the whole WAL up to that point.
+    scope
+        .snapshot_seq
+        .store(persisted_seq, std::sync::atomic::Ordering::SeqCst);
 }
 
 pub(crate) fn replay_wal<FS: FileSystem + 'static>(
