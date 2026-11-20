@@ -121,7 +121,7 @@ pub(super) fn tx_mget(tx: &mut Transaction, scope: &ScopeHandle, args: &[Bytes])
 }
 
 pub(super) fn tx_mset(tx: &mut Transaction, scope: &ScopeHandle, args: &[Bytes]) -> Resp {
-    if args.len() < 3 || (args.len() - 1) % 2 != 0 {
+    if args.len() < 3 || !(args.len() - 1).is_multiple_of(2) {
         return wrong_arity("mset");
     }
     let mut index = 1;

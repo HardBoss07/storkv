@@ -88,7 +88,7 @@ async fn execute_workload_a(
     target_key: &str,
     index: usize,
 ) -> Result<(), ClientError> {
-    if index % 2 == 0 {
+    if index.is_multiple_of(2) {
         read_one(client, scope, target_key).await
     } else {
         update_one(client, scope, target_key, index).await
@@ -101,7 +101,7 @@ async fn execute_workload_b(
     target_key: &str,
     index: usize,
 ) -> Result<(), ClientError> {
-    if index % 20 != 0 {
+    if !index.is_multiple_of(20) {
         read_one(client, scope, target_key).await
     } else {
         update_one(client, scope, target_key, index).await

@@ -126,7 +126,7 @@ impl RedisSession {
     }
 
     pub(super) fn mset(&self, args: &[Bytes]) -> Resp {
-        if args.len() < 3 || (args.len() - 1) % 2 != 0 {
+        if args.len() < 3 || !(args.len() - 1).is_multiple_of(2) {
             return wrong_arity("mset");
         }
         let scope = match self.scope() {
