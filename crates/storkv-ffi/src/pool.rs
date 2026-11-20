@@ -1,6 +1,6 @@
 use std::ffi::{CStr, c_char};
 
-use crate::error::{clear_error, fail_with, failure};
+use crate::error::{clear_error, fail_with, failure, guard_status, guard_void};
 use crate::handles::{
     PoolHandle, ScopeHandle, build_runtime, drop_pool, drop_scope, exec, pool_from_raw,
     pool_into_raw, scope_into_raw,
@@ -30,34 +30,36 @@ pub unsafe extern "C" fn storkv_pool_open(
     config: *const StorkvPoolConfig,
     out: *mut *mut StorkvPoolHandle,
 ) -> StorkvStatus {
-    if out.is_null() {
-        return failure(StorkvStatus::NullPointer, "out pool handle is null");
-    }
-    unsafe { *out = std::ptr::null_mut() };
-    let Some(uri) = c_string(uri) else {
-        return failure(StorkvStatus::NullPointer, "uri is null");
-    };
-    let config = if config.is_null() {
-        StorkvPoolConfig::default()
-    } else {
-        unsafe { *config }
-    };
-    let runtime = match build_runtime() {
-        Ok(runtime) => runtime,
-        Err(error) => return failure(StorkvStatus::Internal, error.to_string()),
-    };
-    match exec(
-        &runtime,
-        storkv_sdk::StorkvPool::connect_with(&uri, config.to_options()),
-    ) {
-        Ok(pool) => {
-            clear_error();
-            let handle = pool_into_raw(PoolHandle { runtime, pool });
-            unsafe { *out = handle };
-            StorkvStatus::Ok
+    guard_status(|| {
+        if out.is_null() {
+            return failure(StorkvStatus::NullPointer, "out pool handle is null");
         }
-        Err(error) => fail_with(error),
-    }
+        unsafe { *out = std::ptr::null_mut() };
+        let Some(uri) = c_string(uri) else {
+            return failure(StorkvStatus::NullPointer, "uri is null");
+        };
+        let config = if config.is_null() {
+            StorkvPoolConfig::default()
+        } else {
+            unsafe { *config }
+        };
+        let runtime = match build_runtime() {
+            Ok(runtime) => runtime,
+            Err(error) => return failure(StorkvStatus::Internal, error.to_string()),
+        };
+        match exec(
+            &runtime,
+            storkv_sdk::StorkvPool::connect_with(&uri, config.to_options()),
+        ) {
+            Ok(pool) => {
+                clear_error();
+                let handle = pool_into_raw(PoolHandle { runtime, pool });
+                unsafe { *out = handle };
+                StorkvStatus::Ok
+            }
+            Err(error) => fail_with(error),
+        }
+    })
 }
 
 /// Close a pool handle.
@@ -68,10 +70,12 @@ pub unsafe extern "C" fn storkv_pool_open(
 /// call. Scope handles opened from the pool remain valid.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn storkv_pool_close(pool: *mut StorkvPoolHandle) {
-    if let Some(handle) = pool_from_raw(pool) {
-        exec(&handle.runtime, handle.pool.close());
-    }
-    drop_pool(pool);
+    guard_void(|| {
+        if let Some(handle) = pool_from_raw(pool) {
+            exec(&handle.runtime, handle.pool.close());
+        }
+        drop_pool(pool);
+    });
 }
 
 /// Report whether a pool is closed.
@@ -85,18 +89,20 @@ pub unsafe extern "C" fn storkv_pool_is_closed(
     pool: *mut StorkvPoolHandle,
     out_closed: *mut i32,
 ) -> StorkvStatus {
-    if pool.is_null() {
-        return failure(StorkvStatus::NullPointer, "pool handle is null");
-    }
-    if out_closed.is_null() {
-        return failure(StorkvStatus::NullPointer, "out_closed is null");
-    }
-    let Some(handle) = pool_from_raw(pool) else {
-        return failure(StorkvStatus::NullPointer, "pool handle is null");
-    };
-    unsafe { *out_closed = if handle.pool.is_closed() { 1 } else { 0 } };
-    clear_error();
-    StorkvStatus::Ok
+    guard_status(|| {
+        if pool.is_null() {
+            return failure(StorkvStatus::NullPointer, "pool handle is null");
+        }
+        if out_closed.is_null() {
+            return failure(StorkvStatus::NullPointer, "out_closed is null");
+        }
+        let Some(handle) = pool_from_raw(pool) else {
+            return failure(StorkvStatus::NullPointer, "pool handle is null");
+        };
+        unsafe { *out_closed = if handle.pool.is_closed() { 1 } else { 0 } };
+        clear_error();
+        StorkvStatus::Ok
+    })
 }
 
 /// Open a lightweight handle for one scope.
@@ -111,28 +117,30 @@ pub unsafe extern "C" fn storkv_scope_open(
     name: *const c_char,
     out: *mut *mut StorkvScopeHandle,
 ) -> StorkvStatus {
-    if out.is_null() {
-        return failure(StorkvStatus::NullPointer, "out scope handle is null");
-    }
-    unsafe { *out = std::ptr::null_mut() };
-    if pool.is_null() {
-        return failure(StorkvStatus::NullPointer, "pool handle is null");
-    }
-    let Some(name) = c_string(name) else {
-        return failure(StorkvStatus::NullPointer, "scope name is null");
-    };
-    let Some(handle) = pool_from_raw(pool) else {
-        return failure(StorkvStatus::NullPointer, "pool handle is null");
-    };
-    let scope = handle.pool.scope(name);
-    clear_error();
-    unsafe {
-        *out = scope_into_raw(ScopeHandle {
-            runtime: handle.runtime.clone(),
-            scope,
-        })
-    };
-    StorkvStatus::Ok
+    guard_status(|| {
+        if out.is_null() {
+            return failure(StorkvStatus::NullPointer, "out scope handle is null");
+        }
+        unsafe { *out = std::ptr::null_mut() };
+        if pool.is_null() {
+            return failure(StorkvStatus::NullPointer, "pool handle is null");
+        }
+        let Some(name) = c_string(name) else {
+            return failure(StorkvStatus::NullPointer, "scope name is null");
+        };
+        let Some(handle) = pool_from_raw(pool) else {
+            return failure(StorkvStatus::NullPointer, "pool handle is null");
+        };
+        let scope = handle.pool.scope(name);
+        clear_error();
+        unsafe {
+            *out = scope_into_raw(ScopeHandle {
+                runtime: handle.runtime.clone(),
+                scope,
+            })
+        };
+        StorkvStatus::Ok
+    })
 }
 
 /// Close a scope handle.
@@ -143,5 +151,5 @@ pub unsafe extern "C" fn storkv_scope_open(
 /// call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn storkv_scope_close(scope: *mut StorkvScopeHandle) {
-    drop_scope(scope);
+    guard_void(|| drop_scope(scope));
 }

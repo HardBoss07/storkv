@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicI32, Ordering};
 
 use storkv_sdk::{SdkError, StorkvPool, Transaction};
 
-use crate::error::{clear_error, fail_with, failure};
+use crate::error::{clear_error, fail_with, failure, guard_status};
 use crate::handles::{TxHandle, exec, pool_from_raw, tx_into_raw};
 use crate::types::{
     StorkvPoolHandle, StorkvRetryConfig, StorkvSlice, StorkvStatus, StorkvTxCallback,
@@ -48,31 +48,33 @@ pub unsafe extern "C" fn storkv_tx_begin(
     pool: *mut StorkvPoolHandle,
     out: *mut *mut StorkvTxHandle,
 ) -> StorkvStatus {
-    if out.is_null() {
-        return failure(StorkvStatus::NullPointer, "out transaction handle is null");
-    }
-    unsafe { *out = std::ptr::null_mut() };
-    let Some(handle) = pool_from_raw(pool) else {
-        return failure(StorkvStatus::NullPointer, "pool handle is null");
-    };
-    let connection = match exec(&handle.runtime, handle.pool.acquire()) {
-        Ok(connection) => connection,
-        Err(error) => return fail_with(error),
-    };
-    let transaction = match exec(&handle.runtime, connection.begin()) {
-        Ok(transaction) => transaction,
-        Err(error) => return fail_with(error),
-    };
-    let transaction = Box::into_raw(Box::new(transaction));
-    clear_error();
-    unsafe {
-        *out = tx_into_raw(TxHandle {
-            runtime: handle.runtime.clone(),
-            transaction,
-            owned: true,
-        })
-    };
-    StorkvStatus::Ok
+    guard_status(|| {
+        if out.is_null() {
+            return failure(StorkvStatus::NullPointer, "out transaction handle is null");
+        }
+        unsafe { *out = std::ptr::null_mut() };
+        let Some(handle) = pool_from_raw(pool) else {
+            return failure(StorkvStatus::NullPointer, "pool handle is null");
+        };
+        let connection = match exec(&handle.runtime, handle.pool.acquire()) {
+            Ok(connection) => connection,
+            Err(error) => return fail_with(error),
+        };
+        let transaction = match exec(&handle.runtime, connection.begin()) {
+            Ok(transaction) => transaction,
+            Err(error) => return fail_with(error),
+        };
+        let transaction = Box::into_raw(Box::new(transaction));
+        clear_error();
+        unsafe {
+            *out = tx_into_raw(TxHandle {
+                runtime: handle.runtime.clone(),
+                transaction,
+                owned: true,
+            })
+        };
+        StorkvStatus::Ok
+    })
 }
 
 // The handle owns a boxed `Transaction`; the FFI layer hands out a mutable
@@ -106,78 +108,80 @@ pub unsafe extern "C" fn storkv_tx_run(
     user: *mut c_void,
     out_committed: *mut i32,
 ) -> StorkvStatus {
-    if out_committed.is_null() {
-        return failure(StorkvStatus::NullPointer, "out_committed is null");
-    }
-    unsafe { *out_committed = 0 };
-    let Some(callback) = callback else {
-        return failure(StorkvStatus::NullPointer, "callback is null");
-    };
-    let Some(handle) = pool_from_raw(pool) else {
-        return failure(StorkvStatus::NullPointer, "pool handle is null");
-    };
-    let config = if config.is_null() {
-        StorkvRetryConfig::default()
-    } else {
-        unsafe { *config }
-    };
-    let pool_ref: StorkvPool = handle.pool.clone();
-    let runtime = handle.runtime.clone();
-    let reported = Arc::new(AtomicI32::new(StorkvStatus::Ok as i32));
-    let reported_in = reported.clone();
-    let user = UserPointer(user);
-    let runtime_in = runtime.clone();
-    let outcome = exec(
-        &runtime,
-        pool_ref.transaction_with(config.to_policy(), move |transaction| {
-            let reported = reported_in.clone();
-            let runtime = runtime_in.clone();
-            let user = user;
-            let mut borrowed = TxHandle {
-                runtime,
-                transaction: transaction as *mut Transaction,
-                owned: false,
-            };
-            let pointer = (&mut borrowed) as *mut TxHandle;
-            let status = unsafe { callback(pointer.cast(), user.0) };
-            reported.store(status as i32, Ordering::SeqCst);
-            let outcome = if status == StorkvStatus::Ok {
-                Ok(())
-            } else {
-                Err(SdkError::Unsupported(
-                    "transaction callback reported failure".into(),
-                ))
-            };
-            Box::pin(std::future::ready(outcome))
-        }),
-    );
-    match outcome {
-        Ok(()) => {
-            clear_error();
-            unsafe { *out_committed = 1 };
-            StorkvStatus::Ok
+    guard_status(|| {
+        if out_committed.is_null() {
+            return failure(StorkvStatus::NullPointer, "out_committed is null");
         }
-        Err(error) => {
-            let reported = reported.load(Ordering::SeqCst);
-            if reported == StorkvStatus::Ok as i32 {
-                fail_with(error)
-            } else {
-                failure(
-                    match reported {
-                        0 => StorkvStatus::Ok,
-                        1 => StorkvStatus::NullPointer,
-                        2 => StorkvStatus::InvalidArgument,
-                        3 => StorkvStatus::Pool,
-                        4 => StorkvStatus::Scope,
-                        5 => StorkvStatus::Transaction,
-                        6 => StorkvStatus::Serialization,
-                        7 => StorkvStatus::Watch,
-                        8 => StorkvStatus::Timeout,
-                        _ => StorkvStatus::Internal,
-                    },
-                    "transaction callback failed",
-                )
+        unsafe { *out_committed = 0 };
+        let Some(callback) = callback else {
+            return failure(StorkvStatus::NullPointer, "callback is null");
+        };
+        let Some(handle) = pool_from_raw(pool) else {
+            return failure(StorkvStatus::NullPointer, "pool handle is null");
+        };
+        let config = if config.is_null() {
+            StorkvRetryConfig::default()
+        } else {
+            unsafe { *config }
+        };
+        let pool_ref: StorkvPool = handle.pool.clone();
+        let runtime = handle.runtime.clone();
+        let reported = Arc::new(AtomicI32::new(StorkvStatus::Ok as i32));
+        let reported_in = reported.clone();
+        let user = UserPointer(user);
+        let runtime_in = runtime.clone();
+        let outcome = exec(
+            &runtime,
+            pool_ref.transaction_with(config.to_policy(), move |transaction| {
+                let reported = reported_in.clone();
+                let runtime = runtime_in.clone();
+                let user = user;
+                let mut borrowed = TxHandle {
+                    runtime,
+                    transaction: transaction as *mut Transaction,
+                    owned: false,
+                };
+                let pointer = (&mut borrowed) as *mut TxHandle;
+                let status = unsafe { callback(pointer.cast(), user.0) };
+                reported.store(status as i32, Ordering::SeqCst);
+                let outcome = if status == StorkvStatus::Ok {
+                    Ok(())
+                } else {
+                    Err(SdkError::Unsupported(
+                        "transaction callback reported failure".into(),
+                    ))
+                };
+                Box::pin(std::future::ready(outcome))
+            }),
+        );
+        match outcome {
+            Ok(()) => {
+                clear_error();
+                unsafe { *out_committed = 1 };
+                StorkvStatus::Ok
+            }
+            Err(error) => {
+                let reported = reported.load(Ordering::SeqCst);
+                if reported == StorkvStatus::Ok as i32 {
+                    fail_with(error)
+                } else {
+                    failure(
+                        match reported {
+                            0 => StorkvStatus::Ok,
+                            1 => StorkvStatus::NullPointer,
+                            2 => StorkvStatus::InvalidArgument,
+                            3 => StorkvStatus::Pool,
+                            4 => StorkvStatus::Scope,
+                            5 => StorkvStatus::Transaction,
+                            6 => StorkvStatus::Serialization,
+                            7 => StorkvStatus::Watch,
+                            8 => StorkvStatus::Timeout,
+                            _ => StorkvStatus::Internal,
+                        },
+                        "transaction callback failed",
+                    )
+                }
             }
         }
-    }
+    })
 }

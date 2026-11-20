@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use crate::error::{clear_error, fail_with, failure};
+use crate::error::{clear_error, fail_with, failure, guard_status, guard_void};
 use crate::handles::{TxHandle, drop_tx, exec, scope_from_raw, tx_from_raw};
 use crate::types::{StorkvScopeHandle, StorkvSlice, StorkvStatus, StorkvTxHandle};
 
@@ -20,7 +20,7 @@ pub unsafe extern "C" fn storkv_tx_put(
     key: StorkvSlice,
     value: StorkvSlice,
 ) -> StorkvStatus {
-    write(tx, scope, key, value, None)
+    guard_status(|| write(tx, scope, key, value, None))
 }
 
 /// Buffer a key/value write with a time to live in milliseconds.
@@ -36,7 +36,7 @@ pub unsafe extern "C" fn storkv_tx_put_with_ttl(
     value: StorkvSlice,
     ttl_ms: u64,
 ) -> StorkvStatus {
-    write(tx, scope, key, value, Some(Duration::from_millis(ttl_ms)))
+    guard_status(|| write(tx, scope, key, value, Some(Duration::from_millis(ttl_ms))))
 }
 
 fn write(
@@ -94,31 +94,33 @@ pub unsafe extern "C" fn storkv_tx_delete(
     scope: *mut StorkvScopeHandle,
     key: StorkvSlice,
 ) -> StorkvStatus {
-    if tx.is_null() || scope.is_null() {
-        return failure(StorkvStatus::NullPointer, "handle is null");
-    }
-    let Some(key) = slice_bytes(key) else {
-        return failure(StorkvStatus::InvalidArgument, "key pointer is null");
-    };
-    let Some(tx_handle) = tx_from_raw(tx) else {
-        return failure(StorkvStatus::NullPointer, "transaction handle is null");
-    };
-    let Some(scope_handle) = scope_from_raw(scope) else {
-        return failure(StorkvStatus::NullPointer, "scope handle is null");
-    };
-    let Some(transaction) = transaction_ref(tx_handle) else {
-        return failure(StorkvStatus::Transaction, "transaction is finished");
-    };
-    match exec(
-        &tx_handle.runtime,
-        transaction.delete(&scope_handle.scope, key),
-    ) {
-        Ok(()) => {
-            clear_error();
-            StorkvStatus::Ok
+    guard_status(|| {
+        if tx.is_null() || scope.is_null() {
+            return failure(StorkvStatus::NullPointer, "handle is null");
         }
-        Err(error) => fail_with(error),
-    }
+        let Some(key) = slice_bytes(key) else {
+            return failure(StorkvStatus::InvalidArgument, "key pointer is null");
+        };
+        let Some(tx_handle) = tx_from_raw(tx) else {
+            return failure(StorkvStatus::NullPointer, "transaction handle is null");
+        };
+        let Some(scope_handle) = scope_from_raw(scope) else {
+            return failure(StorkvStatus::NullPointer, "scope handle is null");
+        };
+        let Some(transaction) = transaction_ref(tx_handle) else {
+            return failure(StorkvStatus::Transaction, "transaction is finished");
+        };
+        match exec(
+            &tx_handle.runtime,
+            transaction.delete(&scope_handle.scope, key),
+        ) {
+            Ok(()) => {
+                clear_error();
+                StorkvStatus::Ok
+            }
+            Err(error) => fail_with(error),
+        }
+    })
 }
 
 /// Commit a transaction and release its handle.
@@ -129,29 +131,31 @@ pub unsafe extern "C" fn storkv_tx_delete(
 /// Do not use it after this call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn storkv_tx_commit(tx: *mut StorkvTxHandle) -> StorkvStatus {
-    if tx.is_null() {
-        return failure(StorkvStatus::NullPointer, "transaction handle is null");
-    }
-    let mut handle = unsafe { Box::from_raw(tx.cast::<TxHandle>()) };
-    if !handle.owned {
-        return failure(
-            StorkvStatus::InvalidArgument,
-            "a callback transaction is committed by the retry helper",
-        );
-    }
-    if handle.transaction.is_null() {
-        return failure(StorkvStatus::Transaction, "transaction is finished");
-    }
-    let transaction = unsafe { *Box::from_raw(handle.transaction) };
-    handle.transaction = std::ptr::null_mut();
-    let result = exec(&handle.runtime, transaction.commit());
-    match result {
-        Ok(()) => {
-            clear_error();
-            StorkvStatus::Ok
+    guard_status(|| {
+        if tx.is_null() {
+            return failure(StorkvStatus::NullPointer, "transaction handle is null");
         }
-        Err(error) => fail_with(error),
-    }
+        let mut handle = unsafe { Box::from_raw(tx.cast::<TxHandle>()) };
+        if !handle.owned {
+            return failure(
+                StorkvStatus::InvalidArgument,
+                "a callback transaction is committed by the retry helper",
+            );
+        }
+        if handle.transaction.is_null() {
+            return failure(StorkvStatus::Transaction, "transaction is finished");
+        }
+        let transaction = unsafe { *Box::from_raw(handle.transaction) };
+        handle.transaction = std::ptr::null_mut();
+        let result = exec(&handle.runtime, transaction.commit());
+        match result {
+            Ok(()) => {
+                clear_error();
+                StorkvStatus::Ok
+            }
+            Err(error) => fail_with(error),
+        }
+    })
 }
 
 /// Roll back a transaction and release its handle.
@@ -162,5 +166,5 @@ pub unsafe extern "C" fn storkv_tx_commit(tx: *mut StorkvTxHandle) -> StorkvStat
 /// Do not use it after this call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn storkv_tx_rollback(tx: *mut StorkvTxHandle) {
-    drop_tx(tx);
+    guard_void(|| drop_tx(tx));
 }

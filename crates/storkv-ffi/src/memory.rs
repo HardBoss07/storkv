@@ -1,5 +1,6 @@
 use bytes::Bytes;
 
+use crate::error::guard_void;
 use crate::types::{StorkvBytes, StorkvEntries, StorkvEntry};
 
 pub(crate) fn bytes_to_ffi(value: Option<Bytes>) -> StorkvBytes {
@@ -47,7 +48,7 @@ unsafe fn free_bytes(value: StorkvBytes) {
 /// `value` must come from this library. Do not use it after this call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn storkv_bytes_free(value: StorkvBytes) {
-    unsafe { free_bytes(value) };
+    guard_void(|| unsafe { free_bytes(value) });
 }
 
 /// Release an entry array allocated by the FFI layer.
@@ -57,16 +58,18 @@ pub unsafe extern "C" fn storkv_bytes_free(value: StorkvBytes) {
 /// `entries` must come from this library. Do not use it after this call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn storkv_entries_free(entries: StorkvEntries) {
-    if entries.entries.is_null() {
-        return;
-    }
-    let slice = std::ptr::slice_from_raw_parts_mut(entries.entries, entries.len);
-    let boxed = unsafe { Box::from_raw(slice) };
-    for entry in boxed.iter() {
-        unsafe {
-            free_bytes(entry.key);
-            free_bytes(entry.value);
+    guard_void(|| {
+        if entries.entries.is_null() {
+            return;
         }
-    }
-    drop(boxed);
+        let slice = std::ptr::slice_from_raw_parts_mut(entries.entries, entries.len);
+        let boxed = unsafe { Box::from_raw(slice) };
+        for entry in boxed.iter() {
+            unsafe {
+                free_bytes(entry.key);
+                free_bytes(entry.value);
+            }
+        }
+        drop(boxed);
+    });
 }

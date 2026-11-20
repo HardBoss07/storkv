@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use crate::error::{clear_error, fail_with, failure};
+use crate::error::{clear_error, fail_with, failure, guard_status};
 use crate::handles::{exec, scope_from_raw};
 use crate::memory::bytes_to_ffi;
 use crate::types::{StorkvBytes, StorkvScopeHandle, StorkvSlice, StorkvStatus};
@@ -21,7 +21,7 @@ pub unsafe extern "C" fn storkv_put(
     key: StorkvSlice,
     value: StorkvSlice,
 ) -> StorkvStatus {
-    store(scope, key, value, None)
+    guard_status(|| store(scope, key, value, None))
 }
 
 /// Store one key/value pair with a time to live in milliseconds.
@@ -37,7 +37,7 @@ pub unsafe extern "C" fn storkv_put_with_ttl(
     value: StorkvSlice,
     ttl_ms: u64,
 ) -> StorkvStatus {
-    store(scope, key, value, Some(Duration::from_millis(ttl_ms)))
+    guard_status(|| store(scope, key, value, Some(Duration::from_millis(ttl_ms))))
 }
 
 fn store(
@@ -84,32 +84,34 @@ pub unsafe extern "C" fn storkv_get_and_touch(
     ttl_ms: u64,
     out_value: *mut StorkvBytes,
 ) -> StorkvStatus {
-    if scope.is_null() {
-        return failure(StorkvStatus::NullPointer, "scope handle is null");
-    }
-    if out_value.is_null() {
-        return failure(StorkvStatus::NullPointer, "out_value is null");
-    }
-    unsafe { *out_value = StorkvBytes::EMPTY };
-    let Some(key) = slice_bytes(key) else {
-        return failure(StorkvStatus::InvalidArgument, "key pointer is null");
-    };
-    let Some(handle) = scope_from_raw(scope) else {
-        return failure(StorkvStatus::NullPointer, "scope handle is null");
-    };
-    match exec(
-        &handle.runtime,
-        handle
-            .scope
-            .get_and_touch(key, Duration::from_millis(ttl_ms)),
-    ) {
-        Ok(value) => {
-            clear_error();
-            unsafe { *out_value = bytes_to_ffi(value) };
-            StorkvStatus::Ok
+    guard_status(|| {
+        if scope.is_null() {
+            return failure(StorkvStatus::NullPointer, "scope handle is null");
         }
-        Err(error) => fail_with(error),
-    }
+        if out_value.is_null() {
+            return failure(StorkvStatus::NullPointer, "out_value is null");
+        }
+        unsafe { *out_value = StorkvBytes::EMPTY };
+        let Some(key) = slice_bytes(key) else {
+            return failure(StorkvStatus::InvalidArgument, "key pointer is null");
+        };
+        let Some(handle) = scope_from_raw(scope) else {
+            return failure(StorkvStatus::NullPointer, "scope handle is null");
+        };
+        match exec(
+            &handle.runtime,
+            handle
+                .scope
+                .get_and_touch(key, Duration::from_millis(ttl_ms)),
+        ) {
+            Ok(value) => {
+                clear_error();
+                unsafe { *out_value = bytes_to_ffi(value) };
+                StorkvStatus::Ok
+            }
+            Err(error) => fail_with(error),
+        }
+    })
 }
 
 /// Delete one key from a scope.
@@ -122,20 +124,22 @@ pub unsafe extern "C" fn storkv_delete(
     scope: *mut StorkvScopeHandle,
     key: StorkvSlice,
 ) -> StorkvStatus {
-    if scope.is_null() {
-        return failure(StorkvStatus::NullPointer, "scope handle is null");
-    }
-    let Some(key) = slice_bytes(key) else {
-        return failure(StorkvStatus::InvalidArgument, "key pointer is null");
-    };
-    let Some(handle) = scope_from_raw(scope) else {
-        return failure(StorkvStatus::NullPointer, "scope handle is null");
-    };
-    match exec(&handle.runtime, handle.scope.delete(key)) {
-        Ok(()) => {
-            clear_error();
-            StorkvStatus::Ok
+    guard_status(|| {
+        if scope.is_null() {
+            return failure(StorkvStatus::NullPointer, "scope handle is null");
         }
-        Err(error) => fail_with(error),
-    }
+        let Some(key) = slice_bytes(key) else {
+            return failure(StorkvStatus::InvalidArgument, "key pointer is null");
+        };
+        let Some(handle) = scope_from_raw(scope) else {
+            return failure(StorkvStatus::NullPointer, "scope handle is null");
+        };
+        match exec(&handle.runtime, handle.scope.delete(key)) {
+            Ok(()) => {
+                clear_error();
+                StorkvStatus::Ok
+            }
+            Err(error) => fail_with(error),
+        }
+    })
 }

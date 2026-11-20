@@ -1,5 +1,10 @@
 //! Per-connection native protocol session.
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
+
+use crossbeam_channel::RecvTimeoutError;
 use storkv_proto::{Message, MessagePayload, Request, Response, WireChangeEvent};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 use tokio::task::JoinHandle;
@@ -14,7 +19,9 @@ pub(super) struct ConnectionSession<W> {
     pub(super) writer: W,
     pub(super) watch_sender: tokio::sync::mpsc::Sender<Message>,
     pub(super) watch_task: Option<JoinHandle<()>>,
+    pub(super) watch_stop: Option<Arc<AtomicBool>>,
     pub(super) replication_task: Option<JoinHandle<()>>,
+    pub(super) replication_stop: Option<Arc<AtomicBool>>,
     pub(super) consistency: ConnectionConsistency,
     pub(super) is_admin: bool,
 }
@@ -66,9 +73,7 @@ impl<W: AsyncWrite + Unpin> ConnectionSession<W> {
         request_id: u64,
         from_seq: Option<u64>,
     ) -> Result<(), std::io::Error> {
-        if let Some(handle) = self.watch_task.take() {
-            handle.abort();
-        }
+        stop_task(&mut self.watch_task, &mut self.watch_stop);
         let receiver = match from_seq {
             Some(seq) => self.server.db.watch_from(seq),
             None => self.server.db.watch(),
@@ -83,8 +88,21 @@ impl<W: AsyncWrite + Unpin> ConnectionSession<W> {
             }
         };
         let watch_sender = self.watch_sender.clone();
+        let stop = Arc::new(AtomicBool::new(false));
+        let task_stop = stop.clone();
+        self.watch_stop = Some(stop);
         self.watch_task = Some(tokio::task::spawn_blocking(move || {
-            while let Ok(event) = watch_receiver.recv() {
+            // `spawn_blocking` tasks cannot be aborted once they start, so the
+            // task watches this flag and polls the receiver with a timeout.
+            while !task_stop.load(Ordering::Relaxed) {
+                let event = match watch_receiver.recv_timeout(Duration::from_millis(250)) {
+                    Ok(event) => event,
+                    Err(RecvTimeoutError::Timeout) => continue,
+                    Err(RecvTimeoutError::Disconnected) => break,
+                };
+                if task_stop.load(Ordering::Relaxed) {
+                    break;
+                }
                 let Some(wire_event) = wire_change_event(event) else {
                     continue;
                 };
@@ -119,9 +137,7 @@ impl<W: AsyncWrite + Unpin> ConnectionSession<W> {
                 .write_message(Message::new_response(request_id, response))
                 .await;
         }
-        if let Some(handle) = self.replication_task.take() {
-            handle.abort();
-        }
+        stop_task(&mut self.replication_task, &mut self.replication_stop);
         let (frames, snapshot) = match self.server.db.replication_frames_from(from_seq) {
             Ok(frames) => (frames, None),
             Err(StorkvError::WatchCursorExpired {
@@ -157,8 +173,19 @@ impl<W: AsyncWrite + Unpin> ConnectionSession<W> {
             .await?;
         }
         let sender = self.watch_sender.clone();
+        let stop = Arc::new(AtomicBool::new(false));
+        let task_stop = stop.clone();
+        self.replication_stop = Some(stop);
         self.replication_task = Some(tokio::task::spawn_blocking(move || {
-            while let Ok(frame) = frames.recv() {
+            while !task_stop.load(Ordering::Relaxed) {
+                let frame = match frames.recv_timeout(Duration::from_millis(250)) {
+                    Ok(frame) => frame,
+                    Err(RecvTimeoutError::Timeout) => continue,
+                    Err(RecvTimeoutError::Disconnected) => break,
+                };
+                if task_stop.load(Ordering::Relaxed) {
+                    break;
+                }
                 let Ok(encoded) = frame.encode(false) else {
                     break;
                 };
@@ -179,12 +206,18 @@ impl<W: AsyncWrite + Unpin> ConnectionSession<W> {
     }
 
     pub(super) fn stop_watch(&mut self) {
-        if let Some(handle) = self.watch_task.take() {
-            handle.abort();
-        }
-        if let Some(handle) = self.replication_task.take() {
-            handle.abort();
-        }
+        stop_task(&mut self.watch_task, &mut self.watch_stop);
+        stop_task(&mut self.replication_task, &mut self.replication_stop);
+    }
+}
+
+/// Signal a blocking task to stop, then abort it in case it has not started.
+fn stop_task(handle: &mut Option<JoinHandle<()>>, stop: &mut Option<Arc<AtomicBool>>) {
+    if let Some(flag) = stop.take() {
+        flag.store(true, Ordering::Relaxed);
+    }
+    if let Some(handle) = handle.take() {
+        handle.abort();
     }
 }
 

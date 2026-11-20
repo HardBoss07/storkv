@@ -28,6 +28,30 @@ pub(crate) fn failure(status: StorkvStatus, message: impl Into<String>) -> Stork
     status
 }
 
+/// Run an FFI entry point body and convert a panic into a status code.
+///
+/// A panic must never unwind across the `extern "C"` boundary because that is
+/// undefined behavior in the C ABI.
+pub(crate) fn guard_status<F>(body: F) -> StorkvStatus
+where
+    F: FnOnce() -> StorkvStatus,
+{
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(body)) {
+        Ok(status) => status,
+        Err(_) => failure(StorkvStatus::Internal, "panic in FFI call"),
+    }
+}
+
+/// Run a void FFI entry point body and record a panic instead of unwinding.
+pub(crate) fn guard_void<F>(body: F)
+where
+    F: FnOnce(),
+{
+    if std::panic::catch_unwind(std::panic::AssertUnwindSafe(body)).is_err() {
+        record_error("panic in FFI call");
+    }
+}
+
 pub(crate) fn status_for(error: &SdkError) -> StorkvStatus {
     match error {
         SdkError::AcquireTimeout => StorkvStatus::Timeout,
@@ -51,17 +75,23 @@ pub(crate) fn fail_with(error: SdkError) -> StorkvStatus {
 /// Release the returned string with [`storkv_string_free`].
 #[unsafe(no_mangle)]
 pub extern "C" fn storkv_last_error_message() -> StorkvString {
-    LAST_ERROR.with(|slot| {
-        let borrowed = slot.borrow();
-        let Some(message) = borrowed.as_ref() else {
-            return StorkvString::EMPTY;
-        };
-        let bytes = message.as_bytes();
-        let copy = CString::new(bytes).unwrap_or_default();
-        let len = copy.as_bytes().len();
-        let data = copy.into_raw();
-        StorkvString { data, len }
-    })
+    match std::panic::catch_unwind(|| {
+        LAST_ERROR.with(|slot| {
+            let borrowed = slot.borrow();
+            let Some(message) = borrowed.as_ref() else {
+                return StorkvString::EMPTY;
+            };
+            let Some(copy) = CString::new(message.as_bytes()).ok() else {
+                return StorkvString::EMPTY;
+            };
+            let len = copy.as_bytes().len();
+            let data = copy.into_raw();
+            StorkvString { data, len }
+        })
+    }) {
+        Ok(value) => value,
+        Err(_) => StorkvString::EMPTY,
+    }
 }
 
 /// Release a string returned by [`storkv_last_error_message`].
@@ -72,7 +102,9 @@ pub extern "C" fn storkv_last_error_message() -> StorkvString {
 /// this call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn storkv_string_free(value: StorkvString) {
-    if !value.data.is_null() {
-        drop(unsafe { CString::from_raw(value.data) });
-    }
+    guard_void(|| {
+        if !value.data.is_null() {
+            drop(unsafe { CString::from_raw(value.data) });
+        }
+    });
 }

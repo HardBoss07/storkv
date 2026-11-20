@@ -123,7 +123,9 @@ impl Server {
             writer,
             watch_sender,
             watch_task: None,
+            watch_stop: None,
             replication_task: None,
+            replication_stop: None,
             consistency: ConnectionConsistency::new(default_consistency),
             is_admin,
         };
