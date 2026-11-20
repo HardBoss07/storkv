@@ -27,6 +27,12 @@ pub struct Scope<FS: FileSystem> {
     pub flush_queue: FlushQueue,
     /// SSTable files per compaction level.
     pub sst_levels: RwLock<BTreeMap<u8, Vec<SstFileMeta>>>,
+    /// Serializes memtable rotation and flush for this scope.
+    ///
+    /// Commits release the database commit lock before flushing, so a scope
+    /// lock keeps maintenance and concurrent commits from rotating the same
+    /// memtable at the same time.
+    pub flush_lock: parking_lot::Mutex<()>,
     /// True after the scope is dropped.
     pub dropped: RwLock<bool>,
     /// Sequence number of the drop.
@@ -72,6 +78,7 @@ impl<FS: FileSystem> Scope<FS> {
             active_memtable: RwLock::new(Arc::new(MemTable::new())),
             flush_queue: FlushQueue::new(),
             sst_levels: RwLock::new(levels),
+            flush_lock: parking_lot::Mutex::new(()),
             dropped: RwLock::new(false),
             drop_seq: AtomicU64::new(0),
             snapshot_seq: AtomicU64::new(0),

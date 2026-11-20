@@ -202,7 +202,7 @@ impl<FS: FileSystem> WalManager<FS> {
         if !segment.should_rotate() {
             return Ok(());
         }
-        let _ = segment.seal();
+        segment.seal()?;
         let new_wal_num = self.next_wal_num.fetch_add(1, Ordering::SeqCst);
         let new_segment = WalSegment::create(self.fs.clone(), &self.wal_dir, new_wal_num)?;
         *segment = new_segment;

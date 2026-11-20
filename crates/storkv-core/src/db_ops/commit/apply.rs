@@ -47,20 +47,27 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
         &self,
         write_set: BTreeMap<(u32, Bytes), TxMutation>,
         batch_seq: u64,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<Vec<Arc<Scope<FS>>>> {
+        let scopes = self.scopes.read();
+        let mut touched = Vec::new();
+        let mut last_scope_id = None;
+
         for (index, ((scope_id, user_key), mutation)) in write_set.into_iter().enumerate() {
             let op_seq = batch_seq + index as u64;
             self.telemetry.record_write();
 
-            if let Some(scope) = self.scopes.read().get(&scope_id).cloned() {
+            if let Some(scope) = scopes.get(&scope_id).cloned() {
                 apply_mutation(self, &scope, user_key, mutation, op_seq);
-                self.maybe_flush_memtable(&scope)?;
+                if last_scope_id != Some(scope_id) {
+                    last_scope_id = Some(scope_id);
+                    touched.push(scope);
+                }
             }
         }
-        Ok(())
+        Ok(touched)
     }
 
-    fn maybe_flush_memtable(&self, scope: &Arc<Scope<FS>>) -> crate::Result<()> {
+    pub(super) fn maybe_flush_memtable(&self, scope: &Arc<Scope<FS>>) -> crate::Result<()> {
         if scope.options.storage_mode == crate::StorageMode::InMemory {
             return Ok(());
         }
@@ -84,14 +91,16 @@ pub(super) fn build_wal_ops<FS: FileSystem + 'static>(
         sync_interval: Duration::from_millis(100),
     };
 
+    let scopes = db.scopes.read();
     for ((scope_id, user_key), mutation) in &transaction.write_set {
-        if let Some(scope) = db.scopes.read().get(scope_id) {
+        if let Some(scope) = scopes.get(scope_id) {
             if scope.options.durability == Durability::StrictFsync {
                 durability = Durability::StrictFsync;
             }
         }
         ops.push(wal_op_for_mutation(*scope_id, user_key, mutation));
     }
+    drop(scopes);
 
     (ops, durability)
 }

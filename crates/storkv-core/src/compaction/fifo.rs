@@ -19,7 +19,7 @@ impl Compactor {
         }
 
         let edit = delete_sst_edits(scope.scope_id, &expired_files);
-        remove_expired_files(scope, &expired_files);
+        drop_expired_from_levels(scope, &expired_files);
         Ok(Some(edit))
     }
 }
@@ -52,13 +52,15 @@ fn delete_sst_edits(scope_id: u32, expired_files: &[(u8, u64)]) -> VersionEdit {
     edit
 }
 
-fn remove_expired_files<FS: FileSystem>(scope: &Arc<Scope<FS>>, expired_files: &[(u8, u64)]) {
+/// Remove expired files from the in-memory levels.
+///
+/// The manifest edit is logged before the files are deleted so that a crash
+/// can never leave the manifest pointing at files that are already gone.
+fn drop_expired_from_levels<FS: FileSystem>(scope: &Arc<Scope<FS>>, expired_files: &[(u8, u64)]) {
     let mut levels = scope.sst_levels.write();
     for (level, file_num) in expired_files {
         if let Some(files) = levels.get_mut(level) {
             files.retain(|metadata| metadata.file_num != *file_num);
         }
-        let path = scope.scope_dir.join(format!("{:016x}.sst", file_num));
-        let _ = scope.fs.remove_file(&path);
     }
 }

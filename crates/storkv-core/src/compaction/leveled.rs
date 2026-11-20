@@ -27,7 +27,7 @@ impl Compactor {
         let Some(source_files) = select_source_files(scope) else {
             return Ok(None);
         };
-        let source_entries = read_source_entries(scope, &source_files);
+        let source_entries = read_source_entries(scope, &source_files)?;
         if source_entries.is_empty() {
             return Ok(None);
         }
@@ -46,7 +46,7 @@ impl Compactor {
         }
         edit.add(EditRecord::AddSstFile(new_metadata.clone()));
 
-        apply_compaction_result(scope, &source_files, new_metadata);
+        apply_compaction_result(scope, new_metadata);
         Ok(Some(edit))
     }
 }
@@ -64,28 +64,21 @@ fn select_source_files<FS: FileSystem>(scope: &Arc<Scope<FS>>) -> Option<Vec<Sst
 fn read_source_entries<FS: FileSystem>(
     scope: &Arc<Scope<FS>>,
     source_files: &[SstFileMeta],
-) -> BTreeMap<InternalKey, Bytes> {
+) -> Result<BTreeMap<InternalKey, Bytes>> {
     let mut all_entries = BTreeMap::new();
     for metadata in source_files {
         let sst_path = scope
             .scope_dir
             .join(format!("{:016x}.sst", metadata.file_num));
-        let Ok(mut file) = scope.fs.open_file(&sst_path) else {
-            continue;
-        };
-        let Ok(reader) = SstReader::open(&mut file) else {
-            continue;
-        };
-        let Ok(entries) = reader.read_all_entries(&mut file) else {
-            continue;
-        };
-        for (encoded_key, value) in entries {
+        let mut file = scope.fs.open_file(&sst_path)?;
+        let reader = SstReader::open(&mut file)?;
+        for (encoded_key, value) in reader.read_all_entries(&mut file)? {
             if let Some(internal_key) = InternalKey::decode(encoded_key) {
                 all_entries.insert(internal_key, value);
             }
         }
     }
-    all_entries
+    Ok(all_entries)
 }
 
 fn write_compacted_sstable<FS: FileSystem>(
@@ -148,11 +141,12 @@ fn write_compacted_sstable<FS: FileSystem>(
     }
 
     let (_footer, metadata, min_key, max_key) = writer.finish()?;
+    let file_size = new_file.file_size()?;
     Ok(SstFileMeta {
         scope_id: scope.scope_id,
         level: LEVEL_ONE,
         file_num: new_file_num,
-        file_size: metadata.raw_key_bytes + metadata.raw_val_bytes + 1024,
+        file_size,
         min_seq: metadata.min_seq,
         max_seq: metadata.max_seq,
         max_expires_at_ms: metadata.max_expires_at_ms,
@@ -161,24 +155,16 @@ fn write_compacted_sstable<FS: FileSystem>(
     })
 }
 
-fn apply_compaction_result<FS: FileSystem>(
-    scope: &Arc<Scope<FS>>,
-    source_files: &[SstFileMeta],
-    new_metadata: SstFileMeta,
-) {
+/// Swap the compacted L0 inputs for the new L1 file in the in-memory levels.
+///
+/// Source files are deleted by the maintenance loop after the manifest edit is
+/// durable, so a crash never leaves stale manifest references.
+fn apply_compaction_result<FS: FileSystem>(scope: &Arc<Scope<FS>>, new_metadata: SstFileMeta) {
     let mut levels = scope.sst_levels.write();
     if let Some(files) = levels.get_mut(&LEVEL_ZERO) {
         files.clear();
     }
-    if let Some(files) = levels.get_mut(&LEVEL_ONE) {
-        files.push(new_metadata);
-    }
-    for source in source_files {
-        let path = scope
-            .scope_dir
-            .join(format!("{:016x}.sst", source.file_num));
-        let _ = scope.fs.remove_file(&path);
-    }
+    levels.entry(LEVEL_ONE).or_default().push(new_metadata);
 }
 
 fn is_expired(internal_key: &InternalKey, now_ms: TimestampMs) -> bool {

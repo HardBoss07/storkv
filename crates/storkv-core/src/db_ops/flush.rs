@@ -18,6 +18,9 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
         if scope.options.storage_mode == crate::StorageMode::InMemory {
             return Ok(());
         }
+        // Flush may run after the commit lock is released, so serialize
+        // rotation and flush per scope.
+        let _flush_guard = scope.flush_lock.lock();
         // Do not rotate an empty memtable. Rotation queues the memtable for
         // flush but writes nothing. A later non-empty flush writes the newer
         // memtable and pops the empty one. The written memtable then stays in
@@ -61,11 +64,12 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
         write_memtable_entries(&mut writer, memtable)?;
 
         let (_footer, metadata, min_key, max_key) = writer.finish()?;
+        let file_size = file.file_size()?;
         Ok(SstFileMeta {
             scope_id: scope.scope_id,
             level: 0,
             file_num,
-            file_size: metadata.raw_key_bytes + metadata.raw_val_bytes + 1024,
+            file_size,
             min_seq: metadata.min_seq,
             max_seq: metadata.max_seq,
             max_expires_at_ms: metadata.max_expires_at_ms,

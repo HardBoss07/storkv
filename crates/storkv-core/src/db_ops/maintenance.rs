@@ -62,7 +62,21 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
                 &self.next_file_num,
                 now_ms,
             )? {
+                // Persist the edit first: the manifest must never point at a
+                // file that was already removed when the process restarts.
+                let obsolete: Vec<u64> = edit
+                    .edits
+                    .iter()
+                    .filter_map(|record| match record {
+                        EditRecord::DeleteSstFile { file_num, .. } => Some(*file_num),
+                        _ => None,
+                    })
+                    .collect();
                 self.manifest_mgr.log_edit(edit)?;
+                for file_num in obsolete {
+                    let path = scope.scope_dir.join(format!("{:016x}.sst", file_num));
+                    scope.fs.remove_file(&path)?;
+                }
             }
         }
 
