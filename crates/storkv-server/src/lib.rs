@@ -20,6 +20,7 @@ mod listener;
 mod metrics;
 mod replication;
 mod server;
+pub mod tls;
 pub mod transports;
 
 pub use config::{ReplicationRole, ServerConfig};

@@ -1,9 +1,7 @@
 //! Authentication matrix for every access-controlled transport.
 //!
-//! The server has no TLS listener. A TLS handshake test would need a
-//! production TLS dependency, so this file checks certificate generation with
-//! `rcgen` and verifies the shared admin-token policy on the transports that
-//! exist: native TCP, HTTP, and WebSocket. gRPC uses the same
+//! The native listener is exercised over both plain TCP and real Rustls TLS.
+//! HTTP and WebSocket share the same admin-token policy; gRPC uses the same
 //! `TransportOptions` policy.
 
 use std::path::PathBuf;
@@ -13,6 +11,7 @@ use std::time::Duration;
 use bytes::{Bytes, BytesMut};
 use futures_util::{SinkExt, StreamExt};
 use storkv_proto::{Message, MessagePayload, Request, Response, StorkvWireError};
+use storkv_server::tls::{rustls, tokio_rustls};
 use storkv_server::transports::TransportOptions;
 use storkv_server::{Server, transports};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -111,6 +110,106 @@ async fn spawn_native(prefix: &str, strict_admin: bool) -> (Running, String, Str
     )
 }
 
+struct TestPki {
+    directory: PathBuf,
+    certificate_path: PathBuf,
+    key_path: PathBuf,
+    certificate: rustls::pki_types::CertificateDer<'static>,
+}
+
+impl TestPki {
+    fn generate(prefix: &str) -> Self {
+        let directory = std::env::temp_dir().join(format!(
+            "storkv_{prefix}_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|elapsed| elapsed.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&directory).expect("create tls directory");
+        let generated = rcgen::generate_simple_self_signed(vec![
+            "localhost".to_string(),
+            "127.0.0.1".to_string(),
+        ])
+        .expect("generate certificate");
+        let certificate_path = directory.join("server.pem");
+        let key_path = directory.join("server.key");
+        std::fs::write(&certificate_path, generated.cert.pem()).expect("write certificate");
+        std::fs::write(&key_path, generated.key_pair.serialize_pem()).expect("write key");
+        Self {
+            directory,
+            certificate_path,
+            key_path,
+            certificate: generated.cert.der().clone(),
+        }
+    }
+}
+
+impl Drop for TestPki {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.directory);
+    }
+}
+
+async fn spawn_native_tls(prefix: &str, strict_admin: bool) -> (Running, String, String, TestPki) {
+    let pki = TestPki::generate(prefix);
+    let acceptor = storkv_server::tls::load_acceptor(&pki.certificate_path, &pki.key_path)
+        .expect("tls accept");
+    let mut temp = crate::common::TempDb::new(prefix);
+    let server = Arc::new(
+        Server::with_db(Arc::new(temp.db.take().expect("test db"))).with_strict_admin(strict_admin),
+    );
+    let client_listener = TcpListener::bind("127.0.0.1:0").await.expect("bind client");
+    let client_addr = client_listener
+        .local_addr()
+        .expect("client addr")
+        .to_string();
+    let admin_listener = TcpListener::bind("127.0.0.1:0").await.expect("bind admin");
+    let admin_addr = admin_listener.local_addr().expect("admin addr").to_string();
+    let client_server = server.clone();
+    let admin_server = server.clone();
+    let handle = tokio::spawn(async move {
+        let client = tokio::spawn(async move {
+            let _ = client_server
+                .run_tls_listener(client_listener, acceptor, false)
+                .await;
+        });
+        let admin = tokio::spawn(async move {
+            let _ = admin_server.run_tcp_listener(admin_listener, true).await;
+        });
+        let _ = tokio::join!(client, admin);
+    });
+    (
+        Running {
+            server,
+            _temp: temp,
+            handle,
+        },
+        client_addr,
+        admin_addr,
+        pki,
+    )
+}
+
+async fn tls_connect(
+    address: &str,
+    certificate: rustls::pki_types::CertificateDer<'static>,
+) -> tokio_rustls::client::TlsStream<TcpStream> {
+    let mut roots = rustls::RootCertStore::empty();
+    roots.add(certificate).expect("trust test certificate");
+    let config = rustls::ClientConfig::builder()
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+    let connector = tokio_rustls::TlsConnector::from(Arc::new(config));
+    let server_name = rustls::pki_types::ServerName::try_from("localhost").expect("server name");
+    let stream = TcpStream::connect(address).await.expect("connect tls");
+    connector
+        .connect(server_name, stream)
+        .await
+        .expect("tls handshake")
+}
+
 async fn http_status(address: &str, authorization: Option<&str>) -> u16 {
     let mut stream = TcpStream::connect(address).await.expect("connect http");
     let header = authorization
@@ -137,7 +236,14 @@ async fn http_status(address: &str, authorization: Option<&str>) -> u16 {
 }
 
 async fn native_admin_compact(address: &str) -> Response {
-    let mut stream = TcpStream::connect(address).await.expect("connect native");
+    let stream = TcpStream::connect(address).await.expect("connect native");
+    native_admin_compact_stream(stream).await
+}
+
+async fn native_admin_compact_stream<Stream>(mut stream: Stream) -> Response
+where
+    Stream: AsyncReadExt + AsyncWriteExt + Unpin,
+{
     let request = Message::new_request(1, Request::Compact).encode();
     stream
         .write_all(&request)
@@ -203,37 +309,31 @@ fn assert_unauthorized(response: Response) {
 
 #[test]
 fn tls_certificate_generation_probe() {
-    let directory = std::env::temp_dir().join(format!(
-        "storkv_cert_probe_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|elapsed| elapsed.as_nanos())
-            .unwrap_or(0)
-    ));
-    std::fs::create_dir_all(&directory).expect("create cert directory");
-    let trusted =
-        rcgen::generate_simple_self_signed(vec!["localhost".to_string(), "127.0.0.1".to_string()])
-            .expect("generate trusted certificate");
-    let untrusted = rcgen::generate_simple_self_signed(vec!["localhost".to_string()])
-        .expect("generate untrusted certificate");
+    let trusted = TestPki::generate("cert_probe");
+    let other = TestPki::generate("cert_probe_other");
 
-    let cert_path: PathBuf = directory.join("server.pem");
-    let key_path: PathBuf = directory.join("server.key");
-    std::fs::write(&cert_path, trusted.cert.pem()).expect("write certificate");
-    std::fs::write(&key_path, trusted.key_pair.serialize_pem()).expect("write key");
-
-    let cert_pem = std::fs::read_to_string(&cert_path).expect("read certificate");
-    let key_pem = std::fs::read_to_string(&key_path).expect("read key");
+    let cert_pem = std::fs::read_to_string(&trusted.certificate_path).expect("read certificate");
+    let key_pem = std::fs::read_to_string(&trusted.key_path).expect("read key");
     assert!(cert_pem.starts_with("-----BEGIN CERTIFICATE-----"));
     assert!(key_pem.starts_with("-----BEGIN PRIVATE KEY-----"));
     assert_ne!(
-        trusted.cert.pem(),
-        untrusted.cert.pem(),
+        trusted.certificate.as_ref(),
+        other.certificate.as_ref(),
         "distinct identities"
     );
+}
 
-    let _ = std::fs::remove_dir_all(&directory);
+#[tokio::test]
+async fn native_tls_listener_completes_a_rustls_handshake() {
+    let (_running, client, admin, pki) = spawn_native_tls("matrix_native_tls", true).await;
+
+    // The encrypted client listener is not an admin listener, so a TLS request
+    // must still be rejected by the shared policy.
+    let tls_stream = tls_connect(&client, pki.certificate.clone()).await;
+    assert_unauthorized(native_admin_compact_stream(tls_stream).await);
+
+    // The plain admin listener keeps working alongside the TLS listener.
+    assert_eq!(native_admin_compact(&admin).await, Response::Empty);
 }
 
 #[test]

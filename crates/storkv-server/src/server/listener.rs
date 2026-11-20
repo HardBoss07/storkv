@@ -26,6 +26,40 @@ impl Server {
             .await
     }
 
+    /// Accept TLS-wrapped native protocol connections from a TCP listener.
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O error when accept fails.
+    pub async fn run_tls_listener(
+        self: Arc<Self>,
+        listener: TcpListener,
+        acceptor: tokio_rustls::TlsAcceptor,
+        is_admin: bool,
+    ) -> Result<(), std::io::Error> {
+        let mut shutdown_receiver = self.shutdown_sender.subscribe();
+
+        loop {
+            tokio::select! {
+                accept_result = listener.accept() => {
+                    let (stream, _) = accept_result?;
+                    let acceptor = acceptor.clone();
+                    let server = self.clone();
+                    tokio::spawn(async move {
+                        let Ok(stream) = acceptor.accept(stream).await else {
+                            return;
+                        };
+                        let _guard = ConnectionGuard::new(server.clone(), TransportKind::Native);
+                        let _ = server.handle_connection(stream, is_admin).await;
+                    });
+                }
+                _ = shutdown_receiver.recv() => break,
+            }
+        }
+
+        Ok(())
+    }
+
     /// Accept connections from either a TCP or a Unix-domain socket.
     ///
     /// A single accept loop/handler is shared by both transports; the

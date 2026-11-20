@@ -53,6 +53,16 @@ tokio-stream.workspace = true
 tonic.workspace = true
 tonic-prost.workspace = true
 tower.workspace = true
+rustls = { version = "0.23", default-features = false, features = [
+    "ring",
+    "std",
+    "tls12",
+] }
+tokio-rustls = { version = "0.26", default-features = false, features = [
+    "ring",
+    "tls12",
+] }
+rustls-pemfile = "2"
 
 [dev-dependencies]
 storkv-cli.workspace = true

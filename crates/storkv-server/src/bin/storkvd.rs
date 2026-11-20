@@ -74,6 +74,12 @@ struct Args {
     /// Serve the Memcached ASCII API on this address.
     #[arg(long)]
     memcached_listen: Option<String>,
+    /// PEM server certificate that enables TLS on the native listener.
+    #[arg(long, requires = "tls_key")]
+    tls_cert: Option<PathBuf>,
+    /// PEM private key that enables TLS on the native listener.
+    #[arg(long, requires = "tls_cert")]
+    tls_key: Option<PathBuf>,
     /// Replication role: standalone, primary, or replica.
     #[arg(long, default_value = "standalone")]
     role: String,
@@ -120,13 +126,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None
     };
 
-    let client_listener = TcpListener::bind(&args.listen).await?;
-    println!("storkvd listening on {}", args.listen);
+    let tls_acceptor = match (&args.tls_cert, &args.tls_key) {
+        (Some(certificate), Some(key)) => {
+            Some(storkv_server::tls::load_acceptor(certificate, key)?)
+        }
+        (None, None) => None,
+        _ => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "TLS requires both --tls-cert and --tls-key",
+            )
+            .into());
+        }
+    };
 
+    let client_listener = TcpListener::bind(&args.listen).await?;
     let server_client = server.clone();
-    let client_task = tokio::spawn(async move {
-        let _ = server_client.run_tcp_listener(client_listener, false).await;
-    });
+    let client_task = if let Some(acceptor) = tls_acceptor {
+        println!("storkvd listening on {} (TLS)", args.listen);
+        tokio::spawn(async move {
+            let _ = server_client
+                .run_tls_listener(client_listener, acceptor, false)
+                .await;
+        })
+    } else {
+        println!("storkvd listening on {}", args.listen);
+        tokio::spawn(async move {
+            let _ = server_client.run_tcp_listener(client_listener, false).await;
+        })
+    };
 
     let admin_task = if let Some(admin_addr) = args.admin_sock {
         let server_admin = server.clone();
