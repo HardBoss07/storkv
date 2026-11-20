@@ -15,4 +15,5 @@ name = "xtask"
 path = "src/main.rs"
 
 [dependencies]
+ctrlc = "3"
 rcgen.workspace = true

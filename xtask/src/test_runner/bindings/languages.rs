@@ -46,8 +46,16 @@ fn import_library(context: &Context) -> String {
 pub(super) fn run_c(context: &Context) -> Result<()> {
     let output = context.root.join("target").join(executable("c-ffi-test"));
     if cfg!(windows) {
+        if let Some(compiler) = first_on_path(&["gcc"]) {
+            let mut command = context.command(&compiler);
+            command.args(["-std=c11", "-Ibindings/c", "bindings/c/test_c_ffi.c"]);
+            command.arg(&context.library);
+            command.arg("-o").arg(&output);
+            tools::run(command, "compile C binding test")?;
+            return run_test_binary(context, &output, "run C binding test");
+        }
         let Some(compiler) = first_on_path(&["cl", "clang-cl"]) else {
-            skip("C binding test", "cl");
+            skip("C binding test", "gcc or cl");
             return Ok(());
         };
         let mut command = context.command(&compiler);
@@ -82,10 +90,25 @@ pub(super) fn run_c(context: &Context) -> Result<()> {
 pub(super) fn run_cpp(context: &Context) -> Result<()> {
     let output = context.root.join("target").join(executable("cpp-ffi-test"));
     if cfg!(windows) {
+        if let Some(compiler) = first_on_path(&["g++"]) {
+            let mut command = context.command(&compiler);
+            command.args([
+                "-std=c++20",
+                "-static-libstdc++",
+                "-static-libgcc",
+                "-Ibindings/c",
+                "-Ibindings/cpp",
+                "bindings/cpp/test_cpp_ffi.cpp",
+            ]);
+            command.arg(&context.library);
+            command.arg("-o").arg(&output);
+            tools::run(command, "compile C++ binding test")?;
+            return run_test_binary(context, &output, "run C++ binding test");
+        }
         // `clang-cl` can fail against a newer MSVC standard library, so only
         // accept the matching MSVC compiler here.
         let Some(compiler) = first_on_path(&["cl"]) else {
-            skip("C++ binding test", "cl");
+            skip("C++ binding test", "g++ or cl");
             return Ok(());
         };
         let mut command = context.command(&compiler);

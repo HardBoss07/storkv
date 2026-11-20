@@ -63,5 +63,6 @@ fn run_test(root: &std::path::Path, options: TestOptions) -> Result<()> {
         options.tier,
         options.live_uri.as_deref(),
         options.with_server,
+        options.proptest_cases,
     )
 }

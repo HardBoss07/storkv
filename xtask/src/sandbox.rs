@@ -1,8 +1,10 @@
 //! Foreground sandbox server for manual testing.
 
-use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use crate::cli::SandboxOptions;
 use crate::error::{Result, XtaskError};
@@ -56,6 +58,10 @@ pub fn run(root: &Path, options: &SandboxOptions) -> Result<()> {
     if let Some(token) = &token {
         command.arg("--admin-token").arg(token);
     }
+    if let Some(certificate) = &certificate {
+        command.arg("--tls-cert").arg(&certificate.certificate);
+        command.arg("--tls-key").arg(&certificate.key);
+    }
 
     let child = command.spawn()?;
     let mut guard = SandboxGuard {
@@ -63,7 +69,7 @@ pub fn run(root: &Path, options: &SandboxOptions) -> Result<()> {
         directory: sandbox.clone(),
     };
     print_summary(&sandbox, token.as_deref(), certificate.as_ref());
-    wait_for_enter(&mut guard)?;
+    wait_for_shutdown(&mut guard)?;
     Ok(())
 }
 
@@ -117,26 +123,28 @@ fn print_summary(directory: &Path, token: Option<&str>, certificate: Option<&Cer
     if let Some(certificate) = certificate {
         println!("\ncertificate: {}", certificate.certificate.display());
         println!("private key: {}", certificate.key.display());
-        println!("note: storkvd has no TLS listener yet; the files are for client tests.");
+        println!("native listener TLS enabled (self-signed; trust this certificate in clients).");
     }
-    println!("\nPress Enter to stop the sandbox.");
+    println!("\nPress Ctrl+C to stop the sandbox.");
 }
 
-fn wait_for_enter(guard: &mut SandboxGuard) -> Result<()> {
-    let stdin = std::io::stdin();
-    loop {
+fn wait_for_shutdown(guard: &mut SandboxGuard) -> Result<()> {
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let signal = Arc::clone(&shutdown);
+    ctrlc::set_handler(move || {
+        signal.store(true, Ordering::SeqCst);
+    })
+    .map_err(|error| XtaskError::Layout(format!("failed to install Ctrl-C handler: {error}")))?;
+
+    while !shutdown.load(Ordering::SeqCst) {
         if let Some(child) = guard.child.as_mut()
             && child.try_wait()?.is_some()
         {
             return Err(XtaskError::Layout("storkvd stopped unexpectedly".into()));
         }
-        print!("> ");
-        std::io::stdout().flush()?;
-        let mut line = String::new();
-        if stdin.lock().read_line(&mut line)? == 0 {
-            return Ok(());
-        }
+        std::thread::sleep(Duration::from_millis(100));
     }
+    Ok(())
 }
 
 struct SandboxGuard {

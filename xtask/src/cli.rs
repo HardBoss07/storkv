@@ -32,11 +32,15 @@ pub struct DistOptions {
 pub struct TestOptions {
     /// Tier of checks to run.
     pub tier: Tier,
-    /// Live server URI for the `bindings` tier.
+    /// Live server URI for the `bindings` and `all` tiers.
     pub live_uri: Option<String>,
-    /// Start a local server for the `bindings` tier.
+    /// Start a local server for the `bindings` and `all` tiers.
     pub with_server: bool,
+    /// Number of proptest cases for the `all` tier.
+    pub proptest_cases: u32,
 }
+
+const DEFAULT_PROPTEST_CASES: u32 = 2000;
 
 /// Options for the `sandbox` command.
 #[derive(Default)]
@@ -82,7 +86,8 @@ pub fn usage() -> &'static str {
     "usage: cargo xtask <command>\n\n\
      Commands:\n\
      \x20 dist [--target <TRIPLE>] [--strict-sdks] [--skip-archive]\n\
-     \x20 test <fast|pr|full|bindings> [--live-uri <URI>] [--with-server]\n\
+     \x20 test <fast|pr|full|bindings|all> [--live-uri <URI>] [--with-server]\n\
+     \x20      [--proptest-cases <N>]\n\
      \x20 sandbox [--tls] [--admin-token <TOKEN>] [--strict-admin]\n\
      \x20 verify-headers\n"
 }
@@ -108,10 +113,25 @@ fn parse_test(mut arguments: impl Iterator<Item = String>) -> Result<TestOptions
     let tier = parse_tier(arguments.next())?;
     let mut live_uri = None;
     let mut with_server = false;
+    let mut proptest_cases = None;
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
             "--live-uri" => live_uri = Some(required_value(&mut arguments, "--live-uri")?),
             "--with-server" => with_server = true,
+            "--proptest-cases" => {
+                let value = required_value(&mut arguments, "--proptest-cases")?;
+                let cases = value.parse::<u32>().map_err(|_| {
+                    XtaskError::InvalidArgument(format!(
+                        "--proptest-cases must be a positive integer, got `{value}`"
+                    ))
+                })?;
+                if cases == 0 {
+                    return Err(XtaskError::InvalidArgument(
+                        "--proptest-cases must be greater than zero".into(),
+                    ));
+                }
+                proptest_cases = Some(cases);
+            }
             other => {
                 return Err(XtaskError::InvalidArgument(format!(
                     "unknown test option `{other}`"
@@ -119,15 +139,21 @@ fn parse_test(mut arguments: impl Iterator<Item = String>) -> Result<TestOptions
             }
         }
     }
-    if tier != Tier::Bindings && (live_uri.is_some() || with_server) {
+    if tier != Tier::Bindings && tier != Tier::All && (live_uri.is_some() || with_server) {
         return Err(XtaskError::InvalidArgument(
-            "--live-uri and --with-server apply to `test bindings` only".into(),
+            "--live-uri and --with-server apply to `test bindings` and `test all` only".into(),
+        ));
+    }
+    if tier != Tier::All && proptest_cases.is_some() {
+        return Err(XtaskError::InvalidArgument(
+            "--proptest-cases applies to `test all` only".into(),
         ));
     }
     Ok(TestOptions {
         tier,
         live_uri,
         with_server,
+        proptest_cases: proptest_cases.unwrap_or(DEFAULT_PROPTEST_CASES),
     })
 }
 
@@ -137,11 +163,12 @@ fn parse_tier(value: Option<String>) -> Result<Tier> {
         Some("pr") => Ok(Tier::Pr),
         Some("full") => Ok(Tier::Full),
         Some("bindings") => Ok(Tier::Bindings),
+        Some("all") => Ok(Tier::All),
         Some(other) => Err(XtaskError::InvalidArgument(format!(
             "unknown test tier `{other}`"
         ))),
         None => Err(XtaskError::InvalidArgument(
-            "missing test tier: fast, pr, full, or bindings".into(),
+            "missing test tier: fast, pr, full, bindings, or all".into(),
         )),
     }
 }

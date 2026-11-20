@@ -24,11 +24,23 @@ pub(super) struct Context {
 }
 
 impl Context {
+    pub(super) fn library_dir(&self) -> PathBuf {
+        self.root.join("target").join("debug")
+    }
+
     pub(super) fn command(&self, program: &str) -> Command {
         let mut command = Command::new(program);
+        let library_dir = self.library_dir();
         command
             .current_dir(&self.root)
-            .env("STORKV_FFI_LIB", &self.library);
+            .env("STORKV_FFI_LIB", &self.library)
+            .env("STORKV_FFI_LIB_DIR", &library_dir)
+            .env("STORKV_LIB_DIR", &library_dir);
+        let existing = std::env::var_os("PATH").unwrap_or_default();
+        let paths = std::iter::once(library_dir).chain(std::env::split_paths(&existing));
+        if let Ok(joined) = std::env::join_paths(paths) {
+            command.env("PATH", joined);
+        }
         if let Some(uri) = &self.uri {
             command.env("STORKV_TEST_URI", uri);
         }
