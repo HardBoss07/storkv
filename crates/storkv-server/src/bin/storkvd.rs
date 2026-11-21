@@ -161,7 +161,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         #[cfg(unix)]
         if storkv_proto::is_unix_socket_addr(&admin_addr) {
             let path = storkv_proto::unix_socket_path(&admin_addr);
-            if let Some(parent) = path.parent()
+            if let Some(parent) = std::path::Path::new(path).parent()
                 && !parent.as_os_str().is_empty()
             {
                 std::fs::create_dir_all(parent)?;

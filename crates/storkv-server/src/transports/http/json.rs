@@ -229,12 +229,14 @@ pub(crate) fn watch_event_value(event: WireChangeEvent) -> Value {
             key,
             value,
             seq,
+            expires_at_ms,
         } => json!({
             "kind": "put",
             "scope_id": scope_id,
             "key_b64": encode_base64(&key),
             "value_b64": encode_base64(&value),
             "seq": seq,
+            "expires_at_ms": expires_at_ms,
         }),
         WireChangeEvent::Delete { scope_id, key, seq } => json!({
             "kind": "delete",

@@ -54,8 +54,21 @@ impl Server {
                     Response::ReplicationFrame { sent_at_ms, frame } => {
                         from_seq = self.apply_frame(&frame, sent_at_ms);
                     }
-                    Response::ReplicationSnapshot(entries) => {
-                        let _ = self.db().apply_replication_snapshot(&entries);
+                    Response::ReplicationSnapshot {
+                        snapshot_seq,
+                        scopes,
+                        entries,
+                    } => {
+                        if self
+                            .db()
+                            .apply_replication_snapshot(snapshot_seq, &scopes, &entries)
+                            .is_err()
+                        {
+                            continue;
+                        }
+                        self.last_applied_seq
+                            .store(snapshot_seq, std::sync::atomic::Ordering::Relaxed);
+                        from_seq = snapshot_seq;
                     }
                     _ => {}
                 }

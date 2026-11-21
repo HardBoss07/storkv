@@ -232,11 +232,13 @@ pub(super) fn wire_change_event(event: storkv_core::watch::ChangeEvent) -> Optio
             key,
             value,
             seq,
+            expires_at_ms,
         } => Some(WireChangeEvent::Put {
             scope_id,
             key,
             value,
             seq,
+            expires_at_ms,
         }),
         storkv_core::watch::ChangeEvent::Delete { scope_id, key, seq } => {
             Some(WireChangeEvent::Delete { scope_id, key, seq })

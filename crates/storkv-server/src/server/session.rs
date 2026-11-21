@@ -107,7 +107,7 @@ impl<W: AsyncWrite + Unpin> ConnectionSession<W> {
                     continue;
                 };
                 let response = Message::new_response(request_id, Response::WatchEvent(wire_event));
-                if watch_sender.blocking_send(response).is_err() {
+                if watch_sender.try_send(response).is_err() {
                     break;
                 }
             }
@@ -140,16 +140,16 @@ impl<W: AsyncWrite + Unpin> ConnectionSession<W> {
         stop_task(&mut self.replication_task, &mut self.replication_stop);
         let (frames, snapshot) = match self.server.db.replication_frames_from(from_seq) {
             Ok(frames) => (frames, None),
-            Err(StorkvError::WatchCursorExpired {
-                oldest_available, ..
-            }) => {
-                match self.server.db.replication_snapshot().and_then(|entries| {
-                    self.server
-                        .db
-                        .replication_frames_from(oldest_available)
-                        .map(|frames| (entries, frames))
-                }) {
-                    Ok((entries, frames)) => (frames, Some(entries)),
+            Err(StorkvError::WatchCursorExpired { .. }) => {
+                match self.server.db.replication_snapshot().and_then(
+                    |(snapshot_seq, scopes, entries)| {
+                        self.server
+                            .db
+                            .replication_frames_from(snapshot_seq)
+                            .map(|frames| (frames, Some((snapshot_seq, scopes, entries))))
+                    },
+                ) {
+                    Ok(result) => result,
                     Err(error) => {
                         let wire = crate::dispatch::core_error_to_wire(error);
                         return self
@@ -165,13 +165,23 @@ impl<W: AsyncWrite + Unpin> ConnectionSession<W> {
                     .await;
             }
         };
-        if let Some(entries) = snapshot {
+
+        // Complete the RPC handshake first so the client receives Response::Empty
+        self.write_message(Message::new_response(request_id, Response::Empty))
+            .await?;
+
+        if let Some((snapshot_seq, scopes, entries)) = snapshot {
             self.write_message(Message::new_response(
                 request_id,
-                Response::ReplicationSnapshot(entries),
+                Response::ReplicationSnapshot {
+                    snapshot_seq,
+                    scopes,
+                    entries,
+                },
             ))
             .await?;
         }
+
         let sender = self.watch_sender.clone();
         let stop = Arc::new(AtomicBool::new(false));
         let task_stop = stop.clone();
@@ -196,13 +206,12 @@ impl<W: AsyncWrite + Unpin> ConnectionSession<W> {
                         frame: bytes::Bytes::from(encoded),
                     },
                 );
-                if sender.blocking_send(response).is_err() {
+                if sender.try_send(response).is_err() {
                     break;
                 }
             }
         }));
-        self.write_message(Message::new_response(request_id, Response::Empty))
-            .await
+        Ok(())
     }
 
     pub(super) fn stop_watch(&mut self) {
@@ -228,11 +237,13 @@ pub(super) fn wire_change_event(event: storkv_core::watch::ChangeEvent) -> Optio
             key,
             value,
             seq,
+            expires_at_ms,
         } => Some(WireChangeEvent::Put {
             scope_id,
             key,
             value,
             seq,
+            expires_at_ms,
         }),
         storkv_core::watch::ChangeEvent::Delete { scope_id, key, seq } => {
             Some(WireChangeEvent::Delete { scope_id, key, seq })

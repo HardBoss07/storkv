@@ -41,7 +41,7 @@ pub(super) fn watch_stream(
                     if !all_scopes && event.scope_id != scope_id {
                         continue;
                     }
-                    if sender.blocking_send(Ok(event)).is_err() {
+                    if sender.try_send(Ok(event)).is_err() {
                         break;
                     }
                 }

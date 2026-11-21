@@ -81,6 +81,24 @@ impl Server {
         self.role
     }
 
+    /// Return `true` when this node accepts writes.
+    pub(crate) fn is_primary(&self) -> bool {
+        self.role != ReplicationRole::Replica
+    }
+
+    /// Reject a write when this node is a replica.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorkvError::NotPrimary`] when the node is a replica.
+    pub(crate) fn ensure_primary(&self) -> Result<(), StorkvError> {
+        if self.is_primary() {
+            Ok(())
+        } else {
+            Err(StorkvError::NotPrimary)
+        }
+    }
+
     /// Return the configured primary URI, when set.
     pub fn primary_uri(&self) -> Option<&str> {
         self.primary_uri.as_deref()

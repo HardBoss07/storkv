@@ -100,12 +100,14 @@ pub(super) fn convert_event(event: storkv_core::watch::ChangeEvent) -> Option<Ch
             key,
             value,
             seq,
+            expires_at_ms,
         } => Some(ChangeEvent {
             kind: 0,
             scope_id,
             key: key.to_vec(),
             value: value.to_vec(),
             seq,
+            expires_at_ms,
         }),
         storkv_core::watch::ChangeEvent::Delete { scope_id, key, seq } => Some(ChangeEvent {
             kind: 1,
@@ -113,6 +115,7 @@ pub(super) fn convert_event(event: storkv_core::watch::ChangeEvent) -> Option<Ch
             key: key.to_vec(),
             value: Vec::new(),
             seq,
+            expires_at_ms: 0,
         }),
         storkv_core::watch::ChangeEvent::DropScope { scope_id, seq } => Some(ChangeEvent {
             kind: 2,
@@ -120,6 +123,7 @@ pub(super) fn convert_event(event: storkv_core::watch::ChangeEvent) -> Option<Ch
             key: Vec::new(),
             value: Vec::new(),
             seq,
+            expires_at_ms: 0,
         }),
         storkv_core::watch::ChangeEvent::InvalidateScope { scope_id, seq } => Some(ChangeEvent {
             kind: 3,
@@ -127,6 +131,7 @@ pub(super) fn convert_event(event: storkv_core::watch::ChangeEvent) -> Option<Ch
             key: Vec::new(),
             value: Vec::new(),
             seq,
+            expires_at_ms: 0,
         }),
         _ => None,
     }

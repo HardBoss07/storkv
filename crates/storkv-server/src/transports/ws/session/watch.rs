@@ -54,7 +54,7 @@ pub(super) fn start_watcher(
                     };
                     let frame = Message::new_response(request_id, Response::WatchEvent(event));
                     if sender
-                        .blocking_send(Outbound::Binary(frame.encode().to_vec()))
+                        .try_send(Outbound::Binary(frame.encode().to_vec()))
                         .is_err()
                     {
                         break;
