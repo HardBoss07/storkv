@@ -2,9 +2,9 @@
 
 use std::time::Duration;
 
-use storkv_client::AsyncClient;
+use storkv_client::{AsyncClient, ClientError};
 use storkv_core::Db;
-use storkv_proto::WireChangeEvent;
+use storkv_proto::{StorkvWireError, WireChangeEvent};
 
 use crate::cache::ScopeCache;
 
@@ -65,12 +65,11 @@ pub(crate) fn spawn_networked_cache_watch(
 ) {
     tokio::spawn(async move {
         let mut next_seq: u64 = 0;
+        let mut cleared_for_expiry = false;
         loop {
-            let Some(current) = cache.upgrade() else {
+            if cache.upgrade().is_none() {
                 return;
-            };
-            current.clear();
-            drop(current);
+            }
             let client = match AsyncClient::connect_uri(&uri).await {
                 Ok(client) => client,
                 Err(_) => {
@@ -80,11 +79,23 @@ pub(crate) fn spawn_networked_cache_watch(
             };
             let mut stream = match client.subscribe_watch_from(Some(next_seq)).await {
                 Ok(stream) => stream,
+                Err(ClientError::Server(StorkvWireError::WatchCursorExpired { .. })) => {
+                    next_seq = 0;
+                    if !cleared_for_expiry {
+                        if let Some(current) = cache.upgrade() {
+                            current.clear();
+                        }
+                        cleared_for_expiry = true;
+                    }
+                    tokio::time::sleep(RECONNECT_DELAY).await;
+                    continue;
+                }
                 Err(_) => {
                     tokio::time::sleep(RECONNECT_DELAY).await;
                     continue;
                 }
             };
+            cleared_for_expiry = false;
             while let Ok(Some(event)) = stream.next().await {
                 next_seq = wire_seq(&event).saturating_add(1);
                 let Some(current) = cache.upgrade() else {
@@ -116,8 +127,11 @@ fn apply_wire_event(cache: &ScopeCache, event: &WireChangeEvent, scope_id: u32) 
             scope_id: event_scope,
             key,
             value,
+            expires_at_ms,
             ..
-        } if *event_scope == scope_id => cache.store_event(key, Some(value.clone())),
+        } if *event_scope == scope_id => {
+            cache.store_event(key, Some(value.clone()), *expires_at_ms)
+        }
         WireChangeEvent::Delete {
             scope_id: event_scope,
             key,

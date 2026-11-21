@@ -114,6 +114,7 @@ fn map_core_event(event: ChangeEvent, scope_id: u32, prefix: &[u8]) -> Option<Wa
             key,
             seq,
             scope_id: event_scope,
+            expires_at_ms,
         } => {
             if event_scope != scope_id || !key.starts_with(prefix) {
                 return None;
@@ -124,6 +125,7 @@ fn map_core_event(event: ChangeEvent, scope_id: u32, prefix: &[u8]) -> Option<Wa
                 seq,
                 key,
                 value: Some(value),
+                expires_at_ms: (expires_at_ms != 0).then_some(expires_at_ms),
             })
         }
         ChangeEvent::Delete {
@@ -140,6 +142,7 @@ fn map_core_event(event: ChangeEvent, scope_id: u32, prefix: &[u8]) -> Option<Wa
                 seq,
                 key,
                 value: None,
+                expires_at_ms: None,
             })
         }
         ChangeEvent::DropScope {
@@ -155,6 +158,7 @@ fn map_core_event(event: ChangeEvent, scope_id: u32, prefix: &[u8]) -> Option<Wa
                 seq,
                 key: Bytes::new(),
                 value: None,
+                expires_at_ms: None,
             })
         }
         _ => None,
@@ -168,6 +172,7 @@ fn map_wire_event(event: WireChangeEvent, scope_id: u32, prefix: &[u8]) -> Optio
             key,
             value,
             seq,
+            expires_at_ms,
         } => {
             if event_scope != scope_id || !key.starts_with(prefix) {
                 return None;
@@ -178,6 +183,7 @@ fn map_wire_event(event: WireChangeEvent, scope_id: u32, prefix: &[u8]) -> Optio
                 seq,
                 key,
                 value: Some(value),
+                expires_at_ms: (expires_at_ms != 0).then_some(expires_at_ms),
             })
         }
         WireChangeEvent::Delete {
@@ -194,6 +200,7 @@ fn map_wire_event(event: WireChangeEvent, scope_id: u32, prefix: &[u8]) -> Optio
                 seq,
                 key,
                 value: None,
+                expires_at_ms: None,
             })
         }
         WireChangeEvent::DropScope {
@@ -209,6 +216,7 @@ fn map_wire_event(event: WireChangeEvent, scope_id: u32, prefix: &[u8]) -> Optio
                 seq,
                 key: Bytes::new(),
                 value: None,
+                expires_at_ms: None,
             })
         }
         _ => None,

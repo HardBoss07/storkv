@@ -25,7 +25,16 @@ impl Scope {
         let connection = self.pool.acquire().await?;
         let value = connection.get(self, key).await?;
         if self.cache.enabled() {
-            self.cache.store(key, value.clone());
+            if value.is_some() {
+                if let Some(meta) = connection.key_meta(self, key).await? {
+                    self.cache
+                        .store_with_expires_at_ms(key, value.clone(), meta.expires_at_ms);
+                    return Ok(value);
+                }
+                self.cache.store(key, None);
+                return Ok(None);
+            }
+            self.cache.store(key, None);
         }
         Ok(value)
     }

@@ -27,6 +27,17 @@ pub(super) async fn get(
         .map_err(SdkError::from)
 }
 
+pub(super) async fn key_meta(
+    client: &AsyncClient,
+    scope: &ResolvedScope,
+    key: &[u8],
+) -> Result<Option<storkv_proto::WireKeyMeta>> {
+    client
+        .key_meta(&scope.client_handle(), key)
+        .await
+        .map_err(SdkError::from)
+}
+
 pub(super) async fn put(
     client: &AsyncClient,
     scope: &ResolvedScope,

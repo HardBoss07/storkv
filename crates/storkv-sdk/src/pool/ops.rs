@@ -89,6 +89,21 @@ impl PoolConnection {
         self.conn()?.get(&resolved, key.as_ref()).await
     }
 
+    /// Fetch the visible-version metadata (absolute expiry and sequence) of a
+    /// key. `None` means the key does not exist.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the scope is unknown or the read fails.
+    pub async fn key_meta<K: AsRef<[u8]>>(
+        &self,
+        scope: &Scope,
+        key: K,
+    ) -> Result<Option<storkv_proto::WireKeyMeta>> {
+        let resolved = scope.resolve_via(self.conn()?).await?;
+        self.conn()?.key_meta(&resolved, key.as_ref()).await
+    }
+
     /// Store one key/value pair in `scope`.
     ///
     /// # Errors

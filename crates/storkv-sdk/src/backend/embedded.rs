@@ -18,6 +18,26 @@ pub(super) async fn get(db: &Db, scope: &ResolvedScope, key: &[u8]) -> Result<Op
         .map_err(SdkError::from)
 }
 
+pub(super) async fn key_meta(
+    db: &Db,
+    scope: &ResolvedScope,
+    key: &[u8],
+) -> Result<Option<storkv_proto::WireKeyMeta>> {
+    let db = db.clone();
+    let handle = scope.core_handle();
+    let key = Bytes::copy_from_slice(key);
+    tokio::task::spawn_blocking(move || db.key_meta(&handle, key))
+        .await
+        .map_err(join_error)?
+        .map(|meta| {
+            meta.map(|meta| storkv_proto::WireKeyMeta {
+                expires_at_ms: meta.expires_at_ms,
+                seq: meta.seq,
+            })
+        })
+        .map_err(SdkError::from)
+}
+
 pub(super) async fn put(db: &Db, scope: &ResolvedScope, key: &[u8], value: Bytes) -> Result<()> {
     let db = db.clone();
     let handle = scope.core_handle();

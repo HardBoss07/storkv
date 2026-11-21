@@ -1,7 +1,7 @@
 //! LRU storage with per-entry time to live.
 
 use std::collections::{HashMap, VecDeque};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use bytes::Bytes;
 
@@ -56,11 +56,6 @@ impl CacheState {
         }
     }
 
-    pub(super) fn preserve_expiry(&mut self, key: Bytes, value: Option<Bytes>, capacity: usize) {
-        let expires_at = self.map.get(&key).and_then(|entry| entry.expires_at);
-        self.insert(key, value, expires_at, capacity);
-    }
-
     pub(super) fn lookup_entry(&mut self, key: &Bytes) -> Option<Option<Bytes>> {
         if self
             .map
@@ -101,6 +96,19 @@ impl ScopeCache {
             .insert(key, value, expires_at, self.capacity);
     }
 
+    pub(crate) fn store_with_expires_at_ms(
+        &self,
+        key: &[u8],
+        value: Option<Bytes>,
+        expires_at_ms: u64,
+    ) {
+        let key = Bytes::copy_from_slice(key);
+        let expires_at = deadline_from_epoch_ms(expires_at_ms);
+        self.state
+            .lock()
+            .insert(key, value, expires_at, self.capacity);
+    }
+
     pub(crate) fn invalidate(&self, key: &[u8]) {
         if !self.enabled {
             return;
@@ -112,4 +120,20 @@ impl ScopeCache {
     pub(crate) fn clear(&self) {
         self.state.lock().clear();
     }
+}
+
+fn deadline_from_epoch_ms(expires_at_ms: u64) -> Option<Instant> {
+    if expires_at_ms == 0 {
+        return None;
+    }
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_millis() as u64)
+        .unwrap_or(u64::MAX);
+    let remaining = Duration::from_millis(expires_at_ms.saturating_sub(now_ms));
+    Some(
+        Instant::now()
+            .checked_add(remaining)
+            .unwrap_or_else(Instant::now),
+    )
 }

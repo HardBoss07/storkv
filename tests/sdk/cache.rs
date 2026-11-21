@@ -139,6 +139,48 @@ async fn embedded_cache_expires_ttl_entries() {
     context.pool.close().await;
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn networked_cache_expires_server_side_ttl() {
+    let context =
+        support::TestContext::networked("cache_server_ttl", StorkvPoolOptions::default()).await;
+    let client = storkv_client::AsyncClient::connect_uri(&context.uri)
+        .await
+        .expect("raw client");
+    let handle = client
+        .create_scope(
+            "cache_scope",
+            WireDurability::StrictFsync,
+            WireRetention::Permanent,
+            None,
+        )
+        .await
+        .expect("create scope");
+    client
+        .put_with_ttl(&handle, "key", b"value", Duration::from_millis(150))
+        .await
+        .unwrap();
+
+    let cached = StorkvPoolOptions::default()
+        .cache(enabled_cache())
+        .connect(&context.uri)
+        .await
+        .unwrap();
+    let scope = cached.scope("cache_scope");
+    assert_eq!(
+        scope.get("key").await.unwrap(),
+        Some(Bytes::from_static(b"value"))
+    );
+
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    assert_eq!(
+        scope.get("key").await.unwrap(),
+        None,
+        "a server-side TTL must make the cached entry a miss"
+    );
+
+    cached.close().await;
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn embedded_cache_clears_after_delete_range() {
     let options = StorkvPoolOptions::default().cache(enabled_cache());

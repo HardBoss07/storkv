@@ -39,6 +39,9 @@ pub struct WatchEvent {
     pub key: Bytes,
     /// New value. Present only for [`WatchEventKind::Put`].
     pub value: Option<Bytes>,
+    /// Absolute Unix epoch milliseconds, `None` for permanent keys or
+    /// non-put events.
+    pub expires_at_ms: Option<u64>,
 }
 
 impl WatchEvent {

@@ -4,7 +4,7 @@ use std::time::Instant;
 use bytes::Bytes;
 use storkv_client::AsyncClient;
 use storkv_core::Db;
-use storkv_proto::Consistency;
+use storkv_proto::{Consistency, WireKeyMeta};
 use tokio::sync::Mutex;
 
 mod embedded;
@@ -84,6 +84,17 @@ impl Conn {
         match self {
             Conn::Embedded(db) => embedded::get(db, scope, key).await,
             Conn::Networked { client, .. } => remote::get(client, scope, key).await,
+        }
+    }
+
+    pub(crate) async fn key_meta(
+        &self,
+        scope: &ResolvedScope,
+        key: &[u8],
+    ) -> Result<Option<WireKeyMeta>> {
+        match self {
+            Conn::Embedded(db) => embedded::key_meta(db, scope, key).await,
+            Conn::Networked { client, .. } => remote::key_meta(client, scope, key).await,
         }
     }
 

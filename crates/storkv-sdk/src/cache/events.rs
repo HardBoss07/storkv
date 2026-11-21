@@ -30,15 +30,19 @@ impl ScopeCache {
             return;
         }
         match event {
-            ChangeEvent::Put { key, value, .. } => self.store_event(key, Some(value.clone())),
+            ChangeEvent::Put {
+                key,
+                value,
+                expires_at_ms,
+                ..
+            } => self.store_event(key, Some(value.clone()), *expires_at_ms),
             ChangeEvent::Delete { key, .. } => self.store(key, None),
             ChangeEvent::DropScope { .. } | ChangeEvent::InvalidateScope { .. } => self.clear(),
             _ => {}
         }
     }
 
-    pub(crate) fn store_event(&self, key: &[u8], value: Option<Bytes>) {
-        let key = Bytes::copy_from_slice(key);
-        self.state.lock().preserve_expiry(key, value, self.capacity);
+    pub(crate) fn store_event(&self, key: &[u8], value: Option<Bytes>, expires_at_ms: u64) {
+        self.store_with_expires_at_ms(key, value, expires_at_ms);
     }
 }
