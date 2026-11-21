@@ -67,10 +67,13 @@ impl<'a> Atomic<'a> {
     }
 }
 
-pub(crate) fn atomic<T, F>(db: &Db, mut operation: F) -> storkv_core::Result<T>
+pub(crate) fn atomic<T, F>(db: &Db, primary: bool, mut operation: F) -> storkv_core::Result<T>
 where
     F: FnMut(&mut Atomic<'_>) -> storkv_core::Result<Outcome<T>>,
 {
+    if !primary {
+        return Err(StorkvError::NotPrimary);
+    }
     for _ in 0..MAX_RETRIES {
         let read_seq = db
             .inner()
@@ -98,12 +101,13 @@ where
 
 pub(crate) fn put_absolute(
     db: &Db,
+    primary: bool,
     scope: &ScopeHandle,
     key: &[u8],
     value: &[u8],
     expires_at_ms: u64,
 ) -> storkv_core::Result<()> {
-    atomic(db, |atomic| {
+    atomic(db, primary, |atomic| {
         atomic.put(scope, key, value, expires_at_ms);
         Ok(Outcome::Commit(()))
     })

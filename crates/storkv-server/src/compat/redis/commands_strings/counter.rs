@@ -37,7 +37,7 @@ impl RedisSession {
         let mut attempts = 0;
         loop {
             attempts += 1;
-            let result = keyspace::atomic(db, |atomic| {
+            let result = keyspace::atomic(db, self.server.is_primary(), |atomic| {
                 let current = atomic.get(&scope, key)?;
                 let base = parse_counter(current.as_deref())?;
                 let next = base.checked_add(delta).ok_or_else(|| {

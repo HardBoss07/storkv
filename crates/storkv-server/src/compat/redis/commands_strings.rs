@@ -38,7 +38,7 @@ impl RedisSession {
             Err(response) => return response,
         };
         let db = self.db();
-        let result = keyspace::atomic(db, |atomic| {
+        let result = keyspace::atomic(db, self.server.is_primary(), |atomic| {
             let previous = atomic.get(&scope, key)?;
             if options.only_if_absent && previous.is_some() {
                 return Ok(Outcome::Reply((previous, false)));
@@ -77,7 +77,7 @@ impl RedisSession {
             Ok(scope) => scope,
             Err(response) => return response,
         };
-        match keyspace::atomic(self.db(), |atomic| {
+        match keyspace::atomic(self.db(), self.server.is_primary(), |atomic| {
             atomic.put(&scope, key, value, keyspace::expiry_from_ttl(Some(ttl)));
             Ok(Outcome::Commit(()))
         }) {
@@ -94,7 +94,7 @@ impl RedisSession {
             Ok(scope) => scope,
             Err(response) => return response,
         };
-        match keyspace::atomic(self.db(), |atomic| {
+        match keyspace::atomic(self.db(), self.server.is_primary(), |atomic| {
             if atomic.get(&scope, key)?.is_some() {
                 return Ok(Outcome::Reply(0));
             }
@@ -133,7 +133,7 @@ impl RedisSession {
             Ok(scope) => scope,
             Err(response) => return response,
         };
-        match keyspace::atomic(self.db(), |atomic| {
+        match keyspace::atomic(self.db(), self.server.is_primary(), |atomic| {
             let mut index = 1;
             while index + 1 < args.len() {
                 atomic.put(&scope, &args[index], &args[index + 1], 0);
@@ -155,7 +155,7 @@ impl RedisSession {
             Err(response) => return response,
         };
         let db = self.db();
-        match keyspace::atomic(db, |atomic| {
+        match keyspace::atomic(db, self.server.is_primary(), |atomic| {
             let current = atomic.get(&scope, key)?.unwrap_or_default();
             let mut combined = Vec::with_capacity(current.len() + suffix.len());
             combined.extend_from_slice(&current);

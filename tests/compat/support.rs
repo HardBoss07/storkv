@@ -2,7 +2,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use storkv_server::{Server, TransportOptions};
+use storkv_server::{ReplicationRole, Server, TransportOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::task::JoinHandle;
@@ -27,8 +27,13 @@ impl Drop for CompatServer {
 }
 
 pub async fn spawn(prefix: &str) -> CompatServer {
+    spawn_with_role(prefix, ReplicationRole::Standalone).await
+}
+
+pub async fn spawn_with_role(prefix: &str, role: ReplicationRole) -> CompatServer {
     let mut temp = crate::common::TempDb::new(prefix);
-    let server = Arc::new(Server::with_db(Arc::new(temp.db.take().expect("test db"))));
+    let server =
+        Arc::new(Server::with_db(Arc::new(temp.db.take().expect("test db"))).with_role(role));
     let mut handles = Vec::new();
 
     let tcp_listener = TcpListener::bind("127.0.0.1:0").await.expect("tcp bind");

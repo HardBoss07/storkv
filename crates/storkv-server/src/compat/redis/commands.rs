@@ -6,7 +6,7 @@ use bytes::Bytes;
 use storkv_core::{Db, ScopeHandle};
 
 use super::codec::Resp;
-use super::helpers::{is_known_command, storage_error, upper};
+use super::helpers::{is_known_command, readonly_error, storage_error, upper};
 use crate::compat;
 use crate::server::Server;
 
@@ -83,6 +83,9 @@ impl RedisSession {
     }
 
     pub(super) fn execute_now(&mut self, command: &str, args: &[Bytes]) -> Resp {
+        if let Err(response) = self.writable(command) {
+            return response;
+        }
         let result = match command {
             "PING" => self.ping(args),
             "ECHO" => self.echo(args),
@@ -145,8 +148,40 @@ impl RedisSession {
     }
 
     pub(super) fn scope(&self) -> Result<ScopeHandle, Resp> {
-        compat::redis_scope(self.db(), self.database).map_err(storage_error)
+        compat::redis_scope(self.db(), self.server.is_primary(), self.database)
+            .map_err(storage_error)
     }
+
+    fn writable(&self, command: &str) -> Result<(), Resp> {
+        if !is_write_command(command) {
+            return Ok(());
+        }
+        self.server.ensure_primary().map_err(|_| readonly_error())
+    }
+}
+
+fn is_write_command(command: &str) -> bool {
+    matches!(
+        command,
+        "SET"
+            | "SETEX"
+            | "PSETEX"
+            | "SETNX"
+            | "MSET"
+            | "DEL"
+            | "UNLINK"
+            | "INCR"
+            | "DECR"
+            | "INCRBY"
+            | "DECRBY"
+            | "APPEND"
+            | "EXPIRE"
+            | "PEXPIRE"
+            | "PERSIST"
+            | "FLUSHDB"
+            | "FLUSHALL"
+            | "EXEC"
+    )
 }
 
 fn records_transport_request(command: &str) -> bool {

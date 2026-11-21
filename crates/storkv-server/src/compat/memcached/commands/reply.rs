@@ -14,7 +14,10 @@ pub(super) fn with_crlf(response: &[u8]) -> Vec<u8> {
 }
 
 pub(super) fn server_error(error: StorkvError) -> Vec<u8> {
-    format!("SERVER_ERROR {error}\r\n").into_bytes()
+    match error {
+        StorkvError::NotPrimary => b"SERVER_ERROR replica is read-only\r\n".to_vec(),
+        other => format!("SERVER_ERROR {other}\r\n").into_bytes(),
+    }
 }
 
 pub(super) fn expiry_from_exptime(exptime: u32) -> u64 {

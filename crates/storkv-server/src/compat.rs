@@ -32,8 +32,12 @@ pub(crate) fn redis_scope_name(database: u32) -> String {
 }
 
 /// Open a compatibility scope, creating it with strict durability when absent.
+///
+/// A replica must not create scopes implicitly: reads and writes on a replica
+/// only see scopes that already exist.
 pub(crate) fn ensure_scope(
     db: &Db,
+    allow_create: bool,
     name: &str,
     options: ScopeOptions,
 ) -> storkv_core::Result<ScopeHandle> {
@@ -42,6 +46,9 @@ pub(crate) fn ensure_scope(
             scope_id,
             name: name.to_string(),
         });
+    }
+    if !allow_create {
+        return Err(storkv_core::StorkvError::ScopeNotFound(name.to_string()));
     }
     match db.create_scope(name.to_string(), options) {
         Ok(scope) => Ok(scope),
@@ -62,10 +69,15 @@ pub(crate) fn ensure_scope(
     }
 }
 
-pub(crate) fn redis_scope(db: &Db, database: u32) -> storkv_core::Result<ScopeHandle> {
+pub(crate) fn redis_scope(
+    db: &Db,
+    allow_create: bool,
+    database: u32,
+) -> storkv_core::Result<ScopeHandle> {
     let name = redis_scope_name(database);
     ensure_scope(
         db,
+        allow_create,
         &name,
         ScopeOptions {
             durability: storkv_core::Durability::StrictFsync,
@@ -76,9 +88,10 @@ pub(crate) fn redis_scope(db: &Db, database: u32) -> storkv_core::Result<ScopeHa
     )
 }
 
-pub(crate) fn memcached_scope(db: &Db) -> storkv_core::Result<ScopeHandle> {
+pub(crate) fn memcached_scope(db: &Db, allow_create: bool) -> storkv_core::Result<ScopeHandle> {
     ensure_scope(
         db,
+        allow_create,
         MEMCACHED_SCOPE,
         ScopeOptions {
             durability: storkv_core::Durability::StrictFsync,
@@ -92,9 +105,10 @@ pub(crate) fn memcached_scope(db: &Db) -> storkv_core::Result<ScopeHandle> {
     )
 }
 
-pub(crate) fn etcd_scope(db: &Db) -> storkv_core::Result<ScopeHandle> {
+pub(crate) fn etcd_scope(db: &Db, allow_create: bool) -> storkv_core::Result<ScopeHandle> {
     ensure_scope(
         db,
+        allow_create,
         ETCD_SCOPE,
         ScopeOptions {
             durability: storkv_core::Durability::StrictFsync,

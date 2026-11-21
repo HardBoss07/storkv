@@ -16,6 +16,9 @@ use crate::transports::http::HttpState;
 use crate::transports::http::json::{decode_base64, encode_base64};
 
 pub(crate) async fn put(State(state): State<HttpState>, Json(body): Json<Value>) -> HttpResponse {
+    if let Err(response) = require_primary(&state) {
+        return *response;
+    }
     let scope = match scope(&state) {
         Ok(scope) => scope,
         Err(response) => return *response,
@@ -28,10 +31,15 @@ pub(crate) async fn put(State(state): State<HttpState>, Json(body): Json<Value>)
         return gateway_error(StatusCode::BAD_REQUEST, 3, "key is required");
     };
     let value = field(&body, "value").unwrap_or_default();
-    if let Err(error) =
-        crate::compat::redis::keyspace::put_absolute(state.server.db(), &scope, &key, &value, 0)
-    {
-        return gateway_error(StatusCode::INTERNAL_SERVER_ERROR, 13, &error.to_string());
+    if let Err(error) = crate::compat::redis::keyspace::put_absolute(
+        state.server.db(),
+        state.server.is_primary(),
+        &scope,
+        &key,
+        &value,
+        0,
+    ) {
+        return write_error(error);
     }
     revision(&state, scope.scope_id, json!({})).into_response()
 }
@@ -101,6 +109,9 @@ pub(crate) async fn delete_range(
     State(state): State<HttpState>,
     Json(body): Json<Value>,
 ) -> HttpResponse {
+    if let Err(response) = require_primary(&state) {
+        return *response;
+    }
     let scope = match scope(&state) {
         Ok(scope) => scope,
         Err(response) => return *response,
@@ -120,11 +131,11 @@ pub(crate) async fn delete_range(
     let mut transaction = db.begin_tx();
     for (key, _) in &pairs {
         if let Err(error) = transaction.delete(&scope, key) {
-            return gateway_error(StatusCode::INTERNAL_SERVER_ERROR, 13, &error.to_string());
+            return write_error(error);
         }
     }
     if let Err(error) = transaction.commit() {
-        return gateway_error(StatusCode::INTERNAL_SERVER_ERROR, 13, &error.to_string());
+        return write_error(error);
     }
     revision(
         &state,
@@ -134,8 +145,26 @@ pub(crate) async fn delete_range(
     .into_response()
 }
 
+fn require_primary(state: &HttpState) -> Result<(), Box<HttpResponse>> {
+    state
+        .server
+        .ensure_primary()
+        .map_err(|error| Box::new(write_error(error)))
+}
+
+fn write_error(error: storkv_core::StorkvError) -> HttpResponse {
+    match error {
+        storkv_core::StorkvError::NotPrimary => gateway_error(
+            StatusCode::BAD_REQUEST,
+            9,
+            "This node is a replica and cannot accept writes",
+        ),
+        other => gateway_error(StatusCode::INTERNAL_SERVER_ERROR, 13, &other.to_string()),
+    }
+}
+
 fn scope(state: &HttpState) -> Result<ScopeHandle, Box<HttpResponse>> {
-    compat::etcd_scope(state.server.db()).map_err(|error| {
+    compat::etcd_scope(state.server.db(), state.server.is_primary()).map_err(|error| {
         Box::new(gateway_error(
             StatusCode::INTERNAL_SERVER_ERROR,
             13,

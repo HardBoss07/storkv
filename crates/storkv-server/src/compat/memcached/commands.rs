@@ -18,7 +18,7 @@ use reply::silence_if;
 pub(crate) struct MemcachedSession {
     pub(crate) close: bool,
     strict_admin: bool,
-    db: Arc<Db>,
+    server: Arc<Server>,
     scope: Option<ScopeHandle>,
 }
 
@@ -27,7 +27,7 @@ impl MemcachedSession {
         Self {
             close: false,
             strict_admin: server.strict_admin(),
-            db: server.db().clone(),
+            server: server.clone(),
             scope: None,
         }
     }
@@ -70,11 +70,19 @@ impl MemcachedSession {
         }
     }
 
+    pub(super) fn db(&self) -> &Db {
+        self.server.db()
+    }
+
+    pub(super) fn writable(&self) -> Result<(), Vec<u8>> {
+        self.server.ensure_primary().map_err(reply::server_error)
+    }
+
     fn scope(&mut self) -> Result<ScopeHandle, Vec<u8>> {
         if let Some(scope) = &self.scope {
             return Ok(scope.clone());
         }
-        match compat::memcached_scope(&self.db) {
+        match compat::memcached_scope(self.db(), self.server.is_primary()) {
             Ok(scope) => {
                 self.scope = Some(scope.clone());
                 Ok(scope)
@@ -96,7 +104,7 @@ impl MemcachedSession {
             let (flags, value) = compat::decode_memcached_value(&stored);
             let header = if with_cas {
                 let cas = self
-                    .db
+                    .db()
                     .key_meta(&scope, key)
                     .ok()
                     .flatten()
@@ -126,6 +134,6 @@ impl MemcachedSession {
     }
 
     fn lookup(&self, scope: &ScopeHandle, key: &[u8]) -> Option<Bytes> {
-        self.db.get(scope, key).ok().flatten()
+        self.db().get(scope, key).ok().flatten()
     }
 }

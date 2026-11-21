@@ -48,6 +48,9 @@ impl RedisSession {
     }
 
     pub(super) fn exec(&mut self) -> Resp {
+        if self.server.ensure_primary().is_err() {
+            return super::helpers::readonly_error();
+        }
         let Some(queue) = self.multi.take() else {
             return Resp::error("ERR EXEC without MULTI");
         };

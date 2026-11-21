@@ -7,11 +7,14 @@ use crate::compat::redis::keyspace::{self, Outcome};
 
 impl MemcachedSession {
     pub(super) fn delete(&mut self, key: &[u8]) -> Vec<u8> {
+        if let Err(response) = self.writable() {
+            return response;
+        }
         let scope = match self.scope() {
             Ok(scope) => scope,
             Err(response) => return response,
         };
-        match keyspace::atomic(&self.db, |atomic| {
+        match keyspace::atomic(self.db(), self.server.is_primary(), |atomic| {
             if atomic.get(&scope, key)?.is_none() {
                 return Ok(Outcome::Reply(&b"NOT_FOUND"[..]));
             }
@@ -24,12 +27,15 @@ impl MemcachedSession {
     }
 
     pub(super) fn increment(&mut self, key: &[u8], delta: u64, decrement: bool) -> Vec<u8> {
+        if let Err(response) = self.writable() {
+            return response;
+        }
         let scope = match self.scope() {
             Ok(scope) => scope,
             Err(response) => return response,
         };
-        let db = self.db.clone();
-        let result = keyspace::atomic(&db, |atomic| {
+        let db = self.db().clone();
+        let result = keyspace::atomic(&db, self.server.is_primary(), |atomic| {
             let Some(stored) = atomic.get(&scope, key)? else {
                 return Ok(Outcome::Reply(b"NOT_FOUND".to_vec()));
             };
@@ -69,11 +75,14 @@ impl MemcachedSession {
     }
 
     pub(super) fn touch(&mut self, key: &[u8], exptime: u32) -> Vec<u8> {
+        if let Err(response) = self.writable() {
+            return response;
+        }
         let scope = match self.scope() {
             Ok(scope) => scope,
             Err(response) => return response,
         };
-        match keyspace::atomic(&self.db, |atomic| {
+        match keyspace::atomic(self.db(), self.server.is_primary(), |atomic| {
             let Some(stored) = atomic.get(&scope, key)? else {
                 return Ok(Outcome::Reply(&b"NOT_FOUND"[..]));
             };
@@ -86,6 +95,9 @@ impl MemcachedSession {
     }
 
     pub(super) fn flush(&mut self) -> Vec<u8> {
+        if let Err(error) = self.server.ensure_primary() {
+            return server_error(error);
+        }
         if self.strict_admin {
             return b"CLIENT_ERROR flush_all requires an admin connection\r\n".to_vec();
         }
@@ -93,7 +105,7 @@ impl MemcachedSession {
             Ok(scope) => scope,
             Err(response) => return response,
         };
-        match compat::flush_scope(&self.db, &scope) {
+        match compat::flush_scope(self.db(), &scope) {
             Ok(()) => b"OK\r\n".to_vec(),
             Err(error) => server_error(error),
         }
@@ -103,7 +115,7 @@ impl MemcachedSession {
         let items = self
             .scope()
             .ok()
-            .and_then(|scope| self.db.scan(&scope, None::<&[u8]>, None::<&[u8]>).ok())
+            .and_then(|scope| self.db().scan(&scope, None::<&[u8]>, None::<&[u8]>).ok())
             .map(|pairs| pairs.len())
             .unwrap_or(0);
         format!(

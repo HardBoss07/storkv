@@ -19,7 +19,7 @@ impl RedisSession {
             Ok(scope) => scope,
             Err(response) => return response,
         };
-        match keyspace::atomic(self.db(), |atomic| {
+        match keyspace::atomic(self.db(), self.server.is_primary(), |atomic| {
             let mut removed = 0;
             for key in &args[1..] {
                 if atomic.get(&scope, key)?.is_some() {
@@ -64,7 +64,7 @@ impl RedisSession {
             Ok(scope) => scope,
             Err(response) => return response,
         };
-        match keyspace::atomic(self.db(), |atomic| {
+        match keyspace::atomic(self.db(), self.server.is_primary(), |atomic| {
             let Some(value) = atomic.get(&scope, key)? else {
                 return Ok(Outcome::Reply(0));
             };
@@ -89,7 +89,7 @@ impl RedisSession {
             Ok(scope) => scope,
             Err(response) => return response,
         };
-        match keyspace::atomic(self.db(), |atomic| {
+        match keyspace::atomic(self.db(), self.server.is_primary(), |atomic| {
             let Some(value) = atomic.get(&scope, key)? else {
                 return Ok(Outcome::Reply(0));
             };

@@ -138,8 +138,13 @@ pub(crate) fn wrong_arity(command: &str) -> Resp {
     ))
 }
 
+pub(crate) fn readonly_error() -> Resp {
+    Resp::error("READONLY You can't write against a read only replica.")
+}
+
 pub(crate) fn storage_error(error: StorkvError) -> Resp {
     match error {
+        StorkvError::NotPrimary => readonly_error(),
         StorkvError::InvalidOperation(message) => Resp::error(format!("ERR {message}")),
         StorkvError::ValueTooLarge { .. } => Resp::error("ERR value too large"),
         StorkvError::KeyTooLarge { .. } => Resp::error("ERR key too large"),

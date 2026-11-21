@@ -16,13 +16,16 @@ impl MemcachedSession {
         payload: &[u8],
         cas: Option<u64>,
     ) -> Vec<u8> {
+        if let Err(response) = self.writable() {
+            return response;
+        }
         let scope = match self.scope() {
             Ok(scope) => scope,
             Err(response) => return response,
         };
         let expires = expiry_from_exptime(exptime);
-        let db = self.db.clone();
-        let result = keyspace::atomic(&db, |atomic| {
+        let db = self.db().clone();
+        let result = keyspace::atomic(&db, self.server.is_primary(), |atomic| {
             let current = atomic.get(&scope, key)?;
             match kind {
                 StorageKind::Add if current.is_some() => {

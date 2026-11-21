@@ -17,5 +17,7 @@ mod mixed_protocol;
 mod redis;
 #[path = "compat/redis_contention.rs"]
 mod redis_contention;
+#[path = "compat/replica.rs"]
+mod replica;
 #[path = "compat/tree.rs"]
 mod tree;

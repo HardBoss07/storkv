@@ -35,6 +35,11 @@ impl RedisSession {
                 }
             }
         }
+        let role = if self.server.is_primary() {
+            "primary"
+        } else {
+            "replica"
+        };
         Resp::Map(vec![
             (Resp::bulk("server"), Resp::bulk("storkv")),
             (Resp::bulk("version"), Resp::bulk(env!("CARGO_PKG_VERSION"))),
@@ -44,7 +49,7 @@ impl RedisSession {
             ),
             (Resp::bulk("id"), Resp::Integer(1)),
             (Resp::bulk("mode"), Resp::bulk("standalone")),
-            (Resp::bulk("role"), Resp::bulk("master")),
+            (Resp::bulk("role"), Resp::bulk(role)),
             (Resp::bulk("modules"), Resp::array(Vec::new())),
         ])
     }
@@ -58,7 +63,7 @@ impl RedisSession {
         };
         let previous = self.database;
         self.database = database;
-        match compat::redis_scope(self.db(), database) {
+        match compat::redis_scope(self.db(), self.server.is_primary(), database) {
             Ok(_) => Resp::simple("OK"),
             Err(error) => {
                 self.database = previous;
@@ -96,6 +101,9 @@ impl RedisSession {
     }
 
     pub(super) fn flush_db(&self) -> Resp {
+        if self.server.ensure_primary().is_err() {
+            return super::helpers::readonly_error();
+        }
         if self.server.strict_admin() {
             return Resp::error("NOPERM FLUSHDB requires an admin connection");
         }
@@ -110,6 +118,9 @@ impl RedisSession {
     }
 
     pub(super) fn flush_all(&self) -> Resp {
+        if self.server.ensure_primary().is_err() {
+            return super::helpers::readonly_error();
+        }
         if self.server.strict_admin() {
             return Resp::error("NOPERM FLUSHALL requires an admin connection");
         }
