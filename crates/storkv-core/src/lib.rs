@@ -94,3 +94,9 @@ pub use scope::{CompactionStyle, Retention, ScopeOptions, StorageMode};
 pub use transaction::Transaction;
 pub use types::{FileNumber, ScopeId, SequenceNumber, TimestampMs};
 pub use wal::Durability;
+
+/// One row of a replication snapshot: `(scope_id, key, value, expires_at_ms)`.
+pub type ReplicationSnapshotEntry = (u32, bytes::Bytes, bytes::Bytes, u64);
+
+/// A replication snapshot: `(snapshot_seq, live_scope_ids, entries)`.
+pub type ReplicationSnapshot = (u64, Vec<u32>, Vec<ReplicationSnapshotEntry>);

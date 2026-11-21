@@ -1,7 +1,5 @@
 //! Watch and replication stream operations of a database handle.
 
-use bytes::Bytes;
-
 use crate::watch::ChangeEvent;
 
 use super::{Db, ScopeHandle};
@@ -76,12 +74,12 @@ impl Db {
         self.inner.apply_replication_frame(frame)
     }
 
-    /// Collect the visible key/value pairs of every live scope.
+    /// Collect the live scopes and visible key/value pairs of every live scope.
     ///
     /// # Errors
     ///
     /// Returns an error when a scope scan fails.
-    pub fn replication_snapshot(&self) -> crate::Result<Vec<(u32, Bytes, Bytes)>> {
+    pub fn replication_snapshot(&self) -> crate::Result<crate::ReplicationSnapshot> {
         self.inner.replication_snapshot()
     }
 
@@ -90,7 +88,13 @@ impl Db {
     /// # Errors
     ///
     /// Returns an I/O error when a write fails.
-    pub fn apply_replication_snapshot(&self, entries: &[(u32, Bytes, Bytes)]) -> crate::Result<()> {
-        self.inner.apply_replication_snapshot(entries)
+    pub fn apply_replication_snapshot(
+        &self,
+        snapshot_seq: u64,
+        scopes: &[u32],
+        entries: &[crate::ReplicationSnapshotEntry],
+    ) -> crate::Result<()> {
+        self.inner
+            .apply_replication_snapshot(snapshot_seq, scopes, entries)
     }
 }

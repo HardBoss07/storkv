@@ -97,12 +97,16 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
 fn change_event(op: WalOp, seq: u64) -> Option<ChangeEvent> {
     match op {
         WalOp::Put {
-            scope_id, key, val, ..
+            scope_id,
+            key,
+            val,
+            expires_at_ms,
         } => Some(ChangeEvent::Put {
             scope_id,
             key,
             value: val,
             seq,
+            expires_at_ms,
         }),
         WalOp::Delete { scope_id, key } => Some(ChangeEvent::Delete { scope_id, key, seq }),
         WalOp::DropScope { scope_id } => Some(ChangeEvent::DropScope { scope_id, seq }),

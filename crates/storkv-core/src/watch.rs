@@ -26,6 +26,8 @@ pub enum ChangeEvent {
         seq: u64,
         /// Identifier of the scope.
         scope_id: u32,
+        /// Absolute Unix epoch milliseconds, `0` when the key is permanent.
+        expires_at_ms: u64,
     },
     /// A key was deleted.
     Delete {

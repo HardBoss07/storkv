@@ -76,58 +76,124 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
         Ok(())
     }
 
-    /// Collect the visible key/value pairs of every live scope.
+    /// Collect the live scopes and visible key/value pairs of every live scope.
     ///
     /// A primary sends this snapshot when a replica cursor expired.
     ///
     /// # Errors
     ///
     /// Returns an error when a scope scan fails.
-    pub fn replication_snapshot(&self) -> crate::Result<Vec<(u32, bytes::Bytes, bytes::Bytes)>> {
+    pub fn replication_snapshot(&self) -> crate::Result<crate::ReplicationSnapshot> {
         let _guard = self.commit_lock.lock();
         let read_seq = self.last_visible_seq.load(Ordering::Acquire);
+        let now_ms = crate::types::TimestampMs::now();
         let live: Vec<(u32, std::sync::Arc<crate::scope::Scope<FS>>)> = self
             .scopes
             .read()
             .iter()
             .map(|(scope_id, scope)| (*scope_id, scope.clone()))
             .collect();
+        let mut scope_ids = Vec::new();
         let mut entries = Vec::new();
         for (scope_id, scope) in live {
             if scope.is_dropped() {
                 continue;
             }
+            scope_ids.push(scope_id);
             for (key, value) in self.scan_prefix(scope_id, b"", read_seq)? {
-                entries.push((scope_id, key, value));
+                let expires_at_ms = scope
+                    .key_meta(
+                        key.as_ref(),
+                        crate::types::SequenceNumber::new(read_seq),
+                        now_ms,
+                    )?
+                    .map(|meta| meta.expires_at_ms)
+                    .unwrap_or(0);
+                entries.push((scope_id, key, value, expires_at_ms));
             }
         }
-        Ok(entries)
+        Ok((read_seq, scope_ids, entries))
     }
 
     /// Apply a base snapshot from a primary.
     ///
-    /// Snapshot entries are written at the current sequence number. Later
-    /// frames apply on top of the snapshot.
+    /// Snapshot entries are written at `snapshot_seq`. Local keys and scopes
+    /// absent from the snapshot are removed, and `last_visible_seq` is advanced
+    /// to `snapshot_seq`.
     ///
     /// # Errors
     ///
-    /// Returns an I/O error when a write fails.
+    /// Returns an error when a read or write fails.
     pub fn apply_replication_snapshot(
         &self,
-        entries: &[(u32, bytes::Bytes, bytes::Bytes)],
+        snapshot_seq: u64,
+        scope_ids: &[u32],
+        entries: &[crate::ReplicationSnapshotEntry],
     ) -> crate::Result<()> {
         let _guard = self.commit_lock.lock();
-        let read_seq = self.last_visible_seq.load(Ordering::Acquire);
+        let current_seq = self.last_visible_seq.load(Ordering::Acquire);
+        if snapshot_seq <= current_seq {
+            return Ok(());
+        }
+
+        let mut snapshot_keys: std::collections::HashMap<
+            u32,
+            std::collections::HashSet<bytes::Bytes>,
+        > = std::collections::HashMap::new();
+        for (scope_id, key, _value, _expires_at_ms) in entries {
+            snapshot_keys
+                .entry(*scope_id)
+                .or_default()
+                .insert(key.clone());
+        }
+        let snapshot_scope_ids: std::collections::HashSet<u32> =
+            scope_ids.iter().copied().collect();
+
+        let live_scope_ids: Vec<u32> = self
+            .scopes
+            .read()
+            .iter()
+            .filter(|(_, scope)| !scope.is_dropped())
+            .map(|(scope_id, _)| *scope_id)
+            .collect();
+
+        for scope_id in &live_scope_ids {
+            if !snapshot_scope_ids.contains(scope_id) {
+                let scopes = self.scopes.read();
+                let op = WalOp::DropScope {
+                    scope_id: *scope_id,
+                };
+                crate::recovery::apply_wal_op(&scopes, op, snapshot_seq);
+                continue;
+            }
+            let empty_keys = std::collections::HashSet::new();
+            let scope_snapshot_keys = snapshot_keys.get(scope_id).unwrap_or(&empty_keys);
+            let existing_entries = self.scan_prefix(*scope_id, b"", current_seq)?;
+            let scopes = self.scopes.read();
+            for (key, _value) in existing_entries {
+                if !scope_snapshot_keys.contains(&key) {
+                    let op = WalOp::Delete {
+                        scope_id: *scope_id,
+                        key: key.clone(),
+                    };
+                    crate::recovery::apply_wal_op(&scopes, op, snapshot_seq);
+                }
+            }
+        }
+
         let scopes = self.scopes.read();
-        for (scope_id, key, value) in entries {
+        for (scope_id, key, value, expires_at_ms) in entries {
             let op = WalOp::Put {
                 scope_id: *scope_id,
-                expires_at_ms: 0,
+                expires_at_ms: *expires_at_ms,
                 key: key.clone(),
                 val: value.clone(),
             };
-            crate::recovery::apply_wal_op(&scopes, op, read_seq);
+            crate::recovery::apply_wal_op(&scopes, op, snapshot_seq);
         }
+        drop(scopes);
+
+        self.last_visible_seq.store(snapshot_seq, Ordering::SeqCst);
         Ok(())
     }
 
@@ -189,12 +255,16 @@ fn frame_last_seq(frame: &WalBatchFrame) -> Option<u64> {
 fn watch_event_for_op(op: &WalOp, seq: u64) -> Option<ChangeEvent> {
     match op {
         WalOp::Put {
-            scope_id, key, val, ..
+            scope_id,
+            key,
+            val,
+            expires_at_ms,
         } => Some(ChangeEvent::Put {
             scope_id: *scope_id,
             key: key.clone(),
             value: val.clone(),
             seq,
+            expires_at_ms: *expires_at_ms,
         }),
         WalOp::Delete { scope_id, key } => Some(ChangeEvent::Delete {
             scope_id: *scope_id,

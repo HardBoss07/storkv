@@ -150,6 +150,7 @@ fn apply_mutation<FS: FileSystem>(
                 key: user_key,
                 value: val,
                 seq: op_seq,
+                expires_at_ms,
             });
         }
         TxMutation::Delete => {
