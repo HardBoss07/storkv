@@ -77,13 +77,23 @@ pub(crate) fn encode_response(destination: &mut BytesMut, response: &Response) {
             destination.put_u64_le(*sent_at_ms);
             put_bytes(destination, frame);
         }
-        Response::ReplicationSnapshot(entries) => {
+        Response::ReplicationSnapshot {
+            snapshot_seq,
+            scopes,
+            entries,
+        } => {
             destination.put_u8(16);
+            destination.put_u64_le(*snapshot_seq);
+            destination.put_u32_le(scopes.len() as u32);
+            for scope_id in scopes {
+                destination.put_u32_le(*scope_id);
+            }
             destination.put_u32_le(entries.len() as u32);
-            for (scope_id, key, value) in entries {
+            for (scope_id, key, value, expires_at_ms) in entries {
                 destination.put_u32_le(*scope_id);
                 put_bytes(destination, key);
                 put_bytes(destination, value);
+                destination.put_u64_le(*expires_at_ms);
             }
         }
     }
@@ -117,12 +127,14 @@ fn encode_change_event(destination: &mut BytesMut, event: &WireChangeEvent) {
             key,
             value,
             seq,
+            expires_at_ms,
         } => {
             destination.put_u8(1);
             destination.put_u32_le(*scope_id);
             put_bytes(destination, key);
             put_bytes(destination, value);
             destination.put_u64_le(*seq);
+            destination.put_u64_le(*expires_at_ms);
         }
         WireChangeEvent::Delete { scope_id, key, seq } => {
             destination.put_u8(2);

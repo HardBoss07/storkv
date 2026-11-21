@@ -40,6 +40,8 @@ pub enum WireChangeEvent {
         value: Bytes,
         /// Commit sequence number of the change.
         seq: u64,
+        /// Absolute Unix epoch milliseconds, `0` when the key is permanent.
+        expires_at_ms: u64,
     },
     /// A key was deleted.
     Delete {
@@ -113,7 +115,18 @@ pub enum Response {
         frame: Bytes,
     },
     /// Base snapshot for a replica that missed the retained WAL history.
-    ReplicationSnapshot(Vec<(u32, Bytes, Bytes)>),
+    ///
+    /// `snapshot_seq` is the consistent sequence at which the primary captured
+    /// the snapshot. Each entry carries `(scope_id, key, value, expires_at_ms)`
+    /// where `expires_at_ms` is `0` for permanent keys.
+    ReplicationSnapshot {
+        /// The consistent sequence number at which the primary captured the snapshot.
+        snapshot_seq: u64,
+        /// Every live scope id as of `snapshot_seq`, including empty scopes.
+        scopes: Vec<u32>,
+        /// All live key/value pairs as of `snapshot_seq`.
+        entries: Vec<(u32, Bytes, Bytes, u64)>,
+    },
     /// Operation failure.
     Error(StorkvWireError),
 }

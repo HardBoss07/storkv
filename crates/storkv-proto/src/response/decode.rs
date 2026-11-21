@@ -44,8 +44,19 @@ pub(crate) fn decode_response(source: &mut BytesMut) -> Result<Response, StorkvW
             frame: get_bytes(source)?,
         }),
         16 => {
+            let snapshot_seq = get_u64_le(source)?;
+            let scope_count = get_u32_le(source)? as usize;
+            if scope_count > source.len() / 4 {
+                return Err(StorkvWireError::Protocol(
+                    "Replication snapshot scope count exceeds available payload".into(),
+                ));
+            }
+            let mut scopes = Vec::with_capacity(scope_count);
+            for _ in 0..scope_count {
+                scopes.push(get_u32_le(source)?);
+            }
             let count = get_u32_le(source)? as usize;
-            if count > source.len() / 12 {
+            if count > source.len() / 20 {
                 return Err(StorkvWireError::Protocol(
                     "Replication snapshot count exceeds available payload".into(),
                 ));
@@ -55,9 +66,14 @@ pub(crate) fn decode_response(source: &mut BytesMut) -> Result<Response, StorkvW
                 let scope_id = get_u32_le(source)?;
                 let key = get_bytes(source)?;
                 let value = get_bytes(source)?;
-                entries.push((scope_id, key, value));
+                let expires_at_ms = get_u64_le(source)?;
+                entries.push((scope_id, key, value, expires_at_ms));
             }
-            Ok(Response::ReplicationSnapshot(entries))
+            Ok(Response::ReplicationSnapshot {
+                snapshot_seq,
+                scopes,
+                entries,
+            })
         }
         255 => Ok(Response::Error(decode_error(source)?)),
         other => Err(StorkvWireError::Protocol(format!(
@@ -223,11 +239,13 @@ fn decode_change_event(source: &mut BytesMut) -> Result<WireChangeEvent, StorkvW
             let key = get_bytes(source)?;
             let value = get_bytes(source)?;
             let seq = get_u64_le(source)?;
+            let expires_at_ms = get_u64_le(source)?;
             Ok(WireChangeEvent::Put {
                 scope_id,
                 key,
                 value,
                 seq,
+                expires_at_ms,
             })
         }
         2 => {

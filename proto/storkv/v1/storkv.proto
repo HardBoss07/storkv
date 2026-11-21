@@ -120,6 +120,8 @@ message ChangeEvent {
   bytes key = 3;
   bytes value = 4;
   uint64 seq = 5;
+  // Absolute Unix epoch milliseconds, zero when the key is permanent.
+  uint64 expires_at_ms = 6;
 }
 
 message TelemetryReply {

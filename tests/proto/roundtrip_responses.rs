@@ -123,6 +123,7 @@ fn test_round_trip_all_responses_and_errors() {
             key: Bytes::from_static(b"watch_key"),
             value: Bytes::from_static(b"watch_val"),
             seq: 999,
+            expires_at_ms: 0,
         }),
         Response::WatchEvent(WireChangeEvent::Delete {
             scope_id: 1,
@@ -133,6 +134,19 @@ fn test_round_trip_all_responses_and_errors() {
             scope_id: 1,
             seq: 1001,
         }),
+        Response::ReplicationSnapshot {
+            snapshot_seq: 1002,
+            scopes: vec![1, 2],
+            entries: vec![
+                (
+                    1,
+                    Bytes::from_static(b"key"),
+                    Bytes::from_static(b"value"),
+                    1_700_000_000_000,
+                ),
+                (2, Bytes::from_static(b"other"), Bytes::from_static(b"v"), 0),
+            ],
+        },
         Response::Error(StorkvWireError::DatabaseLocked("/path/to/lock".into())),
         Response::Error(StorkvWireError::Corruption("bad CRC".into())),
         Response::Error(StorkvWireError::WriteConflict {
