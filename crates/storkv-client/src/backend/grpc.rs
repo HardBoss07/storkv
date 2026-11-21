@@ -127,6 +127,7 @@ fn change_event(event: grpc::ChangeEvent) -> WireChangeEvent {
             key: Bytes::from(event.key),
             value: Bytes::from(event.value),
             seq: event.seq,
+            expires_at_ms: event.expires_at_ms,
         },
     }
 }

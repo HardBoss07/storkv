@@ -53,7 +53,13 @@ impl TransportKind {
             )));
         }
         if storkv_proto::is_unix_socket_addr(trimmed) {
-            return Ok((Self::NativeUnix, trimmed.to_string()));
+            let path = storkv_proto::unix_socket_path(trimmed);
+            if path.is_empty() {
+                return Err(ClientError::Protocol(format!(
+                    "connection URI is missing a target: {uri}"
+                )));
+            }
+            return Ok((Self::NativeUnix, path.to_string()));
         }
         Ok((Self::NativeTcp, trimmed.to_string()))
     }

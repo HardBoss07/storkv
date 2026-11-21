@@ -27,7 +27,7 @@ async fn test_async_client_connects_over_unix_socket() {
             .unwrap();
     });
 
-    let client = AsyncClient::connect_any(format!("unix:{}", sock_path.display()))
+    let client = AsyncClient::connect_any(&format!("unix:{}", sock_path.display()))
         .await
         .unwrap();
     client.ping().await.unwrap();
