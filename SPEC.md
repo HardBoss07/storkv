@@ -97,11 +97,11 @@ Every scope is configured via a `ScopeOptions` struct or built-in preset at crea
 
 Every scope declares where its data lives. The mode is stored in the manifest (`CreateScope` tag value) and survives recovery.
 
-| Mode                         | WAL                                   | MemTable and SSTable                | Crash Behavior                                                        |
-| :--------------------------- | :------------------------------------ | :---------------------------------- | :-------------------------------------------------------------------- |
-| `StorageMode::Disk`          | Written to disk                       | Written to disk                     | Full durability and recovery through the WAL and SSTables.            |
-| `StorageMode::InMemory`      | Skipped                               | Kept only in RAM                    | No data survives a process restart. Use it for pure caches.           |
-| `StorageMode::InMemoryPersistent` | Written to disk                  | Kept only in RAM                    | The WAL replays into RAM on open. `Db::flush` writes a recovery snapshot. |
+| Mode                              | WAL             | MemTable and SSTable | Crash Behavior                                                            |
+| :-------------------------------- | :-------------- | :------------------- | :------------------------------------------------------------------------ |
+| `StorageMode::Disk`               | Written to disk | Written to disk      | Full durability and recovery through the WAL and SSTables.                |
+| `StorageMode::InMemory`           | Skipped         | Kept only in RAM     | No data survives a process restart. Use it for pure caches.               |
+| `StorageMode::InMemoryPersistent` | Written to disk | Kept only in RAM     | The WAL replays into RAM on open. `Db::flush` writes a recovery snapshot. |
 
 - **Recovery Snapshots:** `Db::flush()` writes `<db_root>/snapshots/<scope_id>.snapshot` with magic `STORKSNAP` and version `1`. The snapshot records `snapshot_seq`; recovery skips WAL operations at or below that sequence.
 - **Shutdown Flush:** `Drop for Db` flushes every scope when the last handle is released. This keeps in-memory scopes recoverable across a clean restart.
@@ -112,8 +112,8 @@ Every scope declares where its data lives. The mode is stored in the manifest (`
 The SDK offers an optional, per-scope read cache. It is disabled by default.
 
 - **Configuration:** `CacheOptions { enabled: false, max_entries_per_scope: 1024 }`. Enable it with `CacheOptions::default().enable()` and pass it to `StorkvPoolOptions::cache`.
-- **Invalidation:** Each cached scope holds a watch subscription. A `Put` or `Delete` event updates or removes the matching entry. A `DropScope` or `InvalidateScope` event clears the scope. A cached entry with an expiry becomes a miss when the expiry passes.
-- **Disconnect Handling:** On a transport disconnect or `WatchCursorExpired`, the SDK clears the cache and resubscribes from the next expected sequence. A networked pool clears the cache before it reconnects.
+- **Invalidation:** Each cached scope holds a watch subscription. A `Put` or `Delete` event updates or removes the matching entry. A `DropScope` or `InvalidateScope` event clears the scope. Reads store the key's absolute `expires_at_ms` from the server, so a cached entry becomes a miss when that expiry passes.
+- **Disconnect Handling:** A `WatchCursorExpired` reply clears the cache once and resubscribes from the beginning of the retained history. Any other transport disconnect resubscribes from the next expected sequence without clearing valid entries.
 - **Bounded Memory:** Each scope keeps at most `max_entries_per_scope` entries in a least-recently-used map. Writes that the pool performs update the cache directly.
 
 ---
@@ -166,7 +166,7 @@ StorKV supports asynchronous, single-primary replication with explicit consisten
 
 1. **Roles:** `--role <standalone|primary|replica>` selects the node role. A standalone node serves local reads and writes. A primary serves reads and writes, and streams committed WAL frames. A replica applies frames from one primary and rejects writes.
 2. **Stream:** A replica connects to `--primary-uri` with the native transport and opens `ReplicationStart { from_seq }` (request opcode `27`). The primary replays retained frames with `batch_seq >= from_seq` and then streams live frames as `ReplicationFrame { sent_at_ms, frame }` (response opcode `15`). The frame bytes are the standard `WalBatchFrame` encoding, so the replica appends them to its own WAL and applies the operations in sequence order. Each stream has a queue of 1024 frames, and the primary accepts at most 1024 stream subscribers. A slow subscriber is removed when its queue is full. A replay is limited to 1024 frames and 16 MiB. When `--strict-admin` is active, only an admin connection can open the stream.
-3. **Snapshot Catch-Up:** When the replica cursor is older than the retained WAL, the primary sends `ReplicationSnapshot(Vec<(u32, Bytes, Bytes)>)` (response opcode `16`) with every visible key. The replica applies the snapshot and then resumes from `oldest_available`.
+3. **Snapshot Catch-Up:** When the replica cursor is older than the retained WAL, the primary first acknowledges the stream with `Empty` and then sends `ReplicationSnapshot { snapshot_seq, scopes, entries: Vec<(scope_id, key, value, expires_at_ms)> }` (response opcode `16`). The snapshot lists every live scope (including empty ones) and every visible key with its absolute expiry. The replica removes local keys and scopes absent from the snapshot, writes the snapshot entries at `snapshot_seq`, and then resumes from that sequence.
 4. **Consistency Levels:** A client selects a level with `ConfigureConsistency { consistency }` (request opcode `28`). `Consistency::Strong` requires the primary, so a replica rejects data reads and writes with `NotPrimary`. `Consistency::BoundedStaleness { max_lag_ms }` lets a replica serve reads while its lag stays at or below the bound, and returns `StaleReplica { lag_ms, max_lag_ms }` otherwise. `Consistency::Eventual` lets a replica serve reads at any lag. Lag is `now - last_frame_sent_at_ms`.
 5. **Failure Model:** Replication is asynchronous and has no quorum or leader election (PACELC: prefer availability and low latency during a partition, at the cost of temporary staleness). A replica reconnects with backoff and resumes from its last applied sequence.
 

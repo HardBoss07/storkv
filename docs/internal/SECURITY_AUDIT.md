@@ -2,394 +2,449 @@
 
 ## 1. Audit Metadata
 
-| Field | Value |
-| :--- | :--- |
-| Project | StorKV (`storkv`) |
-| Audit date | 2026-11-18 |
-| Branch | `main` |
-| HEAD commit | `009ff6f` (`test: update chaos, format, and protocol integration tests`) |
-| Worktree state | Dirty. The audit read the current working tree, not the HEAD snapshot. |
-| Workspace size | 56,168 lines (`project-structure.exe . -m --count`) |
-| Crate sizes | `storkv-core` 10,568; `storkv-server` 7,631; `storkv-sdk` 2,790; `storkv-proto` 2,312; `storkv-client` 2,079; `storkv-ffi` 1,684; `storkv-cli` 1,115; `storkv-tui` 621 |
-| Method | Source-grounded review with entrypoint-to-sink tracing and adversarial disproof |
-| Constraints | Read-only workspace inspection. No live network probe. No destructive command. |
-| Sole output | This file. |
+| Field          | Value                                                                           |
+| :------------- | :------------------------------------------------------------------------------ |
+| Project        | StorKV (`storkv`)                                                               |
+| Audit date     | 2026-11-20                                                                      |
+| Branch         | `main`                                                                          |
+| HEAD commit    | `cc14dec8221f9b9e21cda9146015a4c5391859ef` (`2026-11-20 22:04:44 +0100`)        |
+| Worktree state | Clean at audit start. `git status --porcelain` returned no entries.             |
+| Workspace size | 402 Rust source files (workspace, `target/` excluded)                           |
+| Method         | Source-grounded review with entrypoint-to-sink tracing and adversarial disproof |
+| Constraints    | Read-only inspection. No live network probe. No destructive command.            |
+| Sole output    | This file.                                                                      |
 
-This audit uses the Cloudflare `security-audit` bar. A finding needs a real trust boundary, a verified code path, a missing control, and a bounded impact. A defense-in-depth gap is not a vulnerability.
+This audit uses the Cloudflare `security-audit` bar. A finding needs a real trust boundary, a verified code path, a missing control, and a bounded impact. A defense-in-depth gap is a hardening note.
+
+The previous report was written against commit `009ff6f`. This report re-reads the current tree at `cc14dec`. It does not reuse the previous findings. Section 6 records the previous findings that the current code closes.
 
 ### 1.1 Severity Counts
 
-| Severity | Confirmed |
-| :--- | ---: |
-| `CRITICAL` | 0 |
-| `HIGH` | 2 |
-| `MEDIUM` | 5 |
-| `LOW` | 0 |
-| **Total confirmed** | **7** |
+| Severity            | Confirmed |
+| :------------------ | --------: |
+| `CRITICAL`          |         0 |
+| `HIGH`              |         1 |
+| `MEDIUM`            |         2 |
+| `LOW`               |         1 |
+| **Total confirmed** |     **4** |
 
-| Other class | Count |
-| :--- | ---: |
-| `NEEDS_VALIDATION` | 2 |
-| `HARDENING_NOTE` | 8 |
-| `REJECTED` | 10 |
+| Other class        | Count |
+| :----------------- | ----: |
+| `NEEDS_VALIDATION` |     2 |
+| `HARDENING_NOTE`   |     8 |
+| `REJECTED`         |    15 |
 
 ### 1.2 Executive Summary
 
-The storage engine core is careful with untrusted wire input. Frame length fields, request and response vectors, WAL records, SSTable blocks, and FFI output pointers have explicit bounds checks. This audit found no memory corruption, no arbitrary code execution, and no direct authentication bypass on an admin-only request.
+The current code fixes the confirmed findings of the previous audit, with one exception. Watch and replication queues are bounded. Subscriber counts are capped. Redis inline commands and glob matching are bounded. Consistency is per connection. Backup paths are confined. Decompression output is capped. The native admin Unix socket uses `0700` and `0600` permissions. The TTL part of the previous SDK cache finding remains.
 
-The main risk is availability. Watch and replication streams have no backpressure and no subscription limit. A network client can subscribe to a native, WebSocket, or gRPC watch and then stop reading. The server keeps every event in an unbounded queue. Repeated subscribe requests also leak subscriber tasks. One client can therefore exhaust server memory.
+This audit confirms four issues. Three are new. One is the remaining TTL part of the previous SDK cache finding.
 
-The Redis compatibility layer has two independent denial-of-service paths. The inline parser has no line limit, so one connection can grow its read buffer without bound. The `KEYS` and `SCAN MATCH` glob matcher uses exponential backtracking, so one small pattern can consume a CPU core.
+The compatibility listeners bypass the replica write rejection. The native, HTTP, WebSocket, and gRPC data paths call `dispatch_request`, which rejects writes on a replica. The Redis, Memcached, and etcd write paths call the database directly. A replica that runs an enabled compatibility listener accepts local writes. A local write also advances the local sequence counter. The replica then discards primary frames below that counter. The result is silent divergence.
 
-Two correctness defects have security impact. The server-wide consistency setting is writable by any client, so a client can deny reads on a replica or force stale reads. The SDK read cache does not honor TTL expiry, range deletes, or merge mutations, so a deleted or expired value can stay readable.
+Replica recovery from an expired cursor is broken. The primary sends a snapshot before the acknowledgment. The client expects the acknowledgment first. The client treats the snapshot as a protocol error and retries the same expired cursor forever.
+
+The recovery snapshot also drops time-to-live values and does not remove keys that are absent from the snapshot. This defect is latent while the recovery loop is broken.
+
+The SDK cache ignores server-side time-to-live expiry. A value cached through `Scope::get` can stay readable after the server hides it.
 
 ## 2. Architecture and Trust-Boundary Map
 
 ### 2.1 Untrusted Entrypoints
 
-| Entrypoint | Code | Privilege gate |
-| :--- | :--- | :--- |
-| Native TCP/UDS (`STORKPRT`) | `crates/storkv-server/src/server.rs:209-255`; `crates/storkv-proto/src/frame.rs:95-160` | `is_admin` comes from the listener. The native protocol has no token field. |
-| HTTP REST and JSON-RPC | `crates/storkv-server/src/transports/http.rs:53-89`; `transports/http/rest_data.rs`; `transports/http/rpc.rs:19-56` | `HttpState::is_admin` reads the admin token header (`transports/http.rs:32-41`). |
-| WebSocket binary and JSON-RPC | `crates/storkv-server/src/transports/ws/session.rs:92-196` | Token check at upgrade. Watch requests bypass `dispatch_request`. |
-| gRPC `storkv.v1` data and admin | `crates/storkv-server/src/transports/grpc/service.rs`; `grpc/admin.rs` | Metadata token at `grpc.rs:73-86`. Data methods call `dispatch`. Watch does not. |
-| Redis RESP2/RESP3 | `crates/storkv-server/src/compat/redis.rs:47-87` | No authentication. No `strict-admin` hook. |
-| Memcached ASCII | `crates/storkv-server/src/compat/memcached.rs:37-114` | No authentication. No `strict-admin` hook. |
-| etcd v3 JSON | `crates/storkv-server/src/compat/etcd_http.rs:18-135` | No authentication. |
-| Replication stream | `crates/storkv-server/src/server.rs:354-419` | No admin check. Replica role rejects the request. |
-| C ABI | `crates/storkv-ffi/src/*.rs` | Caller-owned raw pointers. Documented `unsafe` contract. |
-| On-disk WAL, SST, manifest, backup | `crates/storkv-core/src/wal/*`; `sstable/*`; `manifest/*`; `backup/*` | Local filesystem trust. Restore accepts an operator-selected backup root. |
+| Entrypoint                            | Code                                                                                                                                                                          | Privilege gate                                                                                                              |
+| :------------------------------------ | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------- |
+| Native TCP, TLS, and UDS (`STORKPRT`) | `crates/storkv-server/src/server/listener.rs:20-60,68-101,108-158`; `crates/storkv-proto/src/frame.rs:11-12`                                                                  | `is_admin` comes from the listener. The native protocol has no token field.                                                 |
+| HTTP REST and JSON-RPC                | `crates/storkv-server/src/transports/http.rs:31-50`; `crates/storkv-server/src/transports/http/rpc.rs:34-38`; `crates/storkv-server/src/transports/http/rest_admin.rs:13-103` | `HttpState::is_admin` reads `x-storkv-admin-token` or a bearer token (`crates/storkv-server/src/transports/http.rs:32-41`). |
+| WebSocket binary and JSON-RPC         | `crates/storkv-server/src/transports/ws/session/routing.rs:25-44`; `crates/storkv-server/src/transports/ws/session.rs:141,183`                                                | Token check at upgrade. Requests call `dispatch_request`.                                                                   |
+| gRPC data and admin                   | `crates/storkv-server/src/transports/grpc.rs:72-96`; `crates/storkv-server/src/transports/grpc/service/data.rs:16-169`                                                        | Metadata token at `crates/storkv-server/src/transports/grpc.rs:73-86`. Data methods call `dispatch`.                        |
+| Redis RESP2/RESP3                     | `crates/storkv-server/src/compat/redis.rs:30-70`                                                                                                                              | No authentication. No replica role gate.                                                                                    |
+| Memcached ASCII                       | `crates/storkv-server/src/compat/memcached.rs:20-60`                                                                                                                          | No authentication. No replica role gate.                                                                                    |
+| etcd v3 JSON                          | `crates/storkv-server/src/compat/etcd_http.rs:18-135`; `transports/http.rs:83-87`                                                                                             | No authentication. No replica role gate.                                                                                    |
+| Replication stream                    | `crates/storkv-server/src/server/session.rs:123-206`                                                                                                                          | `strict_admin` check. Primary-only check.                                                                                   |
+| C ABI                                 | `crates/storkv-ffi/src/*.rs`                                                                                                                                                  | Caller-owned raw pointers. Documented `unsafe` contract.                                                                    |
+| On-disk WAL, SST, manifest, backup    | `crates/storkv-core/src/wal/*`; `sstable/*`; `backup/*`                                                                                                                       | Local filesystem trust. Restore uses an operator-selected root.                                                             |
 
 ### 2.2 Principals and Boundaries
 
-| Principal | Resource | Control |
-| :--- | :--- | :--- |
-| Non-admin network client | Admin-only request set | `dispatch_request` at `crates/storkv-server/src/dispatch.rs:20-23`; set at `crates/storkv-proto/src/request/types.rs:251-267` |
-| Admin listener or token holder | Global state and backup internals | `strict_admin`, `TransportOptions::grants_admin` at `transports.rs:59-83` |
-| Local user | Native admin Unix socket | Filesystem permission on the socket path |
-| Any client | Scope data | No per-scope authorization. Scopes are a namespace, not a security principal. |
-| Any client | Watch and replication events | Only the transport connection. No admin role. |
-| Any client | Server consistency setting | `Request::ConfigureConsistency`, no admin role |
-| Backup operator | Backup manifest, WAL, SST | Local trust. No manifest path confinement. |
-| C caller | FFI handles and slices | Documented safety contract |
+| Principal                      | Resource                          | Control                                                                                                                             |
+| :----------------------------- | :-------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------- |
+| Non-admin network client       | Admin-only request set            | `dispatch_request` at `crates/storkv-server/src/dispatch.rs:26-28`; set at `crates/storkv-proto/src/request/types/methods.rs:10-23` |
+| Admin listener or token holder | Global state and backup internals | `strict_admin` and `TransportOptions::grants_admin` at `crates/storkv-server/src/transports.rs:61-83`                               |
+| Local user                     | Native admin Unix socket          | Parent `0700` and socket `0600` at `crates/storkv-server/src/bin/storkvd.rs:161-172`                                                |
+| Any client                     | Scope data                        | No per-scope authorization. Scopes are a namespace, not a security principal (`SPEC.md:23`).                                        |
+| Any client                     | Watch and replication events      | Transport connection only. `ReplicationStart` is admin-only under `strict_admin`.                                                   |
+| Any client                     | Server consistency setting        | Per-connection `ConnectionConsistency` at `crates/storkv-server/src/server/consistency.rs:9-37`                                     |
+| Compat client                  | Redis, Memcached, and etcd data   | No authentication. No replica role gate. See F-01.                                                                                  |
+| Replica operator               | Primary frame stream              | Operator-selected URI. No transport TLS or peer authentication.                                                                     |
+| Backup operator                | Backup manifest, WAL, SST         | Local trust. Path confinement is enforced.                                                                                          |
+| C caller                       | FFI handles and slices            | Documented safety contract                                                                                                          |
 
 ### 2.3 Coverage Ledger
 
-| Area | Files reviewed | Result |
-| :--- | :--- | :--- |
-| Frame and request decoding | `storkv-proto/src/frame.rs`, `request/decode.rs`, `response/decode.rs`, `response/decode_admin.rs` | Bounds checks hold. See R-01. |
-| Native dispatch and admin set | `server.rs`, `dispatch.rs`, `request/types.rs` | Admin gate holds for listed requests. Watch and replication bypass it by design. |
-| HTTP and REST | `transports/http.rs`, `rest_data.rs`, `rest_scopes.rs`, `rest_admin.rs`, `rpc.rs` | Token gate holds. No path traversal. |
-| WebSocket | `transports/ws/session.rs`, `ws/json_rpc.rs` | Watch path has no limit. See F-01, F-02. |
-| gRPC | `transports/grpc.rs`, `grpc/service.rs`, `grpc/admin.rs` | Admin methods gate. Watch has no limit. See F-01. |
-| Redis parser and commands | `compat/redis.rs`, `codec_decode.rs`, `commands*.rs`, `helpers.rs`, `keyspace.rs` | Inline and glob DoS. See F-03, F-04. |
-| Memcached | `compat/memcached.rs`, `parser.rs`, `commands.rs` | Length caps hold. Flush is not admin-gated. See H-01. |
-| etcd gateway | `compat/etcd_http.rs` | No memory-safety defect. |
-| Watch registry and replay | `storkv-core/src/watch.rs`, `db_ops/watch.rs` | Unbounded queue and full WAL replay. See F-01, F-02. |
-| Replication | `db_ops/replication.rs`, `server.rs:354-419` | Full replay, no admin gate. See F-01, H-03. |
-| SDK cache | `storkv-sdk/src/cache.rs`, `scope.rs`, `pool.rs` | TTL and range-delete gaps. See F-06. |
-| Consistency | `server.rs:89-95`, `dispatch.rs:37-57,107-110` | Global mutation. See F-05. |
-| Backup and restore | `backup/restore.rs`, `manifest.rs`, `manifest/paths.rs`, `verify.rs` | Path confinement gap. See N-01. |
-| WAL and SST decoding | `wal/codec.rs`, `wal/recovery.rs`, `sstable/block.rs`, `footer.rs`, `meta.rs` | Bounds hold. Decompression size is uncapped. See N-02. |
-| FFI | `storkv-ffi/src/handles.rs`, `scope.rs`, `watch.rs`, `memory.rs` | Null checks and ownership rules hold. See R-07. |
-| CLI and TUI | `storkv-cli/src/*`, `storkv-tui/src/*` | No token handling. See H-05 for the server flag. |
-| Supply chain | `Cargo.toml`, crate manifests | No Git dependency, no build script from an untrusted source. |
+| Area                          | Files reviewed                                                                                                                                                                                                                                                                 | Result                                                         |
+| :---------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------- |
+| Frame and request decoding    | `crates/storkv-proto/src/frame.rs`, `crates/storkv-proto/src/request/decode.rs`, `crates/storkv-proto/src/response/decode.rs`                                                                                                                                                  | Bounds checks hold. See R-10.                                  |
+| Native dispatch and admin set | `crates/storkv-server/src/server.rs`, `crates/storkv-server/src/server/listener.rs`, `crates/storkv-server/src/server/session.rs`, `crates/storkv-server/src/dispatch.rs`, `crates/storkv-proto/src/request/types/methods.rs`                                                  | Admin gate holds. Replica gate covers this path. See R-12.     |
+| HTTP and REST                 | `crates/storkv-server/src/transports/http.rs`, `crates/storkv-server/src/transports/http/rest.rs`, `crates/storkv-server/src/transports/http/rest_admin.rs`, `crates/storkv-server/src/transports/http/rest_data.rs`, `crates/storkv-server/src/transports/http/rpc.rs`        | Token gate holds. Admin handlers call `dispatch`.              |
+| WebSocket                     | `crates/storkv-server/src/transports/ws/session.rs`, `crates/storkv-server/src/transports/ws/session/watch.rs`, `crates/storkv-server/src/transports/ws/session/routing.rs`                                                                                                    | Token gate and dispatch parity hold.                           |
+| gRPC                          | `crates/storkv-server/src/transports/grpc.rs`, `crates/storkv-server/src/transports/grpc/service/data.rs`, `crates/storkv-server/src/transports/grpc/service/build.rs`, `crates/storkv-server/src/transports/grpc/service/watch.rs`                                            | Token gate and dispatch parity hold.                           |
+| Redis parser and commands     | `crates/storkv-server/src/compat/redis.rs`, `crates/storkv-server/src/compat/redis/codec_decode/parse.rs`, `crates/storkv-server/src/compat/redis/helpers/glob.rs`, `crates/storkv-server/src/compat/redis/commands_*.rs`, `crates/storkv-server/src/compat/redis/keyspace.rs` | Bounds hold. Replica write gate is missing. See F-01.          |
+| Memcached                     | `crates/storkv-server/src/compat/memcached.rs`, `crates/storkv-server/src/compat/memcached/parser.rs`, `crates/storkv-server/src/compat/memcached/commands/store.rs`, `crates/storkv-server/src/compat/memcached/commands/modify.rs`                                           | Length caps hold. Replica write gate is missing. See F-01.     |
+| etcd gateway                  | `crates/storkv-server/src/compat/etcd_http.rs`                                                                                                                                                                                                                                 | Replica write gate is missing. See F-01.                       |
+| Watch registry and replay     | `crates/storkv-core/src/watch.rs`, `crates/storkv-core/src/db_ops/watch.rs`                                                                                                                                                                                                    | Bounded queue and subscriber cap hold. See R-01, R-02.         |
+| Replication server            | `crates/storkv-server/src/server/session.rs:123-206`, `crates/storkv-core/src/replication.rs`, `crates/storkv-core/src/db_ops/replication.rs`                                                                                                                                  | Recovery ordering and snapshot semantics fail. See F-02, F-03. |
+| Replication client            | `crates/storkv-client/src/backend.rs`, `crates/storkv-client/src/backend/native.rs`, `crates/storkv-client/src/async_client.rs`, `crates/storkv-server/src/replication.rs`                                                                                                     | Cursor error handling fails. See F-02.                         |
+| SDK cache                     | `crates/storkv-sdk/src/scope/cached.rs`, `crates/storkv-sdk/src/cache/store.rs`, `crates/storkv-sdk/src/cache/events.rs`, `crates/storkv-sdk/src/watch/invalidator.rs`                                                                                                         | TTL gap. See F-04, N-02.                                       |
+| Backup and restore            | `crates/storkv-core/src/backup/manifest/paths.rs`, `crates/storkv-core/src/backup/manifest.rs`, `crates/storkv-core/src/backup/restore/staging.rs`                                                                                                                             | Path confinement and symlink rejection hold. See R-08.         |
+| WAL and SST decoding          | `crates/storkv-core/src/wal/codec.rs`, `crates/storkv-core/src/sstable/footer.rs`                                                                                                                                                                                              | Decompression caps hold. See R-09.                             |
+| FFI                           | `crates/storkv-ffi/src/handles.rs`, `crates/storkv-ffi/src/scope.rs`, `crates/storkv-ffi/src/watch.rs`, `crates/storkv-ffi/src/memory.rs`                                                                                                                                      | Null checks and ownership rules hold. See H-08.                |
+| CLI and TUI                   | `crates/storkv-cli/src/*`, `crates/storkv-tui/src/*`                                                                                                                                                                                                                           | No token handling.                                             |
+| Supply chain                  | `Cargo.toml`, crate manifests                                                                                                                                                                                                                                                  | No Git dependency. No untrusted build script.                  |
 
 ## 3. Confirmed Findings
 
-### F-01: Watch and replication streams have no backpressure and replay the full WAL
+### F-01: Compatibility listeners bypass replica write rejection
 
-| Field | Value |
-| :--- | :--- |
-| ID | F-01 |
-| Severity | `HIGH` |
-| Confidence | High |
-| Attack class | Resource exhaustion (remote denial of service) |
-| Affected component | Core watch registry, native watch and replication loops, WebSocket watcher, gRPC watcher |
-| Exact locations | `crates/storkv-core/src/watch.rs:74-78`, `:84-91`, `:94-97`; `crates/storkv-core/src/replication.rs:29-45`, `:48-52`; `crates/storkv-core/src/db_ops/watch.rs:38-54`, `:56-83`; `crates/storkv-core/src/db_ops/replication.rs:20-32`, `:112-129`; `crates/storkv-server/src/server.rs:317-345`, `:354-416`; `crates/storkv-server/src/transports/ws/session.rs:253-285`; `crates/storkv-server/src/transports/grpc/service.rs:282-302` |
+| Field    | Value                                       |
+| :------- | :------------------------------------------ |
+| Verdict  | `CONFIRMED`                                 |
+| Severity | `HIGH`                                      |
+| Boundary | Network client to replica storage integrity |
+| Status   | New                                         |
 
-**Trust boundary violated.** An untrusted network client reaches the watch registry and the WAL replay path. The server reserves memory on behalf of that client without any limit. No admin role is required.
+**Locations**
 
-**Root cause and code trace.**
+- `crates/storkv-server/src/dispatch.rs:29-31,42-66`
+- `crates/storkv-server/src/compat/redis.rs:30-52`
+- `crates/storkv-server/src/compat/redis/keyspace.rs:70-90`
+- `crates/storkv-server/src/compat/redis/commands_strings.rs:56,81,101,139,170`
+- `crates/storkv-server/src/compat/redis/commands_keys.rs:22-30,67-77,92-97`
+- `crates/storkv-server/src/compat/memcached/commands/store.rs:25-71`
+- `crates/storkv-server/src/compat/memcached/commands/modify.rs:14-19,32-63,76-81`
+- `crates/storkv-server/src/compat/etcd_http.rs:31-35,119-128`
+- `crates/storkv-server/src/bin/storkvd.rs:71-76,234-249`
 
-1. `WatchRegistry::subscribe` and `subscribe_replaying` create `crossbeam_channel::unbounded()` channels (`crates/storkv-core/src/watch.rs:74-78`, `:84-91`).
-2. `broadcast` clones every event and sends it to every sender (`watch.rs:94-97`). An event carries the full value bytes for a `Put` (`watch.rs:8-36`).
-3. The native watch worker reads the unbounded receiver and calls `watch_sender.blocking_send` into a bounded 128-slot Tokio channel (`crates/storkv-server/src/server.rs:335-345`). When the peer stops reading, the writer stops, the 128-slot channel fills, and `blocking_send` blocks.
-4. The blocked worker stops draining its unbounded receiver. Every later write is cloned into that receiver queue without limit. The same pattern exists in the WebSocket watcher (`transports/ws/session.rs:265-284`) and the gRPC watcher (`grpc/service.rs:284-302`).
-5. `watch_from` and `replication_frames_from` first read every retained WAL segment and build a full `Vec` of events or frames (`db_ops/watch.rs:56-83`; `db_ops/replication.rs:112-129`). `WatchRegistry::subscribe_replaying` (`watch.rs:84-91`) and `ReplicationRegistry::subscribe_replaying` (`replication.rs:39-46`) then copy the whole replay vector into an unbounded queue before the receiver attaches. A request with `from_seq = 0` therefore allocates memory in proportion to the full retained WAL. The WAL frames include value bytes.
-6. The client controls write size and write rate. It can subscribe, stop reading, and write large values through another connection. Each write adds a full value copy to the stalled queue.
+**Description**
 
-**Impact and preconditions.** A single client can exhaust server memory and terminate the process. The client must reach a native, WebSocket, or gRPC listener. A native or WebSocket listener is enough. `--strict-admin` does not stop the attack because watch and replication are not in the admin-only set (`crates/storkv-proto/src/request/types.rs:251-267`). Repeated `WatchFrom { from_seq: 0 }` calls also cause repeated full-WAL allocation.
+The server rejects writes on a replica inside `dispatch_request`. The function calls `replica_rejection` for every dispatched request (`crates/storkv-server/src/dispatch.rs:29-31`). That helper returns `NotPrimary` when `self.role()` is `Replica` and the request is a write (`crates/storkv-server/src/dispatch.rs:47-52`).
 
-**Smallest effective remediation.** Replace the unbounded channels with bounded channels. On a full queue, close the slow subscriber or drop events. Cap the replay set. Reject `from_seq` values that would replay more than a fixed byte or event budget. Add a per-connection subscription cap.
+The Redis, Memcached, and etcd front ends do not call `dispatch_request`. They call database methods directly. The Redis session is created from the server (`crates/storkv-server/src/compat/redis.rs:47-52`). The write commands call `keyspace::atomic` and `Atomic::put` (`crates/storkv-server/src/compat/redis/commands_strings.rs:136-142`). `keyspace::atomic` commits through `db.inner().commit_tx` (`crates/storkv-server/src/compat/redis/keyspace.rs:86`). The Memcached store and modify commands use the same helper (`crates/storkv-server/src/compat/memcached/commands/store.rs:25-71`; `crates/storkv-server/src/compat/memcached/commands/modify.rs:14-19,32-63`). The etcd put and delete-range handlers call `put_absolute` and `begin_tx` directly (`crates/storkv-server/src/compat/etcd_http.rs:31-35,119-128`).
 
----
+A source search under `crates/storkv-server/src/compat` finds no `role()`, `ReplicationRole`, or `NotPrimary` check. The listener startup does not reject a replica role (`crates/storkv-server/src/bin/storkvd.rs:234-249`).
 
-### F-02: Repeated watch and replication requests leak subscribers and tasks
+**Impact**
 
-| Field | Value |
-| :--- | :--- |
-| ID | F-02 |
-| Severity | `HIGH` |
-| Confidence | High |
-| Attack class | Resource exhaustion (remote denial of service) |
-| Affected component | Native connection session, WebSocket session, watch registry |
-| Exact locations | `crates/storkv-server/src/server.rs:303-308`, `:317-348`, `:354-416`, `:421-428`; `crates/storkv-server/src/transports/ws/session.rs:75-80`, `:170-196`, `:206-228`; `crates/storkv-core/src/watch.rs:60-63` |
+A network client can write to a replica through any enabled compatibility listener. The write is visible to local readers and is persisted in the local WAL.
 
-**Trust boundary violated.** An untrusted client can create an unlimited number of server-side watcher tasks and registry entries on one connection. No quota or admin role applies.
+The write also advances `last_visible_seq`. `commit_tx` adds the write-set length to that counter (`storkv-core/src/db_ops/commit.rs:31-35`). The replication apply path ignores any frame whose last sequence is below the current counter (`storkv-core/src/db_ops/replication.rs:51-54`). A local compatibility write can therefore cause the replica to discard valid primary frames. The replica diverges from the primary without an error.
 
-**Root cause and code trace.**
+The Redis `HELLO` reply also reports `role=primary` on a replica (`crates/storkv-server/src/compat/redis/commands_server.rs:47`). This misleads clients and operators.
 
-1. `ConnectionSession::handle_message` sends every `WatchSubscribe`, `WatchFrom`, and `ReplicationStart` request to a start function (`server.rs:303-308`).
-2. `start_watch` builds a new receiver and then assigns `self.watch_task = Some(...)` (`server.rs:317-345`). Assignment drops the old `JoinHandle`. A dropped Tokio `JoinHandle` detaches the task. It does not abort the task. The old task keeps its receiver and keeps sending into the shared `watch_sender`.
-3. `start_replication` does the same with `self.replication_task` (`server.rs:399-416`). Old replication tasks stay alive.
-4. `stop_watch` aborts only the current handles (`server.rs:421-428`). It cannot stop the detached tasks.
-5. Each repeated request also calls `WatchRegistry::subscribe` and pushes another sender into `subscribers` (`watch.rs:60-78`). The vector has no cap.
-6. The WebSocket session stores watchers in `Vec<Watcher>` and pushes one for each request (`transports/ws/session.rs:75-80`, `:186`). It stops them only when the socket closes (`:226-228`). One socket can create an unlimited number of watchers.
-7. gRPC creates one watcher per `Watch` stream (`grpc/service.rs:282-302`). The stream count has no explicit cap.
+**Preconditions**
 
-**Impact and preconditions.** One native connection can create thousands of detached watcher tasks and registry entries with a short request loop. Each watcher receives every event, so CPU and memory cost multiplies. Combined with F-01, the detached tasks also fill their own unbounded queues. A WebSocket client can do the same without request replacement. The precondition is the same as F-01: reach a native, WebSocket, or gRPC listener.
+- The node runs with `--role replica`.
+- The node enables `--redis-listen`, `--memcached-listen`, or the HTTP listener that mounts `/v3/kv/*` (`crates/storkv-server/src/transports/http.rs:83-87`).
 
-**Smallest effective remediation.** Abort the previous watch and replication tasks before replacement. Reject a second subscription on the same connection, or set a small fixed limit. Cap the number of subscribers per connection and the total subscriber count.
+The native, HTTP data, WebSocket, and gRPC data paths are not affected. They call `dispatch_request` and receive `NotPrimary`.
 
----
+**Recommendation**
 
-### F-03: Redis inline commands have no line or buffer limit
+Add one shared replica write guard and call it from every compatibility write command. Return the Redis `READONLY` error, the Memcached `SERVER_ERROR` reply, or the etcd `NotPrimary` status. Do not rely on `dispatch_request` alone. Also report the real role in `HELLO`.
 
-| Field | Value |
-| :--- | :--- |
-| ID | F-03 |
-| Severity | `MEDIUM` |
-| Confidence | High |
-| Attack class | Resource exhaustion (remote denial of service) |
-| Affected component | Redis RESP session and parser |
-| Exact locations | `crates/storkv-server/src/compat/redis.rs:47-87`; `crates/storkv-server/src/compat/redis/codec_decode.rs:38-41`, `:149-167`; `codec_decode.rs:12` |
+### F-02: A replica cannot recover from an expired replication cursor
 
-**Trust boundary violated.** An untrusted Redis client controls the growth of a server-side buffer. The only limit is the declared bulk length. Inline commands have no limit at all.
+| Field    | Value                                   |
+| :------- | :-------------------------------------- |
+| Verdict  | `CONFIRMED`                             |
+| Severity | `MEDIUM`                                |
+| Boundary | Replica availability and data freshness |
+| Status   | New                                     |
 
-**Root cause and code trace.**
+**Locations**
 
-1. The session reads 16 KiB chunks and appends them to `buffer` without a total cap (`redis.rs:50-59`).
-2. The parser calls `parse_inline` when the first byte is not a RESP prefix (`codec_decode.rs:24-28`).
-3. `parse_inline` searches for `\r\n` and returns `Ok(None)` when it finds none (`codec_decode.rs:38-41`). The session then reads more bytes and calls the parser again (`redis.rs:60-84`).
-4. No code checks the inline line length. A client can send an endless stream of bytes with no CRLF. The buffer grows until memory is exhausted.
-5. For bulk strings, `MAX_BULK_LEN` is 512 MiB (`codec_decode.rs:12`). The parser accepts a declared length up to that value and waits for the body (`codec_decode.rs:149-167`). One connection can reserve up to 512 MiB this way. The inline path is worse because it has no bound.
-6. The same growth applies before the command reaches `RedisSession::execute`. The authentication and admin layers do not run first because the Redis listener has no token gate.
+- `crates/storkv-server/src/server/session.rs:141-174,204`
+- `crates/storkv-client/src/backend.rs:96-107`
+- `crates/storkv-client/src/backend/native.rs:44-65`
+- `crates/storkv-server/src/replication.rs:37-50`
 
-**Impact and preconditions.** A client that can connect to `--redis-listen` can exhaust process memory with one connection. The attack needs no valid command and no authentication. Multiple connections multiply the effect.
+**Description**
 
-**Smallest effective remediation.** Add a maximum inline line length, for example 64 KiB. Reject the connection when the buffer exceeds that length without a CRLF. Also cap the total read buffer and lower `MAX_BULK_LEN` to the documented value limit.
+The primary detects an expired cursor in `start_replication`. It builds a snapshot and a frame stream from `oldest_available` (`crates/storkv-server/src/server/session.rs:141-160`). It writes `Response::ReplicationSnapshot` first (`crates/storkv-server/src/server/session.rs:168-173`). It starts the frame task and then writes the `Response::Empty` acknowledgment (`crates/storkv-server/src/server/session.rs:204`).
 
----
+The client starts replication through `Backend::start_replication`. That function sends one request and reads the first response. It accepts only `Response::Empty` (`crates/storkv-client/src/backend.rs:96-107`). The native backend returns the first decoded response without checking the request ID (`crates/storkv-client/src/backend/native.rs:44-65`). The snapshot is therefore consumed and converted into `ClientError::Protocol`.
 
-### F-04: Redis glob matching has exponential backtracking
+`run_replica` advances `from_seq` only for `ClientError::Server(WatchCursorExpired)` (`crates/storkv-server/src/replication.rs:37-46`). A protocol error falls into the generic retry branch (`crates/storkv-server/src/replication.rs:47-50`). The loop reconnects with the same expired cursor. The primary sends the same snapshot first. The loop never progresses.
 
-| Field | Value |
-| :--- | :--- |
-| ID | F-04 |
-| Severity | `MEDIUM` |
-| Confidence | High |
-| Attack class | Resource exhaustion (CPU denial of service) |
-| Affected component | Redis `KEYS`, `SCAN MATCH`, and transaction key scans |
-| Exact locations | `crates/storkv-server/src/compat/redis/helpers.rs:182-227`; `crates/storkv-server/src/compat/redis/commands_keys.rs:120-138`, `:140-173`, `:184-207`; `crates/storkv-server/src/compat/redis/commands_tx.rs:457-500` |
+**Impact**
 
-**Trust boundary violated.** An untrusted client supplies a pattern. The server runs a recursive matcher on that pattern for every key in the scope. The matcher has no step budget.
+A replica that falls behind the retained WAL never recovers. It retries every 100 ms and remains stale or unavailable. The frame stream never starts, so the replica never applies new primary writes.
 
-**Root cause and code trace.**
+The snapshot handler in `run_replica` (`crates/storkv-server/src/replication.rs:57-59`) is unreachable for this case because `start_replication` fails first.
 
-1. `glob_match` calls `glob_match_at` (`helpers.rs:182-184`).
-2. On `*`, the function removes repeated stars and then loops over every text position. For each position it recurses on the rest of the pattern (`helpers.rs:190-205`).
-3. The function has no memoization and no visited set. A pattern with several stars and a text with many matching prefixes causes exponential work. A pattern such as `*a*a*a*a*a*a*a*a*a*a` with a long `a` string and a final mismatch is enough.
-4. `KEYS` scans the whole scope and calls `glob_match` for each key (`commands_keys.rs:128-135`). `SCAN` does the same for every returned key (`:156-170`). The MATCH argument has no length limit beyond the RESP limit (`:184-207`).
-5. The transaction key scan uses the same matcher (`commands_tx.rs:457-500`).
+**Preconditions**
 
-**Impact and preconditions.** A client that can connect to the Redis listener can pin a CPU core with one `KEYS` or `SCAN MATCH` command. A few connections can saturate all cores and block normal service. The attack needs a scope with at least one key. The key value can be small.
+- The replica cursor is older than the retained WAL history.
+- The primary returns `WatchCursorExpired` from `replication_frames_from` (`storkv-core/src/db_ops/replication.rs:29-34`).
 
-**Smallest effective remediation.** Replace the recursive matcher with an iterative linear-time matcher, or use a memoized dynamic program with a step budget. Also cap the pattern length and the number of keys examined per command.
+**Recommendation**
 
----
+Define one explicit recovery sequence. Either send `Empty` before the snapshot, or make the client accept a snapshot as the first response and queue it for the stream. Do not advance `from_seq` on a protocol error. Add a state-machine test for the expired-cursor path.
 
-### F-05: A non-admin client can change server-wide consistency
+### F-03: The replication snapshot drops TTL and stale-key state
 
-| Field | Value |
-| :--- | :--- |
-| ID | F-05 |
-| Severity | `MEDIUM` |
-| Confidence | High |
-| Attack class | Authorization gap and availability (cross-client state change) |
-| Affected component | Request dispatch, server consistency state, SDK pool connect path |
-| Exact locations | `crates/storkv-proto/src/request/types.rs:244-248`; `crates/storkv-proto/src/request/decode.rs:63-69`; `crates/storkv-server/src/dispatch.rs:107-110`; `crates/storkv-server/src/server.rs:89-95`; `crates/storkv-server/src/dispatch.rs:37-57`; `crates/storkv-sdk/src/pool.rs:275-287` |
+| Field    | Value                    |
+| :------- | :----------------------- |
+| Verdict  | `CONFIRMED`              |
+| Severity | `MEDIUM`                 |
+| Boundary | Replica data integrity   |
+| Status   | New. Latent behind F-02. |
 
-**Trust boundary violated.** One connection changes a server-global setting that controls read acceptance for every other client. The request is not in the admin-only set (`request/types.rs:251-267`). `dispatch_request` calls `set_consistency` for any client when `strict_admin` is off, and `strict_admin` does not help because the request is not admin-only.
+**Locations**
 
-**Root cause and code trace.**
+- `crates/storkv-core/src/db_ops/replication.rs:86-105`
+- `crates/storkv-core/src/db_ops/replication.rs:115-131`
 
-1. The wire request is `ConfigureConsistency { consistency }` (`request/types.rs:244-248`). The decoder accepts it from any client (`request/decode.rs:63-69`).
-2. `dispatch_request` checks the admin gate first (`dispatch.rs:20-23`). `ConfigureConsistency` is not `is_admin_only`, so the gate does not apply.
-3. `route_request` calls `self.set_consistency(consistency)` and returns `Empty` (`dispatch.rs:107-110`).
-4. `set_consistency` writes two process-wide atomics: `consistency` and `consistency_max_lag_ms` (`server.rs:89-95`). Every connection reads the same values through `Server::consistency` (`server.rs:97-103`).
-5. On a replica, `replica_rejection` applies the global value to every data read (`dispatch.rs:37-57`). `Strong` returns `NotPrimary`. `BoundedStaleness { max_lag_ms: 0 }` returns `StaleReplica` when the lag is above zero. `Eventual` removes the staleness guard.
-6. The SDK pool sends its configured consistency on each new connection (`pool.rs:275-287`). The default is `Strong`, as the SDK documentation states (`docs/storkv-sdk/rust.md:133-155`). A replica starts at `Eventual` (`server.rs:64-70`). The first default SDK client therefore changes the replica to `Strong` and makes all data reads fail.
+**Description**
 
-**Impact and preconditions.** Any client can deny reads to all clients on a replica. Any client can downgrade a replica to `Eventual` and defeat an operator's strong-read policy. A default SDK client can trigger the denial by accident. The precondition is a reachable replica and at least one client that sends the request. The impact is bounded to availability and read freshness, not data modification.
+`replication_snapshot` returns only `(scope_id, key, value)` tuples (`crates/storkv-core/src/db_ops/replication.rs:86-105`). It does not return the expiry of each key. It also does not return the set of scopes or the set of keys that the replica must remove.
 
-**Smallest effective remediation.** Store consistency per connection, not on `Server`. If server-wide configuration is intended, add `ConfigureConsistency` to `is_admin_only` and require an admin grant.
+`apply_replication_snapshot` writes each tuple as a `WalOp::Put` with `expires_at_ms: 0` (`crates/storkv-core/src/db_ops/replication.rs:122-129`). It never deletes a key that is absent from the snapshot. It never drops a scope that is absent from the snapshot.
 
----
+**Impact**
 
-### F-06: SDK cache serves expired and range-deleted values
+After a snapshot recovery, keys that had a finite TTL become permanent. Keys that the primary deleted before the snapshot remain readable on the replica. The replica reports a complete recovery but holds data that the primary no longer exposes.
 
-| Field | Value |
-| :--- | :--- |
-| ID | F-06 |
-| Severity | `MEDIUM` |
-| Confidence | High |
-| Attack class | Data lifecycle and stale-read exposure |
-| Affected component | SDK `ScopeCache`, core watch events, transaction commit |
-| Exact locations | `crates/storkv-sdk/src/cache.rs:16-19`, `:109-119`, `:209-227`; `crates/storkv-sdk/src/scope.rs:77-91`; `crates/storkv-core/src/db_ops/watch.rs:87-100`; `crates/storkv-core/src/db_ops/commit.rs:202-227` |
+The impact is currently latent because F-02 prevents the snapshot from reaching the client. The defect becomes active when F-02 is fixed or when another client applies a snapshot.
 
-**Trust boundary violated.** The SDK promises that a remote change invalidates the cached key (`docs/storkv-sdk/rust.md:125`). The cache does not observe TTL expiry, `DeleteRange`, or `Merge`. A value that the backend no longer returns remains readable through `Scope::get`.
+**Recommendation**
 
-**Root cause and code trace.**
+Include `expires_at_ms` in the snapshot tuple. Add a clear phase before the snapshot write, or stream explicit tombstones for keys and scopes that are absent. Tie the snapshot to a read sequence and reject frames below that sequence.
 
-1. `ScopeCache` stores only `Bytes -> Option<Bytes>` (`cache.rs:16-19`). It stores no expiry timestamp.
-2. `Scope::get` returns the cached value immediately and never checks TTL (`scope.rs:77-83`).
-3. The backend enforces expiry at read time (`crates/storkv-core/src/db_ops/scan.rs:88`; `crates/storkv-core/src/memtable.rs:78`). The cache has no equivalent check and no timer.
-4. `ScopeCache::apply_event` handles only `Put`, `Delete`, and `DropScope` (`cache.rs:109-119`). `apply_wire_event` does the same (`cache.rs:209-227`).
-5. Core watch event conversion returns `None` for `WalOp::Merge` and `WalOp::DeleteRange` (`db_ops/watch.rs:87-100`).
-6. Transaction commit broadcasts `ChangeEvent::Put` and `ChangeEvent::Delete`, but not for `TxMutation::Merge` or `TxMutation::DeleteRange` (`db_ops/commit.rs:187-227`). No event reaches the cache.
-7. A `DeleteRange` or an expiry therefore leaves the old value in the cache until LRU eviction, a later put or delete of the same key, a scope drop, or a watcher restart.
+### F-04: The SDK cache ignores server-side TTL expiry
 
-**Impact and preconditions.** A process that uses the SDK cache can read data after the backend deleted or expired it. This can break data-retention rules and can expose expired session tokens or credentials. The cache is off by default. The attack needs a victim process with cache enabled and a second client that deletes a range or relies on TTL. The impact is bounded to the victim process and the cached keys.
+| Field    | Value                                     |
+| :------- | :---------------------------------------- |
+| Verdict  | `CONFIRMED`                               |
+| Severity | `LOW`                                     |
+| Boundary | Client data freshness and TTL enforcement |
+| Status   | Reconfirmed. TTL part of previous F-06.   |
 
-**Smallest effective remediation.** Store the absolute expiry with each cache entry and reject expired entries on lookup. Add a scope invalidation event for `DeleteRange` and `Merge`, or clear the scope cache when the watch stream cannot represent a mutation. A simple safe option is to clear the whole scope cache on any `DeleteRange` or `Merge` event.
+**Locations**
 
----
+- `crates/storkv-sdk/src/scope/cached.rs:17-31`
+- `crates/storkv-sdk/src/cache/store.rs:91-94`
+- `crates/storkv-sdk/src/cache/events.rs:28-43`
+- `crates/storkv-core/src/db_ops/scan.rs:88`
+- `crates/storkv-core/src/db_ops/commit/apply.rs:148-188`
+- `crates/storkv-core/src/db_ops/scopes.rs:79-84`
 
-### F-07: The native admin Unix socket uses default filesystem permissions
+**Description**
 
-| Field | Value |
-| :--- | :--- |
-| ID | F-07 |
-| Severity | `MEDIUM` |
-| Confidence | Medium |
-| Attack class | Local privilege escalation |
-| Affected component | `storkvd` admin Unix socket setup |
-| Exact locations | `crates/storkv-server/src/bin/storkvd.rs:125-135`; no `set_permissions` call exists in the workspace (`grep` over `crates/**/*.rs`) |
+`Scope::get` stores a fetched value with `self.cache.store(key, value.clone())` (`crates/storkv-sdk/src/scope/cached.rs:27-29`). `ScopeCache::store` inserts the entry with `expires_at: None` (`crates/storkv-sdk/src/cache/store.rs:91-94`). The cache therefore has no local deadline for that value.
 
-**Trust boundary violated.** The admin socket grants `is_admin = true` to every accepted connection (`storkvd.rs:134`). The process does not restrict the socket mode. A local user who can traverse the socket directory can connect and obtain admin rights.
+The watch invalidation path does not add the server expiry. A `Put` event calls `store_event`, which calls `preserve_expiry` (`crates/storkv-sdk/src/cache/events.rs:33,40-43`). That function copies only an expiry that the local cache already holds (`crates/storkv-sdk/src/cache/store.rs:59-62`). A remote `PutWithTtl` event therefore stores the new value without the remote TTL.
 
-**Root cause and code trace.**
+The server expires keys lazily on read (`crates/storkv-core/src/db_ops/scan.rs:88`). It does not broadcast a watch event when a TTL passes. The only watch broadcasts are commit, delete, merge, range delete, and scope drop (`crates/storkv-core/src/db_ops/commit/apply.rs:148-188`; `crates/storkv-core/src/db_ops/scopes.rs:79-84`).
 
-1. `storkvd` removes the old path and calls `tokio::net::UnixListener::bind(path)` (`storkvd.rs:129-131`).
-2. The admin listener starts with `is_admin = true` (`storkvd.rs:133-135`).
-3. The code never calls `std::fs::set_permissions` or `PermissionsExt::set_mode`. The audit grep found no such call in any crate.
-4. A newly bound Unix socket receives mode `0777` masked by the process umask. With the common umask `022`, the mode is `0755`. Any local user can connect.
-5. The native protocol has no token field. The socket mode is the only local gate. The documentation presents `--admin-sock` as the protected admin channel (`docs/operations/configuration.md:107`).
+**Impact**
 
-**Impact and preconditions.** A local unprivileged user can run admin requests: `DropScope`, `Compact`, `Checkpoint`, snapshot operations, and backup operations. The impact is data destruction and control of backup paths. The precondition is a Unix host with an admin socket, a socket directory that other users can search, and a umask that grants group or other access. On Windows, the Unix branch does not compile.
+If a key is written by another client with a TTL, or by a scope default TTL, the SDK can serve the cached value after the server hides the key. If the TTL is used to expire credentials, sessions, or other sensitive values, the SDK extends their lifetime without bound.
 
-**Smallest effective remediation.** After bind, set the socket mode to `0600` or `0660` with the intended group. Create the parent directory with mode `0700` before bind. Fail startup if the mode cannot be set.
+The cache is opt-in. The defect requires that the value was read through the cache before expiry.
+
+**Recommendation**
+
+Return the effective expiry from the server read path and store it with the cached value. Alternatively, do not cache keys that can expire. Add a periodic sweep for cached entries whose server TTL has passed.
 
 ## 4. Leads Requiring Validation
 
-### N-01: Backup manifest paths are not confined to the backup root
+### N-01: Stalled watch streams can exhaust the blocking pool
 
-| Field | Value |
-| :--- | :--- |
-| ID | N-01 |
-| Severity | `MEDIUM` (provisional) |
-| Confidence | Medium |
-| Attack class | Path traversal and symlink escape |
-| Exact locations | `crates/storkv-core/src/backup/manifest.rs:146-169`; `crates/storkv-core/src/backup/manifest/paths.rs:11-20`; `crates/storkv-core/src/backup/restore.rs:95-115`, `:247-264`; `crates/storkv-core/src/backup/verify.rs:96-104` |
+| Field    | Value               |
+| :------- | :------------------ |
+| Verdict  | `NEEDS_VALIDATION`  |
+| Severity | `MEDIUM` candidate  |
+| Boundary | Server availability |
 
-`BackupManifest::validate` checks the format marker, the version, and the sequence range. It does not validate `generation_id` or `files[].path`. `generation_directory` joins `generation_id` to the root without filtering `..` or an absolute prefix (`paths.rs:18-20`). `manifest_relative_path` filters `/` segments equal to `..`, but it does not filter backslash segments on Windows and it does not reject an absolute drive prefix (`paths.rs:11-16`). `verify_generation` joins the manifest path and reads the result (`verify.rs:96-110`). `copy_tree` follows directory symlinks and copies the target contents (`restore.rs:247-264`).
+**Locations**
 
-**Missing fact.** The audit cannot establish whether a backup root can contain files written by an untrusted principal. Local backups under operator control do not cross this boundary. A restore from a shared archive, a remote synchronisation target, or an attacker-writable directory does.
+- `crates/storkv-server/src/server/session.rs:94-114,179-203`
+- `crates/storkv-server/src/server.rs:20`
+- `crates/storkv-server/src/server/listener.rs:118-119`
+- `crates/storkv-server/src/transports/grpc/service/watch.rs:32-52`
+- `crates/storkv-server/src/transports/grpc.rs:32-33`
+- `crates/storkv-server/src/transports/ws/session/watch.rs:48-67`
+- `crates/storkv-server/src/transports/ws/session.rs:21-22`
+- `crates/storkv-core/src/watch.rs:7-13`
 
-**Safe verification.** Create a temporary backup tree with a manifest that has `generation_id: "../../outside"` and one symlink. Run `storkvctl restore` against a temporary target. Confirm whether the command reads outside the root. Do not run this against production data.
+**Description**
 
-### N-02: Decompression output size is not capped
+Native, gRPC, and WebSocket watch workers run on `spawn_blocking`. Each worker forwards events with `blocking_send` into a bounded `tokio::sync::mpsc` channel of capacity 128. The worker stops draining the core watch channel while `blocking_send` waits.
 
-| Field | Value |
-| :--- | :--- |
-| ID | N-02 |
-| Severity | `MEDIUM` (provisional) |
-| Confidence | Medium |
-| Attack class | Decompression bomb |
-| Exact locations | `crates/storkv-core/src/wal/codec.rs:129-140`; `crates/storkv-core/src/sstable/footer.rs:146-158` |
+The core watch registry caps one subscriber at 1024 queued events (`crates/storkv-core/src/watch.rs:7`). It caps the total subscriber count at 1024 (`crates/storkv-core/src/watch.rs:9`). These caps do not release a blocking thread that is parked in `blocking_send`.
 
-`decode_compressed_payload` reads a stored uncompressed length but ignores it (`wal/codec.rs:135`). It then calls `lz4_flex::decompress_size_prepended`, which allocates according to the prepended size (`wal/codec.rs:138`). The SSTable path calls the same function for LZ4 and `zstd::stream::decode_all` for Zstd (`footer.rs:146-158`). Neither path applies an output limit before allocation.
+Tokio uses a default maximum of 512 blocking threads. A client that opens a watch and stops reading can park one blocking thread after the 128-slot channel fills. Many such clients can exhaust the pool. Other `spawn_blocking` work then starves.
 
-**Missing fact.** The audit cannot establish whether a WAL or SST file can come from an untrusted source. A remote client cannot write these files through the network API. A restore of an untrusted backup, or a data directory writable by another local user, can.
+**Why validation is needed**
 
-**Safe verification.** In a temporary directory, build a small LZ4 frame with a prepended size of 4 GiB. Point a test restore at it with a low memory limit. Confirm the allocation attempt. Do not run this on a shared host.
+The impact depends on the Tokio blocking-pool size, the number of stalled subscribers, and the event rate. This audit did not run a load test. A test should open many watch streams, stop reading, and measure blocking-thread saturation and request latency.
+
+**Recommendation**
+
+Use a bounded async channel with `try_send` and drop slow subscribers instead of `blocking_send`. Add a per-connection watch queue limit and a global blocking-task budget.
+
+### N-02: The networked SDK cache watcher cannot recover from an expired cursor
+
+| Field    | Value                                |
+| :------- | :----------------------------------- |
+| Verdict  | `NEEDS_VALIDATION`                   |
+| Severity | `LOW` candidate                      |
+| Boundary | SDK cache availability and freshness |
+
+**Locations**
+
+- `crates/storkv-sdk/src/watch/invalidator.rs:61-101`
+
+**Description**
+
+The networked watcher starts at `next_seq = 0` (`crates/storkv-sdk/src/watch/invalidator.rs:67`). On every outer-loop pass it clears the cache (`crates/storkv-sdk/src/watch/invalidator.rs:72`). It then connects and subscribes from `next_seq`. If the subscribe fails, it sleeps and retries with the same cursor (`crates/storkv-sdk/src/watch/invalidator.rs:81-87`).
+
+When the server reports an expired cursor, the watcher never resets or advances the cursor. It also never applies a snapshot. The cache is cleared every 250 ms while the failure continues. Reads can repopulate the cache between clears, and no invalidation arrives during the failure.
+
+**Why validation is needed**
+
+This audit did not prove a permanent stale read. The cache is cleared at the start of each retry. The defect is a cache-thrash and availability problem, with a possible short stale window. A test should expire the server cursor and observe cache hit behavior and retry load.
+
+**Recommendation**
+
+Handle `WatchCursorExpired` explicitly. Reset `next_seq` to zero and perform a full cache clear, or restart from `oldest_available`. Do not clear the cache on every transient connection failure.
 
 ## 5. Hardening Notes
 
-These items do not cross a verified boundary by themselves. They reduce blast radius and remove ambiguity.
+### H-01: The replication channel has no TLS or peer authentication
 
-### H-01: Redis and Memcached flush commands bypass `--strict-admin`
+The native listener can use TLS (`crates/storkv-server/src/bin/storkvd.rs:77-82`; `crates/storkv-server/src/server/listener.rs:34-60`). The replication client uses `ClientStream`, which supports only plain TCP and Unix sockets (`crates/storkv-client/src/transport.rs:10-16`). `AsyncClient::connect_uri` maps `storkv://` to plain native TCP (`crates/storkv-client/src/uri.rs:29-31`). No native TLS variant exists (`crates/storkv-client/src/uri.rs:24-58`).
 
-`FLUSHDB` and `FLUSHALL` run through `RedisSession::execute_now` without an admin check (`compat/redis/commands.rs:97-98`). `flush_db` calls `compat::flush_scope` (`commands_server.rs:98-107`). `flush_all` calls `compat::flush_redis_scopes` (`commands_server.rs:109-114`). Memcached `flush_all` calls `flush_scope` (`memcached/commands.rs:56`, `:269-278`). `strict_admin` is checked only in `dispatch_request` (`dispatch.rs:20-23`), and the compatibility adapters do not call it.
+A replica that crosses a host boundary sends its cursor and receives full WAL frames in plaintext. It also trusts any endpoint at `primary_uri` with no peer authentication. A replica therefore cannot use the server TLS listener.
 
-This is not a confirmed privilege escalation. A Redis client can already delete any key in `default` and every `redis_db_*` scope through `DEL`. A Memcached client can already delete any item in the `memcached` scope. The flush commands add no data access. They do add a global destructive shortcut that ignores the documented admin policy.
+**Recommendation:** support TLS in the native client and in `primary_uri`. Pin or verify the primary certificate.
 
-**Recommendation.** Add an explicit admin check to `FLUSHALL`, or serve the Redis and Memcached listeners only on a trusted interface. Document the decision.
+### H-02: Redis `HELLO` reports `role=primary` on a replica
 
-### H-02: Scope creation has no quota
+`crates/storkv-server/src/compat/redis/commands_server.rs:47` hard-codes `Resp::bulk("primary")`. A replica therefore advertises itself as a primary. Some clients and operators use this field for routing.
 
-`Request::CreateScope` is not admin-only (`request/types.rs:251-267`). `DbInner::create_scope` allocates a new scope, a directory, and a manifest edit with no count limit (`db_ops/scopes.rs:18-51`). Redis `SELECT n` creates a scope for any `u32` index (`compat.rs:26-32`, `:65-77`). An unauthenticated client can create scopes until memory or disk runs out. Scope creation is a documented client feature, so this is a quota gap, not an authorization failure. Add a configurable maximum scope count and a per-connection creation rate limit.
+**Recommendation:** report the configured role.
 
-### H-03: Watch, `WatchFrom`, and `ReplicationStart` are outside the admin set
+### H-03: Compatibility listeners have no authentication
 
-`Request::is_admin_only` lists checkpoint, compaction, snapshot, scope drop, and backup requests (`request/types.rs:251-267`). It does not list `WatchSubscribe`, `WatchFrom`, or `ReplicationStart`. The native handler routes these requests before `dispatch_request` (`server.rs:303-308`), so the gate cannot apply. The replication stream contains raw WAL frames for every scope, including overwritten and deleted values (`db_ops/replication.rs:20-32`, `:112-129`).
+The Redis, Memcached, and etcd front ends accept unauthenticated connections (`crates/storkv-server/src/compat/redis.rs:30-52`; `crates/storkv-server/src/compat/memcached.rs:20-42`; `crates/storkv-server/src/compat/etcd_http.rs:18-35`). Any client that reaches the port can read and write the mapped scopes.
 
-StorKV has no per-scope authorization. Any client can already scan every scope. The extra exposure is historical data and a full database copy. Gate replication behind an admin grant if the native listener can receive untrusted traffic. Document that the native listener is a full-data trust boundary.
+This is expected for drop-in compatibility. It still means that the compatibility ports need network-level isolation.
 
-### H-04: `SCAN`, `DBSIZE`, `KEYS`, and `stats` materialize the whole scope
+**Recommendation:** document the trust model. Add an optional bind restriction or a proxy requirement.
 
-`Db::scan` returns a `Vec` of all pairs. `SCAN` loads the remaining keyspace before it applies `COUNT` (`commands_keys.rs:156-170`). `DBSIZE` scans and counts all pairs (`commands_server.rs:87-96`). Memcached `stats` does the same (`memcached/commands.rs:280-286`). `flush_scope` loads every key and value into memory before it deletes (`compat.rs:108-120`). A large scope causes a large temporary allocation for each call. Stream the cursor and count keys without values. Use a range delete for flush.
+### H-04: Any data client can create scopes without a rate limit
 
-### H-05: The admin token is visible in process arguments
+`Request::CreateScope` is a data write, not an admin-only request (`crates/storkv-proto/src/request/types/methods.rs:10-23`). The compatibility `ensure_scope` also creates a scope on first use (`crates/storkv-server/src/compat.rs:35-63`). The engine caps the total at 1024 scopes (`SPEC.md:22`), but there is no per-client rate limit.
 
-`storkvd` takes the token as `--admin-token` (`bin/storkvd.rs:54-56`). The documentation shows the token on the command line (`docs/operations/configuration.md:74-75`). On a multi-user host, another user can read the process arguments. Prefer an environment variable or a mode-`0600` token file. Keep the command-line form for tests only.
+**Recommendation:** add an operator policy for scope creation. Add a rate limit on the compatibility paths.
 
-### H-06: Scopes are not a security boundary
+### H-05: `KEYS`, `SCAN`, `DBSIZE`, and Memcached `stats` materialize a whole scope
 
-The project describes scopes as multi-tenant isolation (`SPEC.md:5`). The network API has no per-scope authorization. Any client can send any `scope_id` to `Get`, `Put`, `Scan`, or `Delete` (`dispatch.rs:72-92`). A client can also enumerate scope identifiers through watch events and `AdminStats`. Operators must not treat two scopes on one listener as two security tenants. Put separate tenants on separate servers, listeners, or reverse-proxy rules.
+`KEYS` calls `db.scan` over the full scope and filters in memory (`crates/storkv-server/src/compat/redis/commands_keys.rs:120-141`). `DBSIZE` calls the same scan and counts the result (`crates/storkv-server/src/compat/redis/commands_server.rs:92-94`). Memcached `stats` does the same (`crates/storkv-server/src/compat/memcached/commands/modify.rs:102-108`).
 
-### H-07: FFI callers must honor the ownership contract
+**Recommendation:** add a scan budget or a streaming iterator. Reject unbounded admin-less scans on large scopes.
 
-The FFI layer checks null handles and null output pointers (`storkv-ffi/src/scope.rs:30-41`, `:196-207`; `watch.rs:47-58`, `:90-99`). It reconstructs slices from raw pointer and length (`scope.rs:8-16`). It frees only pointers that it allocated (`memory.rs:35-72`). A caller that passes a dangling pointer, a bad length, or a double free breaks the contract and can corrupt memory. This is the normal C ABI model. Keep the contract in the header and add a debug handle registry only if untrusted native callers are in scope.
+### H-06: The admin token can appear in process arguments
 
-### H-08: Restore staging uses a predictable name
+`--admin-token` is a command-line argument (`crates/storkv-server/src/bin/storkvd.rs:56-58`). A local user can read it from the process table on many systems. The `STORKV_ADMIN_TOKEN` environment variable is also readable by the same user.
 
-`staging_target` uses the target name and the process id (`restore.rs:239-245`). The directory sits next to the target. A local user with write access to the parent can pre-create the path. The code removes an existing staging directory before use (`restore.rs:89-93`), so the practical risk is low. Use a random suffix and create the directory with `create_new` semantics.
+**Recommendation:** prefer `--admin-token-file` and require restrictive file permissions. Document the exposure.
+
+### H-07: Scopes are logical namespaces, not security tenants
+
+`SPEC.md:23` states that a scope does not isolate access. Any client on a listener can address any scope ID on that listener. This audit did not report cross-scope reads as a vulnerability.
+
+**Recommendation:** keep the documented model. Put tenants on separate servers, listeners, or proxy rules.
+
+### H-08: The FFI ownership contract is caller-enforced
+
+The C ABI uses caller-owned raw pointers and opaque handles. The Rust side checks null pointers and handle validity, but it cannot prevent a caller from violating the documented lifetime and aliasing rules.
+
+**Recommendation:** keep the safety documentation next to each exported symbol. Add Miri or sanitizer coverage for the examples.
 
 ## 6. Rejected Candidates
 
-These leads were investigated and disproved. Keep them here so later audits do not repeat the work.
+### R-01: Watch and replication queues were unbounded
 
-| ID | Candidate | Reason for rejection |
-| :--- | :--- | :--- |
-| R-01 | Frame length overflow or large pre-allocation in `storkv-proto` | `read_frame_length` rejects a length above 64 MiB before allocation (`frame.rs:95-107`). `get_bytes` checks the remaining length before `split_to` (`frame.rs:218-226`). Response vectors check the count against the payload size before `with_capacity` (`response/decode.rs:47-58`, `:70-78`). |
-| R-02 | Non-constant-time admin token comparison | `tokens_match` compares equal-length byte slices with an XOR accumulator (`transports.rs:72-83`). Length differences return early, which is not secret-dependent in a useful way. |
-| R-03 | gRPC admin method bypass | Every admin method calls `dispatch` or `ok`, and both call `dispatch_request` with `is_admin` (`grpc.rs:88-97`; `grpc/admin.rs:15-148`). `Checkpoint`, `Compact`, backup, and snapshot requests are in the admin set. |
-| R-04 | Path traversal through a scope name | Scope directories use the numeric scope id, not the name (`scope/state.rs:47-55`). A name with `../` cannot select a directory. |
-| R-05 | Replication injection into a replica | A replica rejects `ReplicationStart` with `NotPrimary` (`server.rs:354-364`). A replica also rejects writes (`dispatch.rs:37-43`). The apply function is not reachable from the native request path. |
-| R-06 | Memcached key, value, or command overflow | The parser caps the key at 250 bytes, the value at 1 MiB, and the line at 8 KiB (`memcached/parser.rs:5-6`, `:112-114`, `:207-211`; `memcached.rs:18`, `:76-83`). |
-| R-07 | FFI null pointer or double free | Every entry point checks null handles and null output pointers before use (`scope.rs:30-41`, `:128-137`, `:196-207`, `:230-240`, `:267-272`; `watch.rs:47-58`, `:90-99`). Free functions require the documented owner pointer. |
-| R-08 | Transaction `read_seq` spoofing as an authorization bypass | `TxCommit` trusts the client `read_seq` (`dispatch/transactions.rs:15-47`). A client can already write any key with `Put`, so this changes conflict detection, not access. It is a consistency concern outside this threat model. |
-| R-09 | Cross-scope watch events as an authorization bypass | Watch events carry `scope_id`, and the matcher filters only when the caller asks for one scope (`db_ops/watch.rs:76-78`; `grpc/service.rs:291-293`). StorKV has no per-scope authorization, so the event does not grant data that a scan would deny. See H-06. |
-| R-10 | Missing TLS as a vulnerability | The project documents plaintext listeners and a reverse-proxy TLS model (`docs/guides/transports.md:153-161`). This is a documented deployment choice, not a defect. |
+**Rejected.** `WATCH_CHANNEL_CAPACITY`, `MAX_WATCH_SUBSCRIBERS`, `MAX_REPLAY_EVENTS`, and `MAX_REPLAY_BYTES` are defined at `crates/storkv-core/src/watch.rs:6-13`. `subscribe_replaying` uses a bounded channel at `crates/storkv-core/src/watch.rs:138` and enforces the subscriber cap at `crates/storkv-core/src/watch.rs:144-150`. The replication registry has the same bounds at `crates/storkv-core/src/replication.rs:6-13,66,72-78`.
+
+### R-02: Repeated watch and replication requests leaked subscribers and tasks
+
+**Rejected.** Each new watch or replication request calls `stop_task` first (`crates/storkv-server/src/server/session.rs:76,140`). `stop_task` sets the stop flag and aborts a task that has not started (`crates/storkv-server/src/server/session.rs:214-224`). The worker also polls the stop flag while it waits (`crates/storkv-server/src/server/session.rs:94-114,179-203`). The registry removes a full or disconnected subscriber (`crates/storkv-core/src/watch.rs:159-165`; `crates/storkv-core/src/replication.rs:87-93`).
+
+### R-03: Redis inline commands had no line or buffer limit
+
+**Rejected.** `MAX_INLINE_LINE_LEN` is 64 KiB and `MAX_READ_BUFFER` is derived from the bulk limit plus that line limit (`crates/storkv-server/src/compat/redis/codec_decode/parse.rs:8-12`). The parser rejects an oversized inline line.
+
+### R-04: Redis glob matching had exponential backtracking
+
+**Rejected.** The matcher is iterative, uses one backtrack point, and has no recursion (`crates/storkv-server/src/compat/redis/helpers/glob.rs:8-77`). `MAX_GLOB_PATTERN_LEN` caps the pattern at 1024 bytes (`crates/storkv-server/src/compat/redis/helpers/glob.rs:5-6`). The cost is `O(pattern_len * text_len)`.
+
+### R-05: A non-admin client could change server-wide consistency
+
+**Rejected.** Consistency is stored per connection. `ConnectionConsistency` holds the mode and lag for one connection (`crates/storkv-server/src/server/consistency.rs:5-37`). Each transport creates one for the request or session (`crates/storkv-server/src/transports/http.rs:47`; `crates/storkv-server/src/transports/grpc.rs:93`; `crates/storkv-server/src/server/listener.rs:120-129`). `ConfigureConsistency` writes only that object (`crates/storkv-server/src/dispatch.rs:116-119`).
+
+### R-06: The SDK cache served range-deleted and merge-mutated values
+
+**Rejected in part.** The server broadcasts `ChangeEvent::InvalidateScope` for `Merge` and `DeleteRange` (`crates/storkv-core/src/db_ops/commit/apply.rs:167-189`). The SDK clears the whole cache on that event (`crates/storkv-sdk/src/cache/events.rs:32-36`). The TTL part of the old finding remains and is tracked as F-04.
+
+### R-07: The native admin Unix socket used default filesystem permissions
+
+**Rejected.** The parent directory is set to `0700` and the socket to `0600` (`crates/storkv-server/src/bin/storkvd.rs:161-172`). The code removes a stale socket before bind (`crates/storkv-server/src/bin/storkvd.rs:170`).
+
+### R-08: Backup manifest paths could escape the backup root
+
+**Rejected.** `manifest_relative_path` rejects absolute paths, drive prefixes, and `..` segments (`crates/storkv-core/src/backup/manifest/paths.rs:22-41`). `validate_generation_id` rejects separators, drive prefixes, and parent segments (`crates/storkv-core/src/backup/manifest/paths.rs:69-81`). The manifest validation checks each path. Restore rejects a symlink in the backup tree (`crates/storkv-core/src/backup/restore/staging.rs:67-78`).
+
+### R-09: Decompression output had no size cap
+
+**Rejected.** The WAL decoder rejects a declared length above `MAX_VAL_LEN` before it decompresses (`crates/storkv-core/src/wal/codec.rs:135-147`). The SSTable decoder applies the same check (`crates/storkv-core/src/sstable/footer.rs:156-171`). The Zstd path also reads at most `MAX_VAL_LEN + 1` bytes and rejects a length mismatch (`crates/storkv-core/src/sstable/footer.rs:179-199`).
+
+### R-10: Frame and request decoding could overflow memory
+
+**Rejected.** `MAX_FRAME_SIZE` is 64 MiB (`crates/storkv-proto/src/frame.rs:11-12`). The decoder checks the length prefix before it reserves or copies. The request and response decoders use bounded vectors. This audit found no unchecked length arithmetic.
+
+### R-11: The admin token comparison leaked timing
+
+**Rejected.** `tokens_match` compares equal-length byte slices and accumulates differences with XOR (`crates/storkv-server/src/transports.rs:72-83`). HTTP and gRPC use the same helper (`crates/storkv-server/src/transports/http.rs:40`; `crates/storkv-server/src/transports/grpc.rs:85`). Length inequality returns early, which leaks only the length.
+
+### R-12: An HTTP, WebSocket, or gRPC admin route bypassed the admin gate
+
+**Rejected.** The REST admin handlers call `state.dispatch` (`crates/storkv-server/src/transports/http/rest_admin.rs:13-103`). `HttpState::dispatch` calls `dispatch_request` with `is_admin` (`crates/storkv-server/src/transports/http.rs:43-50`). WebSocket requests call `dispatch_request` with the upgrade-time `is_admin` (`crates/storkv-server/src/transports/ws/session.rs:141,183`). gRPC data methods call `self.dispatch` (`crates/storkv-server/src/transports/grpc/service/data.rs:16-169`), which calls `dispatch_request` (`crates/storkv-server/src/transports/grpc.rs:88-96`).
+
+### R-13: Cross-scope access was an authorization bypass
+
+**Rejected.** `SPEC.md:23` documents scopes as logical namespaces with no per-scope authorization. The network API has no per-scope principal. This is a documented design choice, not a defect.
+
+### R-14: Restore staging used a predictable name
+
+**Rejected.** The staging name includes the process ID, a nanosecond timestamp, and a per-process counter (`crates/storkv-core/src/backup/restore/staging.rs:60-64`). The old predictable-name concern no longer applies.
+
+### R-15: Redis and Memcached flush commands bypassed `--strict-admin`
+
+**Rejected.** Redis `FLUSHDB` and `FLUSHALL` return `NOPERM` when `strict_admin` is set (`crates/storkv-server/src/compat/redis/commands_server.rs:98-120`). Memcached `flush_all` returns `CLIENT_ERROR` in the same mode (`crates/storkv-server/src/compat/memcached/commands/modify.rs:88-100`). This fixes the previous H-01.
 
 ## 7. Final Verification
 
-The author re-read this report against the working tree on 2026-11-18.
+This audit read the working tree at commit `cc14dec8221f9b9e21cda9146015a4c5391859ef`. It ran no live network request and no destructive command.
 
-- Every confirmed finding cites a function that exists at the stated path and line range.
-- Severity counts match the finding sections: 0 `CRITICAL`, 2 `HIGH`, 5 `MEDIUM`, 0 `LOW`.
-- The audit made no source change. The only file added by this audit is `docs/internal/SECURITY_AUDIT.md`.
-- The worktree already contained many modified and untracked files from earlier feature work before this audit started. `git status` therefore does not show a clean tree. This report does not claim to have created or changed those files.
-- `docs/internal/SECURITY_AUDIT.md` is the sole output artifact of this audit.
+Every confirmed finding cites a current repository path and line range. Every rejected candidate cites the control that closes it. The two validation leads state the missing runtime evidence.
+
+The only file changed by this audit is `docs/internal/SECURITY_AUDIT.md`. The final `git status --short` shows only that file.
+
+```text
+$ git status --short
+ M docs/internal/SECURITY_AUDIT.md
+```
