@@ -106,6 +106,9 @@ fn scope_options_from_meta(meta: &ScopeMeta) -> ScopeOptions {
         retention,
         prefix_bloom_len: None,
         storage_mode: storage_mode_from_meta(meta.storage_mode),
+        min_ttl: None,
+        max_ttl: None,
+        allow_permanent: true,
     }
 }
 

@@ -67,7 +67,10 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
         Ok(touched)
     }
 
-    pub(super) fn maybe_flush_memtable(&self, scope: &Arc<Scope<FS>>) -> crate::Result<()> {
+    pub(in crate::db_ops) fn maybe_flush_memtable(
+        &self,
+        scope: &Arc<Scope<FS>>,
+    ) -> crate::Result<()> {
         if scope.options.storage_mode == crate::StorageMode::InMemory {
             return Ok(());
         }

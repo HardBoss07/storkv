@@ -87,7 +87,7 @@ mod transaction;
 
 pub use db::{Db, DbInner, MAX_SCOPES, ScopeHandle};
 pub use error::{Result, StorkvError};
-pub use mvcc::MergeOp;
+pub use mvcc::{MergeOp, PutCondition, PutIfResult};
 pub use options::DbOptions;
 pub use replication::ReplicationRegistry;
 pub use scope::{CompactionStyle, Retention, ScopeOptions, StorageMode};

@@ -118,6 +118,7 @@ fn open_offline_scope(db: &Db, name: &str) -> Result<storkv_core::ScopeHandle, S
             retention: storkv_core::Retention::Permanent,
             prefix_bloom_len: Some(8),
             storage_mode: storkv_core::StorageMode::Disk,
+            ..storkv_core::ScopeOptions::default()
         },
     )
 }

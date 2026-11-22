@@ -69,6 +69,10 @@ pub enum StorkvError {
     #[error("Invalid operation: {0}")]
     InvalidOperation(String),
 
+    /// A write time to live violates the scope policy.
+    #[error("Invalid TTL: {0}")]
+    InvalidTtl(String),
+
     /// A backup sink operation failed.
     #[error("Backup sink `{sink}` failed: {detail}")]
     BackupSink {

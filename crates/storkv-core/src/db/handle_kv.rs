@@ -28,6 +28,8 @@ impl Db {
         key: K,
         val: V,
     ) -> crate::Result<()> {
+        self.scope_options(scope)?
+            .validate_expiry(0, crate::types::TimestampMs::now().get())?;
         let mut tx = self.begin_tx();
         tx.put(scope, key, val)?;
         tx.commit()
@@ -45,9 +47,66 @@ impl Db {
         val: V,
         ttl: Duration,
     ) -> crate::Result<()> {
+        let now_ms = crate::types::TimestampMs::now().get();
+        let expires_at_ms =
+            now_ms.saturating_add(u64::try_from(ttl.as_millis()).unwrap_or(u64::MAX));
+        self.scope_options(scope)?
+            .validate_expiry(expires_at_ms, now_ms)?;
         let mut tx = self.begin_tx();
-        tx.put_with_ttl(scope, key, val, ttl)?;
+        tx.put_with_expires_at(scope, key, val, expires_at_ms)?;
         tx.commit()
+    }
+
+    /// Write or delete one key when `condition` matches the newest state.
+    ///
+    /// A `val` of `None` deletes the key. A `ttl` of `None` writes a permanent
+    /// key. The condition is checked atomically with the write.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::StorkvError::InvalidTtl`] when the scope policy rejects
+    /// the expiry, or an error when the write fails.
+    pub fn put_if<K: AsRef<[u8]>, V: AsRef<[u8]>>(
+        &self,
+        scope: &ScopeHandle,
+        key: K,
+        condition: &crate::PutCondition,
+        val: Option<V>,
+        ttl: Option<Duration>,
+    ) -> crate::Result<crate::PutIfResult> {
+        let now_ms = crate::types::TimestampMs::now().get();
+        let mutation = match val {
+            Some(val) => {
+                let expires_at_ms = match ttl {
+                    Some(ttl) => {
+                        now_ms.saturating_add(u64::try_from(ttl.as_millis()).unwrap_or(u64::MAX))
+                    }
+                    None => 0,
+                };
+                self.scope_options(scope)?
+                    .validate_expiry(expires_at_ms, now_ms)?;
+                crate::mvcc::TxMutation::Put {
+                    val: Bytes::copy_from_slice(val.as_ref()),
+                    expires_at_ms,
+                }
+            }
+            None => crate::mvcc::TxMutation::Delete,
+        };
+        self.inner.put_if(
+            scope.scope_id,
+            Bytes::copy_from_slice(key.as_ref()),
+            condition,
+            mutation,
+        )
+    }
+
+    fn scope_options(&self, scope: &ScopeHandle) -> crate::Result<crate::ScopeOptions> {
+        self.inner
+            .scopes
+            .read()
+            .get(&scope.scope_id)
+            .map(|scope| scope.options.clone())
+            .ok_or(crate::StorkvError::ScopeIdNotFound(scope.scope_id))
     }
 
     /// Delete one key.

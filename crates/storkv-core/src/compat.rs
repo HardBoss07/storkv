@@ -12,8 +12,6 @@ use crate::mvcc::MergeOp;
 use crate::scope::ScopeOptions;
 use crate::transaction::Transaction;
 
-const CAS_RETRIES: usize = 8;
-
 /// Engine-level operations shared by embedded adapters.
 pub trait KvEngine {
     /// Open (creating if necessary) a named tree.
@@ -95,38 +93,28 @@ impl Tree {
         Ok(previous)
     }
 
-    /// Compare-and-swap using an MVCC OCC transaction.
+    /// Compare-and-swap using an atomic conditional write.
     ///
-    /// Returns `false` when the observed value does not match `expected`.
+    /// Returns `false` when the observed value does not match `expected`. An
+    /// empty `new_value` deletes the key.
     pub fn compare_and_swap<K: AsRef<[u8]>, V: AsRef<[u8]>>(
         &self,
         key: K,
         expected: Option<&[u8]>,
         new_value: V,
     ) -> Result<bool> {
-        let key = key.as_ref();
-        for _ in 0..CAS_RETRIES {
-            let mut tx = self.db.begin_tx();
-            let current = tx.get(&self.scope, key)?;
-            let matches = match (&current, expected) {
-                (None, None) => true,
-                (Some(actual), Some(expected)) => actual.as_ref() == expected,
-                _ => false,
-            };
-            if !matches {
-                return Ok(false);
-            }
-            match new_value.as_ref() {
-                [] => tx.delete(&self.scope, key)?,
-                value => tx.put(&self.scope, key, value)?,
-            }
-            match tx.commit() {
-                Ok(()) => return Ok(true),
-                Err(crate::StorkvError::WriteConflict { .. }) => continue,
-                Err(error) => return Err(error),
-            }
+        let condition = match expected {
+            Some(expected) => crate::PutCondition::ExpectedValue(Bytes::copy_from_slice(expected)),
+            None => crate::PutCondition::Absent,
+        };
+        let value = match new_value.as_ref() {
+            [] => None,
+            value => Some(value),
+        };
+        match self.db.put_if(&self.scope, key, &condition, value, None)? {
+            crate::PutIfResult::Applied { .. } => Ok(true),
+            _ => Ok(false),
         }
-        Ok(false)
     }
 
     /// Read every key with the given prefix.

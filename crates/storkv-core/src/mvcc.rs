@@ -118,6 +118,38 @@ pub enum TxMutation {
     },
 }
 
+/// Condition for an atomic single-key write.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum PutCondition {
+    /// Write only when the key is absent or expired.
+    Absent,
+    /// Write only when the key is present and not expired.
+    Present,
+    /// Write only when the visible version has this sequence number.
+    ExpectedSeq(u64),
+    /// Write only when the visible value equals these bytes.
+    ExpectedValue(Bytes),
+}
+
+/// Outcome of an atomic conditional write.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum PutIfResult {
+    /// The condition matched. The key now has this sequence number.
+    Applied {
+        /// Sequence number of the committed write.
+        seq: u64,
+    },
+    /// The condition did not match.
+    Conflict {
+        /// Sequence number of the visible version, or `None` when absent.
+        current_seq: Option<u64>,
+        /// Value of the visible version, or `None` when absent.
+        current_value: Option<Bytes>,
+    },
+}
+
 /// Transaction with Read-Your-Own-Writes and OCC ReadSet validation
 #[derive(Clone)]
 pub struct TransactionContext {

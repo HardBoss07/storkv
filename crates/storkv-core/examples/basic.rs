@@ -22,6 +22,7 @@ fn main() -> Result<()> {
             },
             prefix_bloom_len: Some(8),
             storage_mode: StorkvStorage::Disk,
+            ..ScopeOptions::default()
         },
     )?;
 
@@ -32,6 +33,7 @@ fn main() -> Result<()> {
             retention: Retention::Permanent,
             prefix_bloom_len: None,
             storage_mode: StorkvStorage::Disk,
+            ..ScopeOptions::default()
         },
     )?;
 
