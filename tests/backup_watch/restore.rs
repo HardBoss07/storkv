@@ -26,11 +26,7 @@ fn prepare(prefix: &str) -> (crate::common::TempDb, std::path::PathBuf, u32, u64
     db.trigger_backup(true).unwrap();
     db.stop_auto_backup().unwrap();
 
-    let base_seq = backup::load_catalog(&root)
-        .unwrap()
-        .first()
-        .unwrap()
-        .max_seq;
+    let base_seq = backup::load_catalog(&root).unwrap().last().unwrap().max_seq;
     (temp, root, scope.scope_id, base_seq)
 }
 
@@ -179,8 +175,14 @@ fn restore_rejects_symlink_in_backup_tree() {
     let (mut temp, root, _scope_id, _base_seq) = prepare("restore_symlink");
     temp.close();
 
-    let generation = generation_directories(&root).remove(0);
-    symlink("/etc/passwd", generation.join("escape")).expect("create symlink");
+    let generations = generation_directories(&root);
+    assert!(
+        !generations.is_empty(),
+        "expected at least one backup generation"
+    );
+    for generation in generations {
+        symlink("/etc/passwd", generation.join("escape")).expect("create symlink");
+    }
 
     let target = temp.path.join("restored-symlink");
     let error = Db::restore_from_backup(&root, &target, None)

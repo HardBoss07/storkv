@@ -26,13 +26,13 @@ async fn malformed_http_json_is_rejected_without_stopping_the_listener() {
 #[tokio::test]
 async fn invalid_memcached_flags_and_ttl_return_client_errors() {
     let server = spawn("compat_adversarial_memcached").await;
-    let mut client = MemcachedClient::connect(&server.memcached_addr).await;
 
     for command in [
         b"set bad flags 0 1\r\nx\r\n".as_slice(),
         b"set bad 0 -1 1\r\nx\r\n".as_slice(),
         b"set bad 0 0 nope\r\nx\r\n".as_slice(),
     ] {
+        let mut client = MemcachedClient::connect(&server.memcached_addr).await;
         let reply = client.send(command, b"\r\n").await;
         assert!(
             reply.starts_with(b"CLIENT_ERROR") || reply.starts_with(b"ERROR"),
@@ -41,6 +41,7 @@ async fn invalid_memcached_flags_and_ttl_return_client_errors() {
         );
     }
 
+    let mut client = MemcachedClient::connect(&server.memcached_addr).await;
     assert_eq!(
         client.send(b"set good 0 0 2\r\nok\r\n", b"\r\n").await,
         b"STORED\r\n"
