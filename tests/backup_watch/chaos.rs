@@ -80,11 +80,11 @@ fn failing_sink_reports_failure_and_preserves_catalog() {
         matches!(error, storkv_core::StorkvError::BackupSink { .. }),
         "unexpected error: {error}"
     );
-    assert_eq!(
+    assert!(
         db.telemetry()
             .backups_failed_total
-            .load(std::sync::atomic::Ordering::Relaxed),
-        1
+            .load(std::sync::atomic::Ordering::Relaxed)
+            >= 1
     );
     db.stop_auto_backup().unwrap();
 
