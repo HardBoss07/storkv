@@ -19,6 +19,7 @@ fn test_fifo_compaction_reclaims_expired_sstables_on_disk() {
                 },
                 prefix_bloom_len: None,
                 storage_mode: storkv_core::StorageMode::Disk,
+                ..ScopeOptions::default()
             },
         )
         .unwrap();

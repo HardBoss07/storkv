@@ -10,6 +10,8 @@ mod merge_ttl;
 mod occ;
 #[path = "mvcc/proptest_oracle.rs"]
 mod proptest_oracle;
+#[path = "mvcc/put_if.rs"]
+mod put_if;
 #[path = "mvcc/scans.rs"]
 mod scans;
 #[path = "mvcc/sequencing.rs"]

@@ -15,6 +15,7 @@ fn test_directory_structure_and_hex_naming() {
                 retention: Retention::Permanent,
                 prefix_bloom_len: None,
                 storage_mode: storkv_core::StorageMode::Disk,
+                ..ScopeOptions::default()
             },
         )
         .unwrap();
@@ -29,6 +30,7 @@ fn test_directory_structure_and_hex_naming() {
                 retention: Retention::Permanent,
                 prefix_bloom_len: None,
                 storage_mode: storkv_core::StorageMode::Disk,
+                ..ScopeOptions::default()
             },
         )
         .unwrap();

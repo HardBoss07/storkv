@@ -18,6 +18,7 @@ fn test_retention_modes_leveled_and_fifo() {
                 },
                 prefix_bloom_len: None,
                 storage_mode: storkv_core::StorageMode::Disk,
+                ..ScopeOptions::default()
             },
         )
         .unwrap();

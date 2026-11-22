@@ -1,8 +1,8 @@
-use bytes::{Bytes, BytesMut};
+use bytes::{BufMut, Bytes, BytesMut};
 use std::time::Duration;
 use storkv_proto::{
-    Message, MessagePayload, Request, WireCompactionStyle, WireDurability, WireMergeOp,
-    WireRetention, WireScopeOptions, WireTxMutation,
+    Message, MessagePayload, PROTOCOL_MAGIC, PROTOCOL_VERSION, Request, WireCompactionStyle,
+    WireDurability, WireMergeOp, WireRetention, WireScopeOptions, WireTxMutation,
 };
 
 #[test]
@@ -89,6 +89,9 @@ fn test_round_trip_all_requests() {
                     compaction_style: WireCompactionStyle::Fifo,
                 },
                 prefix_bloom_len: Some(8),
+                min_ttl: Some(Duration::from_millis(10)),
+                max_ttl: Some(Duration::from_secs(86400)),
+                allow_permanent: false,
             },
         },
         Request::DropScope {
@@ -136,4 +139,34 @@ fn test_round_trip_all_requests() {
         }
         assert!(buffer.is_empty(), "Buffer should be fully consumed");
     }
+}
+
+#[test]
+fn test_legacy_create_scope_without_guardrails_uses_defaults() {
+    let mut frame = BytesMut::new();
+    frame.put_slice(PROTOCOL_MAGIC);
+    frame.put_u16(PROTOCOL_VERSION);
+    frame.put_u64_le(7);
+    frame.put_u8(1);
+    frame.put_u8(10);
+    let name = b"legacy";
+    frame.put_u32_le(name.len() as u32);
+    frame.put_slice(name);
+    frame.put_u8(1);
+    frame.put_u8(1);
+    frame.put_u8(0);
+
+    let mut framed = BytesMut::new();
+    framed.put_u32(frame.len() as u32);
+    framed.put_slice(&frame);
+
+    let decoded = Message::decode(&mut framed)
+        .expect("legacy frame must decode")
+        .expect("legacy frame must be complete");
+    let MessagePayload::Request(Request::CreateScope { options, .. }) = decoded.payload else {
+        panic!("expected a CreateScope request");
+    };
+    assert!(options.allow_permanent);
+    assert!(options.min_ttl.is_none());
+    assert!(options.max_ttl.is_none());
 }

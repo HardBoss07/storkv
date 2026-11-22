@@ -18,6 +18,7 @@ fn test_50_worker_occ_contention_storm_converges() {
                 retention: Retention::Permanent,
                 prefix_bloom_len: None,
                 storage_mode: storkv_core::StorageMode::Disk,
+                ..ScopeOptions::default()
             },
         )
         .unwrap();

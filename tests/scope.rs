@@ -10,5 +10,7 @@ mod lifecycle;
 mod persistence;
 #[path = "scope/storage_mode.rs"]
 mod storage_mode;
+#[path = "scope/ttl_guardrails.rs"]
+mod ttl_guardrails;
 #[path = "scope/wal_pinning.rs"]
 mod wal_pinning;

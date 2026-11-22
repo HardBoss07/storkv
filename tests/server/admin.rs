@@ -41,6 +41,9 @@ async fn test_admin_stats_reports_levels_scopes_and_latency() {
                 durability: WireDurability::StrictFsync,
                 retention: WireRetention::Permanent,
                 prefix_bloom_len: None,
+                min_ttl: None,
+                max_ttl: None,
+                allow_permanent: true,
             },
         },
     )

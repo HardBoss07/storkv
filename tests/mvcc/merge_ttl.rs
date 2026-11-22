@@ -158,6 +158,7 @@ fn test_wall_clock_ttl_read_invisibility() {
                 },
                 prefix_bloom_len: None,
                 storage_mode: storkv_core::StorageMode::Disk,
+                ..ScopeOptions::default()
             },
         )
         .unwrap();

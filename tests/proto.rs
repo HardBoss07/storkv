@@ -4,6 +4,8 @@ mod framing;
 mod fuzz;
 #[path = "proto/helpers.rs"]
 mod helpers;
+#[path = "proto/put_if.rs"]
+mod put_if;
 #[path = "proto/rejection.rs"]
 mod rejection;
 #[path = "proto/roundtrip.rs"]

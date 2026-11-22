@@ -37,6 +37,9 @@ async fn test_cross_scope_transactions_and_occ_conflict() {
                 durability: WireDurability::StrictFsync,
                 retention: WireRetention::Permanent,
                 prefix_bloom_len: None,
+                min_ttl: None,
+                max_ttl: None,
+                allow_permanent: true,
             },
         },
     )

@@ -175,11 +175,11 @@ fn ttl_expiry_matches_the_oracle() -> Result<()> {
     let db = temp.db().clone();
     let scope = db.create_scope("ttl_oracle", ScopeOptions::default())?;
 
-    db.put_with_ttl(&scope, b"ttl:short", b"value", Duration::from_millis(20))?;
+    db.put_with_ttl(&scope, b"ttl:short", b"value", Duration::from_millis(500))?;
     db.put(&scope, b"ttl:permanent", b"value")?;
     assert_eq!(db.get(&scope, b"ttl:short")?, Some("value".into()));
 
-    std::thread::sleep(Duration::from_millis(60));
+    std::thread::sleep(Duration::from_millis(550));
 
     assert_eq!(db.get(&scope, b"ttl:short")?, None, "expired key is hidden");
     assert_eq!(db.get(&scope, b"ttl:permanent")?, Some("value".into()));
