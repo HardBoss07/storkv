@@ -46,8 +46,9 @@ pub(super) fn shared_libraries(release: &Path) -> Result<Vec<PathBuf>> {
     for entry in std::fs::read_dir(release)? {
         let entry = entry?;
         let name = entry.file_name().to_string_lossy().into_owned();
+        let is_ffi = name.starts_with("storkv_ffi") || name.starts_with("libstorkv_ffi");
         let shared = name.ends_with(".dll") || name.ends_with(".so") || name.ends_with(".dylib");
-        if entry.file_type()?.is_file() && name.starts_with("storkv_ffi") && shared {
+        if entry.file_type()?.is_file() && is_ffi && shared {
             libraries.push(entry.path());
         }
     }

@@ -71,7 +71,7 @@ fn copy_libraries(release: &Path, stage: &Path) -> Result<Vec<PathBuf>> {
         let path = entry.path();
         let name = entry.file_name().to_string_lossy().into_owned();
         let extension = path.extension().and_then(|value| value.to_str());
-        let is_ffi = name.starts_with("storkv_ffi");
+        let is_ffi = name.starts_with("storkv_ffi") || name.starts_with("libstorkv_ffi");
         let known = extension.is_some_and(|value| LIBRARY_EXTENSIONS.contains(&value));
         if is_ffi && known {
             tools::copy_file(&path, &stage.join("lib").join(&name))?;
