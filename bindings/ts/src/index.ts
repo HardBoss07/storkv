@@ -274,15 +274,15 @@ function bufferOf(value: string | Uint8Array): Buffer {
   return typeof value === "string" ? Buffer.from(value, "utf8") : Buffer.from(value);
 }
 
-function sliceOf(value: string | Uint8Array): { data: unknown; len: number } {
+function sliceOf(value: string | Uint8Array): { data: Buffer | null; len: number } {
   const buffer = bufferOf(value);
   return {
-    data: buffer.length === 0 ? null : koffi.as(buffer, "uint8 *"),
+    data: buffer.length === 0 ? null : buffer,
     len: buffer.length,
   };
 }
 
-const emptySlice = (): { data: unknown; len: number } => ({ data: null, len: 0 });
+const emptySlice = (): { data: Buffer | null; len: number } => ({ data: null, len: 0 });
 
 function decodeBytes(value: {
   data: unknown;
