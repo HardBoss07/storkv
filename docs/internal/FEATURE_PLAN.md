@@ -29,12 +29,12 @@ Do not introduce external crates for the following items; implement them using `
 
 ## Phase 1: Core Storage Engine & Native Primitives (`storkv-core` & `storkv-proto`)
 
-- [ ] **Scope-Level TTL Guardrails (`ScopeOptions`)**
+- [x] **Scope-Level TTL Guardrails (`ScopeOptions`)**
   - **Target:** `crates/storkv-core/src/scope/options.rs`, `crates/storkv-proto`, `crates/storkv-sdk/src/lib.rs`
   - **Description:** Extend `ScopeOptions` with `min_ttl: Option<Duration>`, `max_ttl: Option<Duration>`, and `allow_permanent: bool` (defaulting to `true` for backward compatibility).
   - **Behavior:** Validate TTLs during `Db::put` and `Db::put_with_ttl`. When `allow_permanent` is `false`, reject writes with `expires_at_ms == 0` with a typed `Error::InvalidTtl` error. When `min_ttl` or `max_ttl` is configured, reject or clamp out-of-bounds TTLs according to scope policy so misconfigured clients cannot cause unbounded disk/memory growth. Expose these fields in `storkv-proto` scope definitions and `storkv-sdk` `ScopeDefinition`.
 
-- [ ] **Single-Key Atomic Conditional Writes (`Request::PutIf`)**
+- [x] **Single-Key Atomic Conditional Writes (`Request::PutIf`)**
   - **Target:** `crates/storkv-core/src/db/handle_kv.rs`, `crates/storkv-core/src/compat.rs`, `crates/storkv-proto/src/request/types/enum_def.rs`, `crates/storkv-sdk`, `crates/storkv-ffi`
   - **Description:** Add a single-round-trip `PutIf` operation supporting `Condition::Absent`, `Condition::Present`, `Condition::ExpectedSeq(u64)`, and `Condition::ExpectedValue(Bytes)` with an optional TTL.
   - **Behavior:** Evaluate the condition directly inside the single-writer commit path (`db_ops/commit`) without allocating a full OCC read-set or triggering retry loops. Return the resulting `seq` on success or the current metadata/mismatch reason on failure. Refactor `Tree::compare_and_swap` in `storkv-core/src/compat.rs` to delegate to `PutIf`.
