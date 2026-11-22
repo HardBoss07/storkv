@@ -103,6 +103,27 @@ impl Scope {
         Ok(())
     }
 
+    /// Conditionally store one key/value pair in this scope.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the scope is unknown or the write fails.
+    pub async fn put_if<K: AsRef<[u8]>, V: AsRef<[u8]>>(
+        &self,
+        key: K,
+        condition: &storkv_core::PutCondition,
+        value: V,
+        ttl: Option<Duration>,
+    ) -> Result<storkv_core::PutIfResult> {
+        self.activate_cache().await?;
+        let connection = self.pool.acquire().await?;
+        let result = connection
+            .put_if(self, key.as_ref(), condition, value, ttl)
+            .await?;
+        self.cache.invalidate(key.as_ref());
+        Ok(result)
+    }
+
     /// Read one key and restart its time to live.
     ///
     /// The read and the rewrite run inside one OCC transaction so the returned

@@ -56,8 +56,21 @@ fn parse_scope_body(body: &[u8]) -> Option<(String, WireScopeOptions)> {
             durability,
             retention,
             prefix_bloom_len,
+            min_ttl: ttl_bound(&parsed, "min_ttl_ms")?,
+            max_ttl: ttl_bound(&parsed, "max_ttl_ms")?,
+            allow_permanent: parsed
+                .get("allow_permanent")
+                .and_then(Value::as_bool)
+                .unwrap_or(true),
         },
     ))
+}
+
+fn ttl_bound(parsed: &Value, key: &str) -> Option<Option<Duration>> {
+    match parsed.get(key) {
+        None | Some(Value::Null) => Some(None),
+        Some(value) => value.as_u64().map(|ms| Some(Duration::from_millis(ms))),
+    }
 }
 
 fn parse_durability(value: Option<&Value>) -> Option<WireDurability> {

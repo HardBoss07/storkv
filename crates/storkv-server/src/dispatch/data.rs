@@ -1,6 +1,6 @@
 use bytes::Bytes;
 use storkv_core::{MergeOp, ScopeHandle};
-use storkv_proto::{Response, StorkvWireError, WireMergeOp};
+use storkv_proto::{Response, StorkvWireError, WireMergeOp, WirePutCondition, WirePutIfResult};
 
 use super::conversions::core_error_to_wire;
 use crate::server::Server;
@@ -40,6 +40,58 @@ impl Server {
             self.db
                 .put_with_ttl(&scope_handle(scope_id), user_key, entry_value, ttl),
         )
+    }
+
+    pub(super) fn handle_put_if(
+        &self,
+        scope_id: u32,
+        user_key: Bytes,
+        condition: WirePutCondition,
+        entry_value: Bytes,
+        ttl: Option<std::time::Duration>,
+    ) -> Response {
+        let condition = match condition {
+            WirePutCondition::Absent => storkv_core::PutCondition::Absent,
+            WirePutCondition::Present => storkv_core::PutCondition::Present,
+            WirePutCondition::ExpectedSeq(seq) => storkv_core::PutCondition::ExpectedSeq(seq),
+            WirePutCondition::ExpectedValue(value) => {
+                storkv_core::PutCondition::ExpectedValue(value)
+            }
+            _ => {
+                return Response::Error(StorkvWireError::InvalidOperation(
+                    "unsupported put condition".into(),
+                ));
+            }
+        };
+        let result = match self.db.put_if(
+            &scope_handle(scope_id),
+            user_key,
+            &condition,
+            Some(entry_value),
+            ttl,
+        ) {
+            Ok(result) => result,
+            Err(error) => return Response::Error(core_error_to_wire(error)),
+        };
+        match result {
+            storkv_core::PutIfResult::Applied { seq } => {
+                self.stats.record_write(scope_id);
+                Response::PutIf(WirePutIfResult::Applied { seq })
+            }
+            storkv_core::PutIfResult::Conflict {
+                current_seq,
+                current_value,
+            } => {
+                self.stats.record_read(scope_id);
+                Response::PutIf(WirePutIfResult::Conflict {
+                    current_seq,
+                    current_value,
+                })
+            }
+            _ => Response::Error(StorkvWireError::InvalidOperation(
+                "unsupported put-if result".into(),
+            )),
+        }
     }
 
     pub(super) fn handle_delete(&self, scope_id: u32, user_key: Bytes) -> Response {

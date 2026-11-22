@@ -24,6 +24,9 @@ impl Server {
             retention,
             prefix_bloom_len: options.prefix_bloom_len,
             storage_mode: StorageMode::Disk,
+            min_ttl: options.min_ttl,
+            max_ttl: options.max_ttl,
+            allow_permanent: options.allow_permanent,
         };
         match self.db.create_scope(name, scope_options) {
             Ok(handle) => Response::Scope(WireScopeHandle {

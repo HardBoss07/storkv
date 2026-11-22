@@ -23,7 +23,19 @@ impl AsyncClient {
             durability,
             retention,
             prefix_bloom_len,
+            min_ttl: None,
+            max_ttl: None,
+            allow_permanent: true,
         };
+        self.create_scope_with_options(name, options).await
+    }
+
+    /// Create a scope from a complete wire option set.
+    pub async fn create_scope_with_options<S: Into<String>>(
+        &self,
+        name: S,
+        options: WireScopeOptions,
+    ) -> ClientResult<ScopeHandle> {
         match self
             .send_request(Request::CreateScope {
                 name: name.into(),

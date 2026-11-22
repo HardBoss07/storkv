@@ -64,6 +64,24 @@ pub(super) async fn put_with_ttl(
         .map_err(SdkError::from)
 }
 
+pub(super) async fn put_if(
+    db: &Db,
+    scope: &ResolvedScope,
+    key: &[u8],
+    condition: &storkv_core::PutCondition,
+    value: Bytes,
+    ttl: Option<std::time::Duration>,
+) -> Result<storkv_core::PutIfResult> {
+    let db = db.clone();
+    let handle = scope.core_handle();
+    let key = Bytes::copy_from_slice(key);
+    let condition = condition.clone();
+    tokio::task::spawn_blocking(move || db.put_if(&handle, key, &condition, Some(value), ttl))
+        .await
+        .map_err(join_error)?
+        .map_err(SdkError::from)
+}
+
 pub(super) async fn delete(db: &Db, scope: &ResolvedScope, key: &[u8]) -> Result<()> {
     let db = db.clone();
     let handle = scope.core_handle();
@@ -131,6 +149,9 @@ pub(super) async fn provision(db: &Db, definition: &ScopeDefinition) -> Result<(
             retention: definition.retention,
             prefix_bloom_len: definition.prefix_bloom_len,
             storage_mode: storkv_core::StorageMode::Disk,
+            min_ttl: definition.min_ttl,
+            max_ttl: definition.max_ttl,
+            allow_permanent: definition.allow_permanent,
         };
         match db.create_scope(definition.name.clone(), options) {
             Ok(_) | Err(storkv_core::StorkvError::ScopeAlreadyExists(_)) => Ok(()),

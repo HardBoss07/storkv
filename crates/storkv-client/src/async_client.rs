@@ -12,6 +12,7 @@ use crate::transaction::AsyncTransaction;
 use crate::transport::{ClientError, ClientResult, ScopeHandle};
 use crate::uri::TransportKind;
 
+mod put_if;
 mod scope_ops;
 
 /// Asynchronous client for the StorKV protocol.

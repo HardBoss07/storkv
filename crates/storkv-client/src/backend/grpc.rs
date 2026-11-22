@@ -219,5 +219,10 @@ fn scope_options(options: WireScopeOptions) -> grpc::ScopeOptions {
         compaction_style,
         prefix_bloom_len,
         has_prefix_bloom: options.prefix_bloom_len.is_some(),
+        min_ttl_ms: options.min_ttl.map_or(0, |ttl| ttl.as_millis() as u64),
+        has_min_ttl: options.min_ttl.is_some(),
+        max_ttl_ms: options.max_ttl.map_or(0, |ttl| ttl.as_millis() as u64),
+        has_max_ttl: options.max_ttl.is_some(),
+        allow_permanent: Some(options.allow_permanent),
     }
 }

@@ -131,6 +131,12 @@ pub struct ScopeDefinition {
     pub durability: Durability,
     /// Key retention policy for the scope.
     pub retention: Retention,
+    /// Minimum allowed time to live. `None` disables the limit.
+    pub min_ttl: Option<Duration>,
+    /// Maximum allowed time to live. `None` disables the limit.
+    pub max_ttl: Option<Duration>,
+    /// Permit writes without an expiry.
+    pub allow_permanent: bool,
     /// Unique scope name.
     pub name: String,
 }
@@ -142,8 +148,29 @@ impl ScopeDefinition {
             durability: Durability::StrictFsync,
             prefix_bloom_len: None,
             retention: Retention::Permanent,
+            min_ttl: None,
+            max_ttl: None,
+            allow_permanent: true,
             name: name.into(),
         }
+    }
+
+    /// Set the minimum allowed time to live.
+    pub fn with_min_ttl(mut self, min_ttl: Duration) -> Self {
+        self.min_ttl = Some(min_ttl);
+        self
+    }
+
+    /// Set the maximum allowed time to live.
+    pub fn with_max_ttl(mut self, max_ttl: Duration) -> Self {
+        self.max_ttl = Some(max_ttl);
+        self
+    }
+
+    /// Permit or reject writes without an expiry.
+    pub fn with_allow_permanent(mut self, allow_permanent: bool) -> Self {
+        self.allow_permanent = allow_permanent;
+        self
     }
 
     /// Set the durability policy.

@@ -84,6 +84,7 @@ pub(crate) fn redis_scope(
             retention: Retention::Permanent,
             prefix_bloom_len: Some(8),
             storage_mode: storkv_core::StorageMode::Disk,
+            ..ScopeOptions::default()
         },
     )
 }
@@ -101,6 +102,7 @@ pub(crate) fn memcached_scope(db: &Db, allow_create: bool) -> storkv_core::Resul
             },
             prefix_bloom_len: Some(8),
             storage_mode: storkv_core::StorageMode::Disk,
+            ..ScopeOptions::default()
         },
     )
 }
@@ -115,6 +117,7 @@ pub(crate) fn etcd_scope(db: &Db, allow_create: bool) -> storkv_core::Result<Sco
             retention: Retention::Permanent,
             prefix_bloom_len: Some(8),
             storage_mode: storkv_core::StorageMode::Disk,
+            ..ScopeOptions::default()
         },
     )
 }

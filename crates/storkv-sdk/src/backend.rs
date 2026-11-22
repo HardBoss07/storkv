@@ -120,6 +120,22 @@ impl Conn {
         }
     }
 
+    pub(crate) async fn put_if(
+        &self,
+        scope: &ResolvedScope,
+        key: &[u8],
+        condition: &storkv_core::PutCondition,
+        value: Bytes,
+        ttl: Option<std::time::Duration>,
+    ) -> Result<storkv_core::PutIfResult> {
+        match self {
+            Conn::Embedded(db) => embedded::put_if(db, scope, key, condition, value, ttl).await,
+            Conn::Networked { client, .. } => {
+                remote::put_if(client, scope, key, condition, value, ttl).await
+            }
+        }
+    }
+
     pub(crate) async fn delete(&self, scope: &ResolvedScope, key: &[u8]) -> Result<()> {
         match self {
             Conn::Embedded(db) => embedded::delete(db, scope, key).await,

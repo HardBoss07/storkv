@@ -62,6 +62,13 @@ pub(super) fn scope_options(options: Option<ProtoScopeOptions>) -> WireScopeOpti
         } else {
             None
         },
+        min_ttl: options
+            .has_min_ttl
+            .then(|| Duration::from_millis(options.min_ttl_ms)),
+        max_ttl: options
+            .has_max_ttl
+            .then(|| Duration::from_millis(options.max_ttl_ms)),
+        allow_permanent: options.allow_permanent.unwrap_or(true),
     }
 }
 

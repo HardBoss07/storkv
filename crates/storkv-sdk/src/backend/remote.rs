@@ -2,7 +2,7 @@
 
 use bytes::Bytes;
 use storkv_client::{AsyncClient, ClientError};
-use storkv_proto::{Consistency, StorkvWireError, WireDurability, WireRetention};
+use storkv_proto::{Consistency, StorkvWireError, WireDurability, WireRetention, WireScopeOptions};
 
 use crate::error::{Result, SdkError};
 use crate::options::ScopeDefinition;
@@ -61,6 +61,49 @@ pub(super) async fn put_with_ttl(
         .put_with_ttl(&scope.client_handle(), key, value, ttl)
         .await
         .map_err(SdkError::from)
+}
+
+pub(super) async fn put_if(
+    client: &AsyncClient,
+    scope: &ResolvedScope,
+    key: &[u8],
+    condition: &storkv_core::PutCondition,
+    value: Bytes,
+    ttl: Option<std::time::Duration>,
+) -> Result<storkv_core::PutIfResult> {
+    let wire_condition = condition_to_wire(condition)?;
+    let result = client
+        .put_if(&scope.client_handle(), key, &wire_condition, value, ttl)
+        .await
+        .map_err(SdkError::from)?;
+    match result {
+        storkv_proto::WirePutIfResult::Applied { seq } => {
+            Ok(storkv_core::PutIfResult::Applied { seq })
+        }
+        storkv_proto::WirePutIfResult::Conflict {
+            current_seq,
+            current_value,
+        } => Ok(storkv_core::PutIfResult::Conflict {
+            current_seq,
+            current_value,
+        }),
+        _ => Err(SdkError::Unsupported("unknown put-if result".into())),
+    }
+}
+
+fn condition_to_wire(
+    condition: &storkv_core::PutCondition,
+) -> Result<storkv_proto::WirePutCondition> {
+    use storkv_core::PutCondition;
+    Ok(match condition {
+        PutCondition::Absent => storkv_proto::WirePutCondition::Absent,
+        PutCondition::Present => storkv_proto::WirePutCondition::Present,
+        PutCondition::ExpectedSeq(seq) => storkv_proto::WirePutCondition::ExpectedSeq(*seq),
+        PutCondition::ExpectedValue(value) => {
+            storkv_proto::WirePutCondition::ExpectedValue(value.clone())
+        }
+        _ => return Err(SdkError::Unsupported("unknown put condition".into())),
+    })
 }
 
 pub(super) async fn delete(client: &AsyncClient, scope: &ResolvedScope, key: &[u8]) -> Result<()> {
@@ -130,11 +173,16 @@ pub(super) async fn provision(
     let durability = durability_to_wire(&definition.durability);
     let retention = retention_to_wire(&definition.retention);
     match client
-        .create_scope(
+        .create_scope_with_options(
             definition.name.clone(),
-            durability,
-            retention,
-            definition.prefix_bloom_len,
+            WireScopeOptions {
+                durability,
+                retention,
+                prefix_bloom_len: definition.prefix_bloom_len,
+                min_ttl: definition.min_ttl,
+                max_ttl: definition.max_ttl,
+                allow_permanent: definition.allow_permanent,
+            },
         )
         .await
     {

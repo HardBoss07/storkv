@@ -84,6 +84,9 @@ fn create_scope(value: &Value) -> Request {
             durability: WireDurability::StrictFsync,
             retention: WireRetention::Permanent,
             prefix_bloom_len,
+            min_ttl: None,
+            max_ttl: None,
+            allow_permanent: true,
         },
     }
 }

@@ -148,6 +148,31 @@ impl PoolConnection {
             .await
     }
 
+    /// Conditionally store one key/value pair in `scope`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the scope is unknown or the write fails.
+    pub async fn put_if<K: AsRef<[u8]>, V: AsRef<[u8]>>(
+        &self,
+        scope: &Scope,
+        key: K,
+        condition: &storkv_core::PutCondition,
+        value: V,
+        ttl: Option<std::time::Duration>,
+    ) -> Result<storkv_core::PutIfResult> {
+        let resolved = scope.resolve_via(self.conn()?).await?;
+        self.conn()?
+            .put_if(
+                &resolved,
+                key.as_ref(),
+                condition,
+                bytes::Bytes::copy_from_slice(value.as_ref()),
+                ttl,
+            )
+            .await
+    }
+
     /// Delete one key from `scope`.
     ///
     /// # Errors

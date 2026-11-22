@@ -86,6 +86,13 @@ impl Server {
                 val,
                 ttl,
             } => self.handle_put_with_ttl(scope_id, key, val, ttl),
+            Request::PutIf {
+                scope_id,
+                key,
+                condition,
+                val,
+                ttl,
+            } => self.handle_put_if(scope_id, key, condition, val, ttl),
             Request::Delete { scope_id, key } => self.handle_delete(scope_id, key),
             Request::DeleteRange {
                 scope_id,
@@ -139,6 +146,7 @@ fn is_write_request(request: &Request) -> bool {
         request,
         Request::Put { .. }
             | Request::PutWithTtl { .. }
+            | Request::PutIf { .. }
             | Request::Delete { .. }
             | Request::DeleteRange { .. }
             | Request::Merge { .. }
