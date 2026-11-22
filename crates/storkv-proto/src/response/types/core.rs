@@ -70,6 +70,24 @@ pub enum WireChangeEvent {
     },
 }
 
+/// Outcome of an atomic conditional write.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum WirePutIfResult {
+    /// The condition matched. The key now has this sequence number.
+    Applied {
+        /// Sequence number of the committed write.
+        seq: u64,
+    },
+    /// The condition did not match.
+    Conflict {
+        /// Sequence number of the visible version, or `None` when absent.
+        current_seq: Option<u64>,
+        /// Value of the visible version, or `None` when absent.
+        current_value: Option<Bytes>,
+    },
+}
+
 /// Response message in the StorKV native protocol.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
@@ -107,6 +125,8 @@ pub enum Response {
     BackupCatalog(Vec<WireBackupEntry>),
     /// Reply to a key metadata request. `None` means the key does not exist.
     KeyMeta(Option<WireKeyMeta>),
+    /// Reply to an atomic conditional write.
+    PutIf(WirePutIfResult),
     /// One replication frame pushed on a subscribed connection.
     ReplicationFrame {
         /// Unix epoch milliseconds when the primary sent the frame.

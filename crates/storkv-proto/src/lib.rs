@@ -47,11 +47,11 @@ pub use endpoint::{is_unix_socket_addr, unix_socket_path};
 pub use error::StorkvWireError;
 pub use frame::{MAX_FRAME_SIZE, Message, MessagePayload, PROTOCOL_MAGIC, PROTOCOL_VERSION};
 pub use request::{
-    Request, WireCompactionStyle, WireDurability, WireMergeOp, WireRetention, WireScopeOptions,
-    WireTxMutation,
+    Request, WireCompactionStyle, WireDurability, WireMergeOp, WirePutCondition, WireRetention,
+    WireScopeOptions, WireTxMutation,
 };
 pub use response::{
     Response, WireAdminStats, WireBackupEntry, WireBackupKind, WireBackupReport, WireBackupStatus,
     WireBackupVerifyError, WireBackupVerifyReport, WireChangeEvent, WireKeyMeta, WireLevelStat,
-    WireScopeHandle, WireScopeStat, WireTelemetrySnapshot, WireTransportStat,
+    WirePutIfResult, WireScopeHandle, WireScopeStat, WireTelemetrySnapshot, WireTransportStat,
 };

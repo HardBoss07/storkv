@@ -1,6 +1,7 @@
 use bytes::{Buf, BytesMut};
 
 use super::decode_admin::decode_admin_stats;
+use super::decode_put_if;
 use super::types::{
     Response, WireBackupEntry, WireBackupKind, WireBackupReport, WireBackupStatus,
     WireBackupVerifyError, WireBackupVerifyReport, WireChangeEvent, WireKeyMeta, WireScopeHandle,
@@ -75,6 +76,9 @@ pub(crate) fn decode_response(source: &mut BytesMut) -> Result<Response, StorkvW
                 entries,
             })
         }
+        17 => Ok(Response::PutIf(decode_put_if::decode_put_if_result(
+            source,
+        )?)),
         255 => Ok(Response::Error(decode_error(source)?)),
         other => Err(StorkvWireError::Protocol(format!(
             "Unknown response opcode: {}",

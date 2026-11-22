@@ -1,5 +1,6 @@
 use bytes::{BufMut, Bytes, BytesMut};
 
+use super::encode_put_if;
 use super::types::{
     Response, WireAdminStats, WireBackupEntry, WireBackupKind, WireBackupReport, WireBackupStatus,
     WireBackupVerifyReport, WireChangeEvent, WireTelemetrySnapshot,
@@ -67,6 +68,10 @@ pub(crate) fn encode_response(destination: &mut BytesMut, response: &Response) {
                 }
                 None => destination.put_u8(0),
             }
+        }
+        Response::PutIf(result) => {
+            destination.put_u8(17);
+            encode_put_if::encode_put_if_result(destination, result);
         }
         Response::Error(error) => {
             destination.put_u8(255);

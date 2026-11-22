@@ -8,4 +8,4 @@ pub use admin::{
     WireBackupVerifyError, WireBackupVerifyReport, WireLevelStat, WireScopeStat,
     WireTelemetrySnapshot, WireTransportStat,
 };
-pub use core::{Response, WireChangeEvent, WireKeyMeta, WireScopeHandle};
+pub use core::{Response, WireChangeEvent, WireKeyMeta, WirePutIfResult, WireScopeHandle};

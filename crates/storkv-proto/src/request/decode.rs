@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use super::decode_scope::decode_create_scope_request;
 use super::decode_tx::decode_tx_commit_request;
-use super::types::{Request, WireMergeOp};
+use super::types::{Request, WireMergeOp, WirePutCondition};
 use crate::error::StorkvWireError;
 use crate::frame::{get_bytes, get_i64_le, get_opt_bytes, get_str, get_u8, get_u32_le, get_u64_le};
 
@@ -67,6 +67,7 @@ pub(crate) fn decode_request(source: &mut BytesMut) -> Result<Request, StorkvWir
                 consistency: crate::Consistency::from_wire(mode, max_lag_ms)?,
             })
         }
+        29 => decode_put_if_request(source),
         other => Err(StorkvWireError::Protocol(format!(
             "Unknown request opcode: {}",
             other
@@ -126,6 +127,31 @@ fn decode_put_with_ttl_request(source: &mut BytesMut) -> Result<Request, StorkvW
         key: user_key,
         val: entry_value,
         ttl: Duration::from_millis(ttl_ms),
+    })
+}
+
+fn decode_put_if_request(source: &mut BytesMut) -> Result<Request, StorkvWireError> {
+    let scope_id = get_u32_le(source)?;
+    let user_key = get_bytes(source)?;
+    let condition = match get_u8(source)? {
+        0 => WirePutCondition::Absent,
+        1 => WirePutCondition::Present,
+        2 => WirePutCondition::ExpectedSeq(get_u64_le(source)?),
+        3 => WirePutCondition::ExpectedValue(get_bytes(source)?),
+        _ => {
+            return Err(StorkvWireError::Protocol(
+                "Invalid put condition type".into(),
+            ));
+        }
+    };
+    let entry_value = get_bytes(source)?;
+    let ttl = get_opt_u64(source)?.map(Duration::from_millis);
+    Ok(Request::PutIf {
+        scope_id,
+        key: user_key,
+        condition,
+        val: entry_value,
+        ttl,
     })
 }
 

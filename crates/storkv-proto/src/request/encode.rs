@@ -1,8 +1,8 @@
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::{BufMut, BytesMut};
 
+use super::encode_tx;
 use super::types::{
     Request, WireCompactionStyle, WireDurability, WireMergeOp, WireRetention, WireScopeOptions,
-    WireTxMutation,
 };
 use crate::frame::{put_bytes, put_opt_bytes, put_str};
 
@@ -31,6 +31,20 @@ pub(crate) fn encode_request(destination: &mut BytesMut, request: &Request) {
             put_bytes(destination, key);
             put_bytes(destination, val);
             destination.put_u64_le(ttl.as_millis() as u64);
+        }
+        Request::PutIf {
+            scope_id,
+            key,
+            condition,
+            val,
+            ttl,
+        } => {
+            destination.put_u8(29);
+            destination.put_u32_le(*scope_id);
+            put_bytes(destination, key);
+            super::types::encode_put_condition(destination, condition);
+            put_bytes(destination, val);
+            put_opt_u64(destination, ttl.as_ref().map(|ttl| ttl.as_millis() as u64));
         }
         Request::Delete { scope_id, key } => {
             destination.put_u8(4);
@@ -75,8 +89,8 @@ pub(crate) fn encode_request(destination: &mut BytesMut, request: &Request) {
         } => {
             destination.put_u8(9);
             destination.put_u64_le(*read_seq);
-            encode_read_set(destination, read_set);
-            encode_write_set(destination, write_set);
+            encode_tx::encode_read_set(destination, read_set);
+            encode_tx::encode_write_set(destination, write_set);
         }
         Request::CreateScope { name, options } => {
             destination.put_u8(10);
@@ -160,42 +174,6 @@ fn encode_merge_op(destination: &mut BytesMut, merge_op: &WireMergeOp) {
     }
 }
 
-fn encode_read_set(destination: &mut BytesMut, read_set: &[(u32, Bytes)]) {
-    destination.put_u32_le(read_set.len() as u32);
-    for (scope_id, user_key) in read_set {
-        destination.put_u32_le(*scope_id);
-        put_bytes(destination, user_key);
-    }
-}
-
-fn encode_write_set(destination: &mut BytesMut, write_set: &[((u32, Bytes), WireTxMutation)]) {
-    destination.put_u32_le(write_set.len() as u32);
-    for ((scope_id, user_key), mutation) in write_set {
-        destination.put_u32_le(*scope_id);
-        put_bytes(destination, user_key);
-        encode_tx_mutation(destination, mutation);
-    }
-}
-
-fn encode_tx_mutation(destination: &mut BytesMut, mutation: &WireTxMutation) {
-    match mutation {
-        WireTxMutation::Put { val, expires_at_ms } => {
-            destination.put_u8(1);
-            put_bytes(destination, val);
-            destination.put_u64_le(*expires_at_ms);
-        }
-        WireTxMutation::Delete => destination.put_u8(2),
-        WireTxMutation::Merge { operand } => {
-            destination.put_u8(3);
-            put_bytes(destination, operand);
-        }
-        WireTxMutation::DeleteRange { end_key } => {
-            destination.put_u8(4);
-            put_bytes(destination, end_key);
-        }
-    }
-}
-
 fn encode_scope_options(destination: &mut BytesMut, options: &WireScopeOptions) {
     match &options.durability {
         WireDurability::StrictFsync => destination.put_u8(1),
@@ -224,5 +202,19 @@ fn encode_scope_options(destination: &mut BytesMut, options: &WireScopeOptions) 
             destination.put_u32_le(filter_len as u32);
         }
         None => destination.put_u8(0),
+    }
+    let mut flags = u8::from(options.allow_permanent);
+    if options.min_ttl.is_some() {
+        flags |= 2;
+    }
+    if options.max_ttl.is_some() {
+        flags |= 4;
+    }
+    destination.put_u8(flags);
+    if let Some(min_ttl) = options.min_ttl {
+        destination.put_u64_le(min_ttl.as_millis() as u64);
+    }
+    if let Some(max_ttl) = options.max_ttl {
+        destination.put_u64_le(max_ttl.as_millis() as u64);
     }
 }

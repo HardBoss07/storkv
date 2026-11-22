@@ -1,4 +1,4 @@
-use bytes::BytesMut;
+use bytes::{Buf, BytesMut};
 use std::time::Duration;
 
 use super::types::{Request, WireCompactionStyle, WireDurability, WireRetention, WireScopeOptions};
@@ -17,11 +17,36 @@ fn decode_scope_options(source: &mut BytesMut) -> Result<WireScopeOptions, Stork
     let durability = decode_durability(source)?;
     let retention = decode_retention(source)?;
     let prefix_bloom_len = decode_prefix_bloom_len(source)?;
+    let (min_ttl, max_ttl, allow_permanent) = if source.remaining() > 0 {
+        decode_ttl_guardrails(source)?
+    } else {
+        (None, None, true)
+    };
     Ok(WireScopeOptions {
         durability,
         retention,
         prefix_bloom_len,
+        min_ttl,
+        max_ttl,
+        allow_permanent,
     })
+}
+
+fn decode_ttl_guardrails(
+    source: &mut BytesMut,
+) -> Result<(Option<Duration>, Option<Duration>, bool), StorkvWireError> {
+    let flags = get_u8(source)?;
+    let min_ttl = if flags & 2 != 0 {
+        Some(Duration::from_millis(get_u64_le(source)?))
+    } else {
+        None
+    };
+    let max_ttl = if flags & 4 != 0 {
+        Some(Duration::from_millis(get_u64_le(source)?))
+    } else {
+        None
+    };
+    Ok((min_ttl, max_ttl, flags & 1 != 0))
 }
 
 fn decode_durability(source: &mut BytesMut) -> Result<WireDurability, StorkvWireError> {
