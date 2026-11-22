@@ -107,6 +107,25 @@ static void check_crud(const char *uri, const char *label) {
     }
 
     {
+        StorkvPutCondition condition;
+        StorkvPutIfResult result;
+        memset(&condition, 0, sizeof(condition));
+        memset(&result, 0, sizeof(result));
+        condition.kind = Absent;
+        CHECK_STATUS(storkv_put_if(scope, slice_of("cas:key"), &condition, slice_of("first"), 0,
+                                   &result));
+        CHECK(result.applied == 1);
+        CHECK_STATUS(storkv_put_if(scope, slice_of("cas:key"), &condition, slice_of("second"), 0,
+                                   &result));
+        CHECK(result.applied == 0);
+        condition.kind = ExpectedSeq;
+        condition.expected_seq = result.seq;
+        CHECK_STATUS(storkv_put_if(scope, slice_of("cas:key"), &condition, slice_of("second"), 0,
+                                   &result));
+        CHECK(result.applied == 1);
+    }
+
+    {
         StorkvTxHandle *tx = NULL;
         CHECK_STATUS(storkv_tx_begin(pool, &tx));
         CHECK_STATUS(storkv_tx_put(tx, scope, slice_of("tx-key"), slice_of("tx-value")));

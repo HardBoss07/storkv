@@ -70,7 +70,7 @@ pub use pool::{
     storkv_scope_open,
 };
 pub use scope::{
-    storkv_delete, storkv_exists, storkv_get, storkv_get_and_touch, storkv_put,
+    storkv_delete, storkv_exists, storkv_get, storkv_get_and_touch, storkv_put, storkv_put_if,
     storkv_put_with_ttl, storkv_scan_prefix, storkv_scan_range,
 };
 pub use transaction::{
@@ -79,7 +79,8 @@ pub use transaction::{
 };
 pub use types::{
     StorkvBytes, StorkvEntries, StorkvEntry, StorkvEventKind, StorkvPoolConfig, StorkvPoolHandle,
-    StorkvRetryConfig, StorkvScopeHandle, StorkvSlice, StorkvStatus, StorkvString,
-    StorkvTxCallback, StorkvTxHandle, StorkvWatchEvent, StorkvWatchHandle,
+    StorkvPutCondition, StorkvPutConditionKind, StorkvPutIfResult, StorkvRetryConfig,
+    StorkvScopeHandle, StorkvSlice, StorkvStatus, StorkvString, StorkvTxCallback, StorkvTxHandle,
+    StorkvWatchEvent, StorkvWatchHandle,
 };
 pub use watch::{storkv_watch_close, storkv_watch_next, storkv_watch_prefix};

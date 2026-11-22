@@ -73,6 +73,39 @@ typedef int32_t StorkvStatus;
 #endif // __cplusplus
 
 /**
+ * Condition kind for [`crate::storkv_put_if`].
+ */
+enum StorkvPutConditionKind
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+    /**
+     * Write only when the key is absent or expired.
+     */
+    Absent = 0,
+    /**
+     * Write only when the key is present and not expired.
+     */
+    Present = 1,
+    /**
+     * Write only when the visible version has `expected_seq`.
+     */
+    ExpectedSeq = 2,
+    /**
+     * Write only when the visible value equals `expected_value`.
+     */
+    ExpectedValue = 3,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum StorkvPutConditionKind StorkvPutConditionKind;
+#else
+typedef uint32_t StorkvPutConditionKind;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
  * Kind of change carried by [`StorkvWatchEvent`].
  */
 enum StorkvEventKind
@@ -196,6 +229,44 @@ typedef struct StorkvSlice {
      */
     uintptr_t len;
 } StorkvSlice;
+
+/**
+ * Condition passed to [`crate::storkv_put_if`].
+ */
+typedef struct StorkvPutCondition {
+    /**
+     * Condition kind.
+     */
+    StorkvPutConditionKind kind;
+    /**
+     * Expected sequence number. Used only by [`StorkvPutConditionKind::ExpectedSeq`].
+     */
+    uint64_t expected_seq;
+    /**
+     * Expected value bytes. Used only by [`StorkvPutConditionKind::ExpectedValue`].
+     */
+    struct StorkvSlice expected_value;
+} StorkvPutCondition;
+
+/**
+ * Outcome of [`crate::storkv_put_if`].
+ *
+ * A `seq` of `0` on a mismatch means the key is absent.
+ */
+typedef struct StorkvPutIfResult {
+    /**
+     * `1` when the write was applied, `0` when the condition did not match.
+     */
+    uint8_t applied;
+    /**
+     * Sequence number of the committed write or of the visible version.
+     */
+    uint64_t seq;
+} StorkvPutIfResult;
+/**
+ * An empty result with the condition not applied.
+ */
+#define StorkvPutIfResult_EMPTY (StorkvPutIfResult){ .applied = 0, .seq = 0 }
 
 /**
  * Retry configuration for the automatic transaction helper.
@@ -418,6 +489,19 @@ StorkvStatus storkv_get_and_touch(struct StorkvScopeHandle *scope, struct Storkv
  * `scope` must be a live scope handle and `key` must reference readable bytes.
  */
 StorkvStatus storkv_delete(struct StorkvScopeHandle *scope, struct StorkvSlice key);
+
+/**
+ * Store one key/value pair when a condition matches.
+ *
+ * `ttl_ms` of `0` writes a permanent key. `out_result.seq` is `0` on a
+ * mismatch when the key is absent.
+ *
+ * # Safety
+ *
+ * `scope` must be a live scope handle. `key`, `condition`, and `value` must
+ * reference readable memory. `out_result` must point to writable storage.
+ */
+StorkvStatus storkv_put_if(struct StorkvScopeHandle *scope, struct StorkvSlice key, const struct StorkvPutCondition *condition, struct StorkvSlice value, uint64_t ttl_ms, struct StorkvPutIfResult *out_result);
 
 /**
  * Begin an explicit transaction on a pooled connection.

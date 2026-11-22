@@ -1,6 +1,10 @@
 use std::ffi::c_void;
 use std::time::Duration;
 
+mod put_if;
+
+pub use put_if::{StorkvPutCondition, StorkvPutConditionKind, StorkvPutIfResult};
+
 /// Status code returned by every FFI function.
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
