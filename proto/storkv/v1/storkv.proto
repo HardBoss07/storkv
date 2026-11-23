@@ -46,6 +46,25 @@ message MergeRequest {
   bytes key = 2;
   int64 counter_delta = 3;
   bytes custom = 4;
+  MergeOp op = 5;
+}
+
+message MergeOp {
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    COUNTER_ADD = 1;
+    CUSTOM = 2;
+    APPEND_BYTES = 3;
+    MAX_I64 = 4;
+    MIN_I64 = 5;
+    BIT_OR = 6;
+    BIT_AND = 7;
+  }
+  Kind kind = 1;
+  int64 i64_value = 2;
+  uint64 u64_value = 3;
+  bytes data = 4;
+  optional uint64 max_len = 5;
 }
 
 message Pair {

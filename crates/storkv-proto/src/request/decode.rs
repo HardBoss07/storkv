@@ -173,6 +173,21 @@ fn decode_merge_request(source: &mut BytesMut) -> Result<Request, StorkvWireErro
     let merge_op = match op_type {
         1 => WireMergeOp::CounterAdd(get_i64_le(source)?),
         2 => WireMergeOp::Custom(get_bytes(source)?),
+        3 => {
+            let has_max_len = get_u8(source)?;
+            let max_len = match has_max_len {
+                0 => None,
+                _ => Some(get_u64_le(source)?),
+            };
+            WireMergeOp::AppendBytes {
+                data: get_bytes(source)?,
+                max_len,
+            }
+        }
+        4 => WireMergeOp::MaxI64(get_i64_le(source)?),
+        5 => WireMergeOp::MinI64(get_i64_le(source)?),
+        6 => WireMergeOp::BitOr(get_u64_le(source)?),
+        7 => WireMergeOp::BitAnd(get_u64_le(source)?),
         _ => return Err(StorkvWireError::Protocol("Invalid merge op type".into())),
     };
     Ok(Request::Merge {

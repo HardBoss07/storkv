@@ -11,6 +11,21 @@ use super::WireScopeOptions;
 pub enum WireMergeOp {
     /// Add an integer delta to the current counter value.
     CounterAdd(i64),
+    /// Append bytes to the current value.
+    AppendBytes {
+        /// Bytes to append.
+        data: Bytes,
+        /// Maximum length of the result, or `None` for no bound.
+        max_len: Option<u64>,
+    },
+    /// Keep the larger of the current value and this integer.
+    MaxI64(i64),
+    /// Keep the smaller of the current value and this integer.
+    MinI64(i64),
+    /// Apply a bitwise OR to the current value as a `u64`.
+    BitOr(u64),
+    /// Apply a bitwise AND to the current value as a `u64`.
+    BitAnd(u64),
     /// Send a caller-defined operand to the merge operator.
     Custom(Bytes),
 }
