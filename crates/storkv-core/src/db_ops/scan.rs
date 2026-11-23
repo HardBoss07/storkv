@@ -1,10 +1,10 @@
+use crate::ScanOptions;
 use crate::StorkvError;
 use crate::db::DbInner;
 use crate::format::{InternalKey, ValueType};
 use crate::memtable::MemTable;
 use crate::mvcc::MergeOperator;
 use crate::scope::Scope;
-use crate::sstable::SstReader;
 use crate::vfs::FileSystem;
 use bytes::Bytes;
 use std::collections::BTreeMap;
@@ -24,6 +24,28 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
         end_key: Option<&[u8]>,
         read_seq: u64,
     ) -> crate::Result<Vec<(Bytes, Bytes)>> {
+        self.scan_with(
+            scope_id,
+            start_key,
+            end_key,
+            read_seq,
+            ScanOptions::default(),
+        )
+    }
+
+    /// Read an ordered range with a limit, reverse order, or keys only.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorkvError::ScopeIdNotFound`] when the scope is unknown.
+    pub fn scan_with(
+        &self,
+        scope_id: u32,
+        start_key: Option<&[u8]>,
+        end_key: Option<&[u8]>,
+        read_seq: u64,
+        options: ScanOptions,
+    ) -> crate::Result<Vec<(Bytes, Bytes)>> {
         let scope = self
             .scopes
             .read()
@@ -36,7 +58,7 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
         }
 
         let now_ms = crate::types::TimestampMs::now().get();
-        let mut state = ScanState::new(read_seq, now_ms);
+        let mut state = ScanState::new(read_seq, now_ms, options);
         self.collect_sstables(&scope, &mut state);
         for memtable in scope.flush_queue.all() {
             collect_memtable_entries(&memtable, &mut state);
@@ -57,28 +79,45 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
         prefix: &[u8],
         read_seq: u64,
     ) -> crate::Result<Vec<(Bytes, Bytes)>> {
-        let mut matches = self.scan(scope_id, Some(prefix), None, read_seq)?;
+        self.scan_prefix_with(scope_id, prefix, read_seq, ScanOptions::default())
+    }
+
+    /// Read prefix matches with a limit, reverse order, or keys only.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorkvError::ScopeIdNotFound`] when the scope is unknown.
+    pub fn scan_prefix_with(
+        &self,
+        scope_id: u32,
+        prefix: &[u8],
+        read_seq: u64,
+        options: ScanOptions,
+    ) -> crate::Result<Vec<(Bytes, Bytes)>> {
+        let mut matches = self.scan_with(scope_id, Some(prefix), None, read_seq, options)?;
         matches.retain(|(key, _)| key.starts_with(prefix));
         Ok(matches)
     }
 }
 
-struct ScanState {
+pub(super) struct ScanState {
     read_seq: u64,
     now_ms: u64,
+    options: ScanOptions,
     versions: BTreeMap<Bytes, BTreeMap<u64, (ValueType, Bytes)>>,
 }
 
 impl ScanState {
-    fn new(read_seq: u64, now_ms: u64) -> Self {
+    fn new(read_seq: u64, now_ms: u64, options: ScanOptions) -> Self {
         Self {
             read_seq,
             now_ms,
+            options,
             versions: BTreeMap::new(),
         }
     }
 
-    fn add_entry(&mut self, encoded_key: Bytes, value: Bytes) {
+    pub(super) fn add_entry(&mut self, encoded_key: Bytes, value: Bytes) {
         let Some(internal_key) = InternalKey::decode(encoded_key) else {
             return;
         };
@@ -91,11 +130,16 @@ impl ScanState {
         // The scan can see the same entry from more than one source while a
         // memtable is still in the flush queue. Sequence numbers are unique
         // per write, so keep one version per seq.
+        let stored = if self.options.keys_only {
+            Bytes::new()
+        } else {
+            value
+        };
         self.versions
             .entry(internal_key.user_key)
             .or_default()
             .entry(internal_key.seq)
-            .or_insert((internal_key.value_type, value));
+            .or_insert((internal_key.value_type, stored));
     }
 
     fn into_results<FS: FileSystem>(
@@ -145,11 +189,26 @@ impl ScanState {
                     Some(value) => value,
                     None => continue,
                 }
+            } else if self.options.keys_only {
+                Bytes::new()
             } else {
                 operands.reverse();
                 merge_operator.full_merge(&key, base_value.as_deref(), &operands)?
             };
+            if self.options.limit == Some(0) {
+                break;
+            }
             results.push((key, value));
+            if self
+                .options
+                .limit
+                .is_some_and(|limit| results.len() >= limit)
+            {
+                break;
+            }
+        }
+        if self.options.reverse {
+            results.reverse();
         }
         Ok(results)
     }
@@ -157,41 +216,6 @@ impl ScanState {
 
 fn is_dropped_before_read<FS: FileSystem>(scope: &Scope<FS>, read_seq: u64) -> bool {
     scope.is_dropped() && read_seq >= scope.drop_seq.load(Ordering::SeqCst)
-}
-
-impl<FS: FileSystem + 'static> DbInner<FS> {
-    fn collect_sstables(&self, scope: &Arc<Scope<FS>>, state: &mut ScanState) {
-        let levels = scope.sst_levels.read();
-        for level in (0..=6).rev() {
-            let Some(files) = levels.get(&level) else {
-                continue;
-            };
-            for file_meta in files {
-                self.collect_sstable_entries(scope, file_meta.file_num, state);
-            }
-        }
-    }
-
-    fn collect_sstable_entries(
-        &self,
-        scope: &Arc<Scope<FS>>,
-        file_num: u64,
-        state: &mut ScanState,
-    ) {
-        let sst_path = scope.scope_dir.join(format!("{:016x}.sst", file_num));
-        let Ok(mut file) = scope.fs.open_file(&sst_path) else {
-            return;
-        };
-        let Ok(reader) = SstReader::open(&mut file) else {
-            return;
-        };
-        let Ok(entries) = reader.read_all_entries(&mut file) else {
-            return;
-        };
-        for (encoded_key, value) in entries {
-            state.add_entry(encoded_key, value);
-        }
-    }
 }
 
 fn collect_memtable_entries(memtable: &MemTable, state: &mut ScanState) {

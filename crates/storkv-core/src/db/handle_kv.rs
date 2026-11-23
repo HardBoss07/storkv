@@ -6,6 +6,7 @@ use std::time::Duration;
 use bytes::Bytes;
 
 use super::{Db, ScopeHandle};
+use crate::ScanOptions;
 
 impl Db {
     /// Read one key from the newest visible state.
@@ -163,11 +164,27 @@ impl Db {
         start_key: Option<K>,
         end_key: Option<K>,
     ) -> crate::Result<Vec<(Bytes, Bytes)>> {
-        self.inner.scan(
+        self.scan_with(scope, start_key, end_key, ScanOptions::default())
+    }
+
+    /// Read an ordered key range with a limit, reverse order, or keys only.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a storage read fails.
+    pub fn scan_with<K: AsRef<[u8]>>(
+        &self,
+        scope: &ScopeHandle,
+        start_key: Option<K>,
+        end_key: Option<K>,
+        options: ScanOptions,
+    ) -> crate::Result<Vec<(Bytes, Bytes)>> {
+        self.inner.scan_with(
             scope.scope_id,
             start_key.as_ref().map(|key| key.as_ref()),
             end_key.as_ref().map(|key| key.as_ref()),
             self.inner.last_visible_seq.load(Ordering::Acquire),
+            options,
         )
     }
 
@@ -181,50 +198,25 @@ impl Db {
         scope: &ScopeHandle,
         prefix: K,
     ) -> crate::Result<Vec<(Bytes, Bytes)>> {
-        self.inner.scan_prefix(
+        self.scan_prefix_with(scope, prefix, ScanOptions::default())
+    }
+
+    /// Read every key with the given prefix, with a limit, reverse order, or keys only.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a storage read fails.
+    pub fn scan_prefix_with<K: AsRef<[u8]>>(
+        &self,
+        scope: &ScopeHandle,
+        prefix: K,
+        options: ScanOptions,
+    ) -> crate::Result<Vec<(Bytes, Bytes)>> {
+        self.inner.scan_prefix_with(
             scope.scope_id,
             prefix.as_ref(),
             self.inner.last_visible_seq.load(Ordering::Acquire),
+            options,
         )
-    }
-
-    /// Metadata (absolute expiry and sequence) of the visible version of a key.
-    pub fn key_meta(
-        &self,
-        scope: &ScopeHandle,
-        key: impl AsRef<[u8]>,
-    ) -> crate::Result<Option<crate::scope::KeyMeta>> {
-        let read_seq = self.inner.last_visible_seq.load(Ordering::Acquire);
-        let scope_state = self
-            .inner
-            .scopes
-            .read()
-            .get(&scope.scope_id)
-            .cloned()
-            .ok_or(crate::StorkvError::ScopeIdNotFound(scope.scope_id))?;
-        scope_state.key_meta(
-            key.as_ref(),
-            crate::types::SequenceNumber::new(read_seq),
-            crate::types::TimestampMs::now(),
-        )
-    }
-
-    /// Remaining TTL in milliseconds.
-    ///
-    /// `None` means the key does not exist. `Some(0)` means the key is
-    /// permanent; any other value is the exact remaining lifetime.
-    pub fn key_ttl_remaining_ms(
-        &self,
-        scope: &ScopeHandle,
-        key: impl AsRef<[u8]>,
-    ) -> crate::Result<Option<u64>> {
-        let Some(meta) = self.key_meta(scope, key)? else {
-            return Ok(None);
-        };
-        if meta.expires_at_ms == 0 {
-            return Ok(Some(0));
-        }
-        let now_ms = crate::types::TimestampMs::now().get();
-        Ok(Some(meta.expires_at_ms.saturating_sub(now_ms)))
     }
 }

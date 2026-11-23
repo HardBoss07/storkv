@@ -82,6 +82,7 @@ mod db;
 mod db_ops;
 mod recovery;
 mod replication;
+mod scan_options;
 mod snapshot;
 mod transaction;
 
@@ -90,6 +91,7 @@ pub use error::{Result, StorkvError};
 pub use mvcc::{MergeOp, PutCondition, PutIfResult};
 pub use options::DbOptions;
 pub use replication::ReplicationRegistry;
+pub use scan_options::ScanOptions;
 pub use scope::{CompactionStyle, Retention, ScopeOptions, StorageMode};
 pub use transaction::Transaction;
 pub use types::{FileNumber, ScopeId, SequenceNumber, TimestampMs};

@@ -5,5 +5,7 @@ mod put_if;
 mod read;
 mod replication;
 mod scan;
+mod scan_sst;
 mod scopes;
+mod ttl;
 mod watch;
