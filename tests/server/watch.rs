@@ -194,9 +194,9 @@ async fn test_configure_consistency_is_per_connection() {
     let mut temp_db = common::TempDb::new("server_consistency_scope");
     let server = Arc::new(
         Server::with_db(Arc::new(temp_db.db.take().unwrap()))
-            .with_role(storkv_server::ReplicationRole::Replica),
+            .with_role(storkv_server::ReplicationRole::Replica)
+            .with_consistency(Consistency::Strong),
     );
-    server.set_consistency(Consistency::Strong);
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let serving = server.clone();

@@ -65,8 +65,20 @@ impl Server {
     pub fn with_role(mut self, role: ReplicationRole) -> Self {
         self.role = role;
         if role == ReplicationRole::Replica {
-            self.set_consistency(storkv_proto::Consistency::Eventual);
+            self = self.with_consistency(storkv_proto::Consistency::Eventual);
         }
+        self
+    }
+
+    /// Set the default read consistency for new connections.
+    ///
+    /// Call this only while building the server. A later
+    /// `ConfigureConsistency` request changes only that connection.
+    pub fn with_consistency(self, consistency: storkv_proto::Consistency) -> Self {
+        let (mode, max_lag_ms) = consistency.to_wire();
+        self.consistency.store(mode, Ordering::Relaxed);
+        self.consistency_max_lag_ms
+            .store(max_lag_ms, Ordering::Relaxed);
         self
     }
 
@@ -104,15 +116,7 @@ impl Server {
         self.primary_uri.as_deref()
     }
 
-    /// Set the consistency level that later requests observe.
-    pub fn set_consistency(&self, consistency: storkv_proto::Consistency) {
-        let (mode, max_lag_ms) = consistency.to_wire();
-        self.consistency.store(mode, Ordering::Relaxed);
-        self.consistency_max_lag_ms
-            .store(max_lag_ms, Ordering::Relaxed);
-    }
-
-    /// Return the current consistency level.
+    /// Return the default consistency for new connections.
     pub fn consistency(&self) -> storkv_proto::Consistency {
         let mode = self.consistency.load(Ordering::Relaxed);
         let max_lag_ms = self.consistency_max_lag_ms.load(Ordering::Relaxed);

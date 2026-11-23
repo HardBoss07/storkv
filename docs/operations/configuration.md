@@ -207,7 +207,7 @@ A replica serves reads at its configured consistency level. The default for a re
 
 The consistency level is per connection. Each connection starts from the server default. A `ConfigureConsistency` request changes only the connection that sent it. One client cannot change the read policy of another client.
 
-The server default is set at startup with `Server::set_consistency`. `StorkvPoolOptions::consistency` applies to each new networked connection that the pool opens.
+The server default is set at startup with `Server::with_consistency`. `StorkvPoolOptions::consistency` applies to each new networked connection that the pool opens.
 
 Replication is asynchronous. It has no quorum, leader election, or automatic failover.
 

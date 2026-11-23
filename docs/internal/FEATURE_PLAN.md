@@ -47,12 +47,12 @@ Do not introduce external crates for the following items; implement them using `
     - `BitOr(u64)` and `BitAnd(u64)` for lock-free bitmask and feature-flag updates.
   - **Behavior:** Ensure associative folding runs identically during point-read merge resolution and SSTable compaction, and expose typed helpers in `storkv-sdk`.
 
-- [ ] **Bounded Cursor-Based `Scan` and `ScanPrefix`**
+- [x] **Bounded Cursor-Based `Scan` and `ScanPrefix`**
   - **Target:** `crates/storkv-core/src/db/handle_kv.rs`, `crates/storkv-proto`, `crates/storkv-server/src/compat/`
   - **Description:** Extend `Db::scan`, `Db::scan_prefix`, `Request::Scan`, and `Request::ScanPrefix` with `limit: Option<usize>`, `reverse: bool`, and `keys_only: bool`.
   - **Behavior:** Stop iterator traversal immediately once `limit` live, non-expired entries are collected so paginated reads execute in `O(limit)` time and memory rather than materializing the entire scope. Skip value decompression/cloning when `keys_only` is `true`. Update Redis `SCAN` and etcd `/v3/kv/range` handlers to pass `limit` and `keys_only` down to `storkv-core`.
 
-- [ ] **Active TTL Expiration Tracker & `ChangeEvent::Expired`**
+- [x] **Active TTL Expiration Tracker & `ChangeEvent::Expired`**
   - **Target:** `crates/storkv-core/src/db/`, `crates/storkv-core/src/scope/options.rs`
   - **Description:** Add an opt-in per-scope background expiration tracker (`active_ttl_tracking: bool` in `ScopeOptions`) using a min-heap (`BinaryHeap<Reverse<(u64, Bytes)>>`) fed whenever a key is written with a non-zero `expires_at_ms`.
   - **Behavior:** Periodically pop due deadlines, verify that the key's current MVCC entry still matches the expired deadline (ignoring keys that were deleted or overwritten with a newer TTL), emit `ChangeEvent::Expired` to `watch_registry`, and append an expiration tombstone so watch subscribers receive timely expiry events without polling.

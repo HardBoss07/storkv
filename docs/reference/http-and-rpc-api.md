@@ -295,7 +295,7 @@ curl -sS "http://127.0.0.1:8080/v1/scopes/default/scan?prefix_b64=dXNlcjo="
 | `end_b64`    | Base64 end key, exclusive       |
 | `end`        | UTF-8 end key, when not empty   |
 
-A scan has no limit or page parameter. It returns every matching pair. A scan with no bounds returns the whole scope.
+A scan returns every matching pair. A scan with no bounds returns the whole scope. Native and Redis clients can bound a scan with a limit. The HTTP query parameters above do not take a limit.
 
 ## Transactions
 
