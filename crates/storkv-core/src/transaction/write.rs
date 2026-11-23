@@ -133,14 +133,10 @@ impl<FS: FileSystem + 'static> Transaction<FS> {
         key: K,
         op: MergeOp,
     ) -> crate::Result<()> {
-        let operand = match op {
-            MergeOp::CounterAdd(value) => Bytes::from(value.to_string()),
-            MergeOp::Custom(value) => value,
-        };
         self.ctx.merge(
             scope.scope_id,
             Bytes::copy_from_slice(key.as_ref()),
-            operand,
+            op.to_operand_bytes(),
         );
         Ok(())
     }

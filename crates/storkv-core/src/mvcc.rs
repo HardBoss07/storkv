@@ -1,6 +1,20 @@
-use crate::error::Result;
-use bytes::Bytes;
 use std::collections::{BTreeMap, HashSet};
+
+use bytes::Bytes;
+
+use crate::error::Result;
+
+mod operand;
+mod operator;
+
+pub use operator::DefaultMergeOperator;
+
+impl MergeOp {
+    /// Encode this operation as stored operand bytes.
+    pub(crate) fn to_operand_bytes(&self) -> Bytes {
+        operand::encode(self)
+    }
+}
 
 /// A merge operand supplied by a caller.
 ///
@@ -11,6 +25,24 @@ use std::collections::{BTreeMap, HashSet};
 pub enum MergeOp {
     /// Add an integer delta to the current counter value.
     CounterAdd(i64),
+    /// Append bytes to the current value.
+    ///
+    /// When `max_len` is `Some`, the result keeps only the newest bytes up to
+    /// that length.
+    AppendBytes {
+        /// Bytes to append.
+        data: Bytes,
+        /// Maximum length of the result, or `None` for no bound.
+        max_len: Option<usize>,
+    },
+    /// Keep the larger of the current value and this integer.
+    MaxI64(i64),
+    /// Keep the smaller of the current value and this integer.
+    MinI64(i64),
+    /// Apply a bitwise OR to the current value as a `u64`.
+    BitOr(u64),
+    /// Apply a bitwise AND to the current value as a `u64`.
+    BitAnd(u64),
     /// Send a caller-defined operand to the configured merge operator.
     Custom(Bytes),
 }
@@ -35,63 +67,6 @@ pub trait MergeOperator: Send + Sync {
     ///
     /// Return `None` to skip the partial merge and defer to [`Self::full_merge`].
     fn partial_merge(&self, key: &[u8], left: &[u8], right: &[u8]) -> Option<Bytes>;
-}
-
-/// Built-in merge operator that implements [`MergeOp::CounterAdd`].
-///
-/// Values are read as 8-byte little-endian integers or as ASCII integers. The
-/// result is stored as an ASCII decimal string.
-#[derive(Default, Clone)]
-pub struct DefaultMergeOperator;
-
-impl MergeOperator for DefaultMergeOperator {
-    fn full_merge(
-        &self,
-        _key: &[u8],
-        existing_value: Option<&[u8]>,
-        operands: &[Bytes],
-    ) -> Result<Bytes> {
-        let mut total: i64 = if let Some(base) = existing_value {
-            if let Ok(arr) = <[u8; 8]>::try_from(base) {
-                i64::from_le_bytes(arr)
-            } else if let Ok(s) = std::str::from_utf8(base) {
-                s.parse::<i64>().unwrap_or(0)
-            } else {
-                0
-            }
-        } else {
-            0
-        };
-
-        for op in operands {
-            let val = if let Ok(arr) = <[u8; 8]>::try_from(op.as_ref()) {
-                i64::from_le_bytes(arr)
-            } else if let Ok(s) = std::str::from_utf8(op) {
-                s.parse::<i64>().unwrap_or(0)
-            } else {
-                0
-            };
-            total = total.wrapping_add(val);
-        }
-
-        // Store back formatted as ASCII string or 8-byte LE
-        Ok(Bytes::from(total.to_string()))
-    }
-
-    fn partial_merge(&self, _key: &[u8], left: &[u8], right: &[u8]) -> Option<Bytes> {
-        let v1 = if let Ok(arr) = <[u8; 8]>::try_from(left) {
-            i64::from_le_bytes(arr)
-        } else {
-            std::str::from_utf8(left).ok()?.parse::<i64>().ok()?
-        };
-        let v2 = if let Ok(arr) = <[u8; 8]>::try_from(right) {
-            i64::from_le_bytes(arr)
-        } else {
-            std::str::from_utf8(right).ok()?.parse::<i64>().ok()?
-        };
-        let sum = v1.wrapping_add(v2);
-        Some(Bytes::from(sum.to_string()))
-    }
 }
 
 /// One pending mutation inside a transaction write set.
@@ -150,7 +125,7 @@ pub enum PutIfResult {
     },
 }
 
-/// Transaction with Read-Your-Own-Writes and OCC ReadSet validation
+/// Transaction with Read-Your-Own-Writes and OCC ReadSet validation.
 #[derive(Clone)]
 pub struct TransactionContext {
     /// Sequence number that the transaction reads at.
