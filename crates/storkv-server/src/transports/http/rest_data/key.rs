@@ -133,6 +133,68 @@ pub(crate) async fn merge(
                 );
             }
         },
+        Some("append") => match parsed.get("operand_b64").and_then(Value::as_str) {
+            Some(encoded) => match decode_base64(encoded) {
+                Some(bytes) => WireMergeOp::AppendBytes {
+                    data: ProtoBytes::from(bytes),
+                    max_len: parsed.get("max_len").and_then(Value::as_u64),
+                },
+                None => {
+                    return json_error(
+                        StatusCode::BAD_REQUEST,
+                        "invalid_body",
+                        "invalid operand_b64",
+                    );
+                }
+            },
+            None => {
+                return json_error(
+                    StatusCode::BAD_REQUEST,
+                    "invalid_body",
+                    "missing operand_b64",
+                );
+            }
+        },
+        Some("max" | "max_i64") => match parsed.get("value").and_then(Value::as_i64) {
+            Some(value) => WireMergeOp::MaxI64(value),
+            None => {
+                return json_error(
+                    StatusCode::BAD_REQUEST,
+                    "invalid_body",
+                    "missing or invalid value",
+                );
+            }
+        },
+        Some("min" | "min_i64") => match parsed.get("value").and_then(Value::as_i64) {
+            Some(value) => WireMergeOp::MinI64(value),
+            None => {
+                return json_error(
+                    StatusCode::BAD_REQUEST,
+                    "invalid_body",
+                    "missing or invalid value",
+                );
+            }
+        },
+        Some("bit_or") => match parsed.get("bits").and_then(Value::as_u64) {
+            Some(bits) => WireMergeOp::BitOr(bits),
+            None => {
+                return json_error(
+                    StatusCode::BAD_REQUEST,
+                    "invalid_body",
+                    "missing or invalid bits",
+                );
+            }
+        },
+        Some("bit_and") => match parsed.get("bits").and_then(Value::as_u64) {
+            Some(bits) => WireMergeOp::BitAnd(bits),
+            None => {
+                return json_error(
+                    StatusCode::BAD_REQUEST,
+                    "invalid_body",
+                    "missing or invalid bits",
+                );
+            }
+        },
         _ => WireMergeOp::CounterAdd(parsed.get("delta").and_then(Value::as_i64).unwrap_or(1)),
     };
     response_payload(state.dispatch(Request::Merge { scope_id, key, op }, &headers))

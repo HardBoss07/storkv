@@ -4,10 +4,12 @@ use std::time::Duration;
 
 use storkv_proto::{Request, WireMergeOp};
 
+use crate::transports::grpc::generated::merge_op;
+
 use super::super::conversions::{fallback_scope, mutation, optional_bytes, scope_options};
 use super::super::{
-    CommitRequest, CreateScopeRequest, DeleteRangeRequest, DeleteRequest, GetRequest, MergeRequest,
-    PutRequest, ScanRequest, ScopeRef,
+    CommitRequest, CreateScopeRequest, DeleteRangeRequest, DeleteRequest, GetRequest, MergeOp,
+    MergeRequest, PutRequest, ScanRequest, ScopeRef,
 };
 
 pub(super) fn get(message: &GetRequest) -> Request {
@@ -52,15 +54,31 @@ pub(super) fn delete_range(message: &DeleteRangeRequest) -> Request {
 }
 
 pub(super) fn merge(message: &MergeRequest) -> Request {
-    let op = if message.custom.is_empty() {
-        WireMergeOp::CounterAdd(message.counter_delta)
-    } else {
-        WireMergeOp::Custom(bytes::Bytes::from(message.custom.clone()))
+    let op = match message.op.as_ref() {
+        Some(op) if op.kind() != merge_op::Kind::Unspecified => typed_merge_op(op),
+        _ if message.custom.is_empty() => WireMergeOp::CounterAdd(message.counter_delta),
+        _ => WireMergeOp::Custom(bytes::Bytes::from(message.custom.clone())),
     };
     Request::Merge {
         scope_id: message.scope_id,
         key: bytes::Bytes::from(message.key.clone()),
         op,
+    }
+}
+
+fn typed_merge_op(op: &MergeOp) -> WireMergeOp {
+    match op.kind() {
+        merge_op::Kind::CounterAdd => WireMergeOp::CounterAdd(op.i64_value),
+        merge_op::Kind::Custom => WireMergeOp::Custom(bytes::Bytes::from(op.data.clone())),
+        merge_op::Kind::AppendBytes => WireMergeOp::AppendBytes {
+            data: bytes::Bytes::from(op.data.clone()),
+            max_len: op.max_len,
+        },
+        merge_op::Kind::MaxI64 => WireMergeOp::MaxI64(op.i64_value),
+        merge_op::Kind::MinI64 => WireMergeOp::MinI64(op.i64_value),
+        merge_op::Kind::BitOr => WireMergeOp::BitOr(op.u64_value),
+        merge_op::Kind::BitAnd => WireMergeOp::BitAnd(op.u64_value),
+        merge_op::Kind::Unspecified => WireMergeOp::CounterAdd(op.i64_value),
     }
 }
 

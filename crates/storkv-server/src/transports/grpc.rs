@@ -24,9 +24,10 @@ use generated::storkv_admin_server::StorkvAdminServer;
 use generated::storkv_server::StorkvServer;
 pub use generated::{
     BackupEntry, ChangeEvent, CommitReply, CommitRequest, CreateScopeRequest, DeleteRangeRequest,
-    DeleteRequest, Empty, GetReply, GetRequest, ListBackupsReply, MergeRequest, Mutation, Pair,
-    PingReply, PutRequest, ReadEntry, ScanReply, ScanRequest, ScopeOptions as ProtoScopeOptions,
-    ScopeRef, TelemetryReply, VerifyBackupReply, VerifyBackupRequest, WatchRequest,
+    DeleteRequest, Empty, GetReply, GetRequest, ListBackupsReply, MergeOp, MergeRequest, Mutation,
+    Pair, PingReply, PutRequest, ReadEntry, ScanReply, ScanRequest,
+    ScopeOptions as ProtoScopeOptions, ScopeRef, TelemetryReply, VerifyBackupReply,
+    VerifyBackupRequest, WatchRequest,
 };
 
 const WATCH_CHANNEL_CAPACITY: usize = 128;

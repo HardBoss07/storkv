@@ -115,6 +115,14 @@ impl Server {
         let merge_op = match op {
             WireMergeOp::CounterAdd(delta) => MergeOp::CounterAdd(delta),
             WireMergeOp::Custom(operand) => MergeOp::Custom(operand),
+            WireMergeOp::AppendBytes { data, max_len } => MergeOp::AppendBytes {
+                data,
+                max_len: max_len.map(|max_len| usize::try_from(max_len).unwrap_or(usize::MAX)),
+            },
+            WireMergeOp::MaxI64(value) => MergeOp::MaxI64(value),
+            WireMergeOp::MinI64(value) => MergeOp::MinI64(value),
+            WireMergeOp::BitOr(bits) => MergeOp::BitOr(bits),
+            WireMergeOp::BitAnd(bits) => MergeOp::BitAnd(bits),
             _ => {
                 return Response::Error(StorkvWireError::InvalidOperation(
                     "unsupported merge operator".into(),

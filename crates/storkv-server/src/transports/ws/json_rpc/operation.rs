@@ -153,6 +153,34 @@ fn merge(state: &HttpState, value: &Value) -> Result<Request, String> {
     let key = key_field(value, "key", "key_b64")?;
     let merge_op = match value.get("op_kind").and_then(Value::as_str) {
         Some("custom") => WireMergeOp::Custom(key_field(value, "operand", "operand_b64")?),
+        Some("append") => WireMergeOp::AppendBytes {
+            data: key_field(value, "operand", "operand_b64")?,
+            max_len: value.get("max_len").and_then(Value::as_u64),
+        },
+        Some("max" | "max_i64") => WireMergeOp::MaxI64(
+            value
+                .get("value")
+                .and_then(Value::as_i64)
+                .ok_or_else(|| UNKNOWN_OPERATION.to_string())?,
+        ),
+        Some("min" | "min_i64") => WireMergeOp::MinI64(
+            value
+                .get("value")
+                .and_then(Value::as_i64)
+                .ok_or_else(|| UNKNOWN_OPERATION.to_string())?,
+        ),
+        Some("bit_or") => WireMergeOp::BitOr(
+            value
+                .get("bits")
+                .and_then(Value::as_u64)
+                .ok_or_else(|| UNKNOWN_OPERATION.to_string())?,
+        ),
+        Some("bit_and") => WireMergeOp::BitAnd(
+            value
+                .get("bits")
+                .and_then(Value::as_u64)
+                .ok_or_else(|| UNKNOWN_OPERATION.to_string())?,
+        ),
         _ => WireMergeOp::CounterAdd(value.get("delta").and_then(Value::as_i64).unwrap_or(1)),
     };
     Ok(Request::Merge {
