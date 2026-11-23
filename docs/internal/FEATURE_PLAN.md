@@ -39,7 +39,7 @@ Do not introduce external crates for the following items; implement them using `
   - **Description:** Add a single-round-trip `PutIf` operation supporting `Condition::Absent`, `Condition::Present`, `Condition::ExpectedSeq(u64)`, and `Condition::ExpectedValue(Bytes)` with an optional TTL.
   - **Behavior:** Evaluate the condition directly inside the single-writer commit path (`db_ops/commit`) without allocating a full OCC read-set or triggering retry loops. Return the resulting `seq` on success or the current metadata/mismatch reason on failure. Refactor `Tree::compare_and_swap` in `storkv-core/src/compat.rs` to delegate to `PutIf`.
 
-- [ ] **Extended Lock-Free Merge Operators (`MergeOp`)**
+- [x] **Extended Lock-Free Merge Operators (`MergeOp`)**
   - **Target:** `crates/storkv-core/src/mvcc.rs`, `crates/storkv-core/src/compaction.rs`, `crates/storkv-proto`, `crates/storkv-sdk`
   - **Description:** Expand `MergeOp` beyond `CounterAdd(i64)` and `Custom(Bytes)` to support common backend read-free mutations:
     - `AppendBytes { data: Bytes, max_len: Option<usize> }` for bounded event/log appending.
