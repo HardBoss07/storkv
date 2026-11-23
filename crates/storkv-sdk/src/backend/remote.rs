@@ -195,6 +195,7 @@ pub(super) async fn provision(
                 min_ttl: definition.min_ttl,
                 max_ttl: definition.max_ttl,
                 allow_permanent: definition.allow_permanent,
+                active_ttl_tracking: false,
             },
         )
         .await

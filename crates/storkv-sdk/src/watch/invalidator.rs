@@ -116,7 +116,8 @@ fn wire_seq(event: &WireChangeEvent) -> u64 {
         WireChangeEvent::Put { seq, .. }
         | WireChangeEvent::Delete { seq, .. }
         | WireChangeEvent::DropScope { seq, .. }
-        | WireChangeEvent::InvalidateScope { seq, .. } => *seq,
+        | WireChangeEvent::InvalidateScope { seq, .. }
+        | WireChangeEvent::Expired { seq, .. } => *seq,
         _ => 0,
     }
 }
@@ -133,6 +134,11 @@ fn apply_wire_event(cache: &ScopeCache, event: &WireChangeEvent, scope_id: u32) 
             cache.store_event(key, Some(value.clone()), *expires_at_ms)
         }
         WireChangeEvent::Delete {
+            scope_id: event_scope,
+            key,
+            ..
+        }
+        | WireChangeEvent::Expired {
             scope_id: event_scope,
             key,
             ..

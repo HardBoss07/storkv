@@ -41,6 +41,8 @@ pub enum StorkvEventKind {
     Delete = 1,
     /// A drop event for one scope.
     DropScope = 2,
+    /// A key reached its time to live deadline and expired.
+    Expired = 3,
 }
 
 /// Owned byte buffer allocated by the FFI layer.

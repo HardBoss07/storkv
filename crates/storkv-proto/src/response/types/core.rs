@@ -68,6 +68,15 @@ pub enum WireChangeEvent {
         /// Commit sequence number of the change.
         seq: u64,
     },
+    /// A key reached its time to live deadline and expired.
+    Expired {
+        /// Identifier of the scope.
+        scope_id: u32,
+        /// User key that expired.
+        key: Bytes,
+        /// Commit sequence number of the expiration.
+        seq: u64,
+    },
 }
 
 /// Outcome of an atomic conditional write.

@@ -62,6 +62,10 @@ fn parse_scope_body(body: &[u8]) -> Option<(String, WireScopeOptions)> {
                 .get("allow_permanent")
                 .and_then(Value::as_bool)
                 .unwrap_or(true),
+            active_ttl_tracking: parsed
+                .get("active_ttl_tracking")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
         },
     ))
 }

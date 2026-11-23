@@ -36,7 +36,9 @@ impl ScopeCache {
                 expires_at_ms,
                 ..
             } => self.store_event(key, Some(value.clone()), *expires_at_ms),
-            ChangeEvent::Delete { key, .. } => self.store(key, None),
+            ChangeEvent::Delete { key, .. } | ChangeEvent::Expired { key, .. } => {
+                self.store(key, None)
+            }
             ChangeEvent::DropScope { .. } | ChangeEvent::InvalidateScope { .. } => self.clear(),
             _ => {}
         }

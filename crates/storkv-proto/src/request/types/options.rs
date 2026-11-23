@@ -17,11 +17,12 @@ pub struct WireScopeOptions {
     pub max_ttl: Option<Duration>,
     /// Permit writes without an expiry.
     pub allow_permanent: bool,
+    /// Actively track TTL deadlines and emit expiry events.
+    pub active_ttl_tracking: bool,
 }
 
 /// Durability policy for committed writes.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[non_exhaustive]
 pub enum WireDurability {
     /// Sync the WAL on every commit before the commit returns.
     StrictFsync,
@@ -34,7 +35,6 @@ pub enum WireDurability {
 
 /// Key retention policy for a scope.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[non_exhaustive]
 pub enum WireRetention {
     /// Keep keys until an explicit delete arrives.
     Permanent,
@@ -49,7 +49,6 @@ pub enum WireRetention {
 
 /// Compaction strategy for one scope.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
 pub enum WireCompactionStyle {
     /// Size-tiered levels L0 through L6.
     Leveled,

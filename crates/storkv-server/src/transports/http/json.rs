@@ -254,6 +254,12 @@ pub(crate) fn watch_event_value(event: WireChangeEvent) -> Value {
             "scope_id": scope_id,
             "seq": seq,
         }),
+        WireChangeEvent::Expired { scope_id, key, seq } => json!({
+            "kind": "expired",
+            "scope_id": scope_id,
+            "key": encode_base64(&key),
+            "seq": seq,
+        }),
         _ => json!(null),
     }
 }

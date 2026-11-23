@@ -69,6 +69,7 @@ pub(super) fn scope_options(options: Option<ProtoScopeOptions>) -> WireScopeOpti
             .has_max_ttl
             .then(|| Duration::from_millis(options.max_ttl_ms)),
         allow_permanent: options.allow_permanent.unwrap_or(true),
+        active_ttl_tracking: false,
     }
 }
 
@@ -136,6 +137,14 @@ pub(super) fn convert_event(event: storkv_core::watch::ChangeEvent) -> Option<Ch
             kind: 3,
             scope_id,
             key: Vec::new(),
+            value: Vec::new(),
+            seq,
+            expires_at_ms: 0,
+        }),
+        storkv_core::watch::ChangeEvent::Expired { scope_id, key, seq } => Some(ChangeEvent {
+            kind: 4,
+            scope_id,
+            key: key.to_vec(),
             value: Vec::new(),
             seq,
             expires_at_ms: 0,

@@ -157,6 +157,12 @@ fn encode_change_event(destination: &mut BytesMut, event: &WireChangeEvent) {
             destination.put_u32_le(*scope_id);
             destination.put_u64_le(*seq);
         }
+        WireChangeEvent::Expired { scope_id, key, seq } => {
+            destination.put_u8(5);
+            destination.put_u32_le(*scope_id);
+            put_bytes(destination, key);
+            destination.put_u64_le(*seq);
+        }
     }
 }
 

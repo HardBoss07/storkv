@@ -249,6 +249,9 @@ pub(super) fn wire_change_event(event: storkv_core::watch::ChangeEvent) -> Optio
         storkv_core::watch::ChangeEvent::InvalidateScope { scope_id, seq } => {
             Some(WireChangeEvent::InvalidateScope { scope_id, seq })
         }
+        storkv_core::watch::ChangeEvent::Expired { scope_id, key, seq } => {
+            Some(WireChangeEvent::Expired { scope_id, key, seq })
+        }
         _ => None,
     }
 }

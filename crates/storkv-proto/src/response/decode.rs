@@ -268,6 +268,12 @@ fn decode_change_event(source: &mut BytesMut) -> Result<WireChangeEvent, StorkvW
             let seq = get_u64_le(source)?;
             Ok(WireChangeEvent::InvalidateScope { scope_id, seq })
         }
+        5 => {
+            let scope_id = get_u32_le(source)?;
+            let key = get_bytes(source)?;
+            let seq = get_u64_le(source)?;
+            Ok(WireChangeEvent::Expired { scope_id, key, seq })
+        }
         _ => Err(StorkvWireError::Protocol(
             "Unknown watch event variant".into(),
         )),

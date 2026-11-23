@@ -17,10 +17,10 @@ fn decode_scope_options(source: &mut BytesMut) -> Result<WireScopeOptions, Stork
     let durability = decode_durability(source)?;
     let retention = decode_retention(source)?;
     let prefix_bloom_len = decode_prefix_bloom_len(source)?;
-    let (min_ttl, max_ttl, allow_permanent) = if source.remaining() > 0 {
+    let (min_ttl, max_ttl, allow_permanent, active_ttl_tracking) = if source.remaining() > 0 {
         decode_ttl_guardrails(source)?
     } else {
-        (None, None, true)
+        (None, None, true, false)
     };
     Ok(WireScopeOptions {
         durability,
@@ -29,12 +29,13 @@ fn decode_scope_options(source: &mut BytesMut) -> Result<WireScopeOptions, Stork
         min_ttl,
         max_ttl,
         allow_permanent,
+        active_ttl_tracking,
     })
 }
 
 fn decode_ttl_guardrails(
     source: &mut BytesMut,
-) -> Result<(Option<Duration>, Option<Duration>, bool), StorkvWireError> {
+) -> Result<(Option<Duration>, Option<Duration>, bool, bool), StorkvWireError> {
     let flags = get_u8(source)?;
     let min_ttl = if flags & 2 != 0 {
         Some(Duration::from_millis(get_u64_le(source)?))
@@ -46,7 +47,7 @@ fn decode_ttl_guardrails(
     } else {
         None
     };
-    Ok((min_ttl, max_ttl, flags & 1 != 0))
+    Ok((min_ttl, max_ttl, flags & 1 != 0, flags & 8 != 0))
 }
 
 fn decode_durability(source: &mut BytesMut) -> Result<WireDurability, StorkvWireError> {

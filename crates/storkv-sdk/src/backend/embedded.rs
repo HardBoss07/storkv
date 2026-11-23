@@ -168,6 +168,7 @@ pub(super) async fn provision(db: &Db, definition: &ScopeDefinition) -> Result<(
             min_ttl: definition.min_ttl,
             max_ttl: definition.max_ttl,
             allow_permanent: definition.allow_permanent,
+            active_ttl_tracking: false,
         };
         match db.create_scope(definition.name.clone(), options) {
             Ok(_) | Err(storkv_core::StorkvError::ScopeAlreadyExists(_)) => Ok(()),

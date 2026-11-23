@@ -55,6 +55,15 @@ pub enum ChangeEvent {
         /// Identifier of the affected scope.
         scope_id: u32,
     },
+    /// A key reached its time to live deadline and expired.
+    Expired {
+        /// User key that expired.
+        key: Bytes,
+        /// Commit sequence number of the expiration tombstone.
+        seq: u64,
+        /// Identifier of the scope.
+        scope_id: u32,
+    },
 }
 
 const _: () = assert!(std::mem::size_of::<ChangeEvent>() <= 96);
@@ -67,6 +76,7 @@ impl ChangeEvent {
             ChangeEvent::Delete { seq, .. } => *seq,
             ChangeEvent::DropScope { seq, .. } => *seq,
             ChangeEvent::InvalidateScope { seq, .. } => *seq,
+            ChangeEvent::Expired { seq, .. } => *seq,
         }
     }
 
@@ -77,6 +87,7 @@ impl ChangeEvent {
             ChangeEvent::Delete { scope_id, .. } => *scope_id,
             ChangeEvent::DropScope { scope_id, .. } => *scope_id,
             ChangeEvent::InvalidateScope { scope_id, .. } => *scope_id,
+            ChangeEvent::Expired { scope_id, .. } => *scope_id,
         }
     }
 
@@ -86,6 +97,7 @@ impl ChangeEvent {
             ChangeEvent::Delete { key, .. } => key.len(),
             ChangeEvent::DropScope { .. } => 0,
             ChangeEvent::InvalidateScope { .. } => 0,
+            ChangeEvent::Expired { key, .. } => key.len(),
         }
     }
 }

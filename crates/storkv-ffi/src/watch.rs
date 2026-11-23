@@ -120,6 +120,7 @@ pub unsafe extern "C" fn storkv_watch_next(
                     WatchEventKind::Put => StorkvEventKind::Put,
                     WatchEventKind::Delete => StorkvEventKind::Delete,
                     WatchEventKind::DropScope => StorkvEventKind::DropScope,
+                    WatchEventKind::Expired => StorkvEventKind::Expired,
                 };
                 unsafe {
                     *out_event = StorkvWatchEvent {

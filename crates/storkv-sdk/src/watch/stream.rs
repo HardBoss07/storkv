@@ -161,6 +161,23 @@ fn map_core_event(event: ChangeEvent, scope_id: u32, prefix: &[u8]) -> Option<Wa
                 expires_at_ms: None,
             })
         }
+        ChangeEvent::Expired {
+            key,
+            seq,
+            scope_id: event_scope,
+        } => {
+            if event_scope != scope_id || !key.starts_with(prefix) {
+                return None;
+            }
+            Some(WatchEvent {
+                kind: WatchEventKind::Expired,
+                scope_id: event_scope,
+                seq,
+                key,
+                value: None,
+                expires_at_ms: None,
+            })
+        }
         _ => None,
     }
 }
@@ -215,6 +232,23 @@ fn map_wire_event(event: WireChangeEvent, scope_id: u32, prefix: &[u8]) -> Optio
                 scope_id: event_scope,
                 seq,
                 key: Bytes::new(),
+                value: None,
+                expires_at_ms: None,
+            })
+        }
+        WireChangeEvent::Expired {
+            scope_id: event_scope,
+            key,
+            seq,
+        } => {
+            if event_scope != scope_id || !key.starts_with(prefix) {
+                return None;
+            }
+            Some(WatchEvent {
+                kind: WatchEventKind::Expired,
+                scope_id: event_scope,
+                seq,
+                key,
                 value: None,
                 expires_at_ms: None,
             })

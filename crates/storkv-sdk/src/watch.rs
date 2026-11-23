@@ -24,6 +24,8 @@ pub enum WatchEventKind {
     Delete,
     /// A drop event for one scope.
     DropScope,
+    /// A key reached its time to live deadline and expired.
+    Expired,
 }
 
 /// One change delivered by a watch stream.

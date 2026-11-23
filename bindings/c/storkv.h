@@ -125,6 +125,10 @@ enum StorkvEventKind
      * A drop event for one scope.
      */
     DropScope = 2,
+    /**
+     * A key reached its time to live deadline and expired.
+     */
+    Expired = 3,
 };
 #ifndef __cplusplus
 #if __STDC_VERSION__ >= 202311L
