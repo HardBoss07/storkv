@@ -95,7 +95,7 @@ pub use scope::Scope;
 pub use transaction::Transaction;
 pub use watch::{WatchEvent, WatchEventKind, WatchStream};
 
-pub use storkv_core::{CompactionStyle, Durability, PutCondition, PutIfResult, Retention};
+pub use storkv_core::{CompactionStyle, Durability, MergeOp, PutCondition, PutIfResult, Retention};
 pub use storkv_proto::Consistency;
 
 const _: () = {

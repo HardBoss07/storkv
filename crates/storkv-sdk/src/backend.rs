@@ -136,6 +136,18 @@ impl Conn {
         }
     }
 
+    pub(crate) async fn merge(
+        &self,
+        scope: &ResolvedScope,
+        key: &[u8],
+        op: &storkv_core::MergeOp,
+    ) -> Result<()> {
+        match self {
+            Conn::Embedded(db) => embedded::merge(db, scope, key, op).await,
+            Conn::Networked { client, .. } => remote::merge(client, scope, key, op).await,
+        }
+    }
+
     pub(crate) async fn delete(&self, scope: &ResolvedScope, key: &[u8]) -> Result<()> {
         match self {
             Conn::Embedded(db) => embedded::delete(db, scope, key).await,
@@ -183,4 +195,26 @@ impl Conn {
             }
         }
     }
+}
+
+/// Convert a core merge operation to its wire form.
+pub(crate) fn wire_merge_op(op: &storkv_core::MergeOp) -> Result<storkv_proto::WireMergeOp> {
+    use storkv_core::MergeOp;
+    Ok(match op {
+        MergeOp::CounterAdd(delta) => storkv_proto::WireMergeOp::CounterAdd(*delta),
+        MergeOp::Custom(operand) => storkv_proto::WireMergeOp::Custom(operand.clone()),
+        MergeOp::AppendBytes { data, max_len } => storkv_proto::WireMergeOp::AppendBytes {
+            data: data.clone(),
+            max_len: max_len.map(|max_len| max_len as u64),
+        },
+        MergeOp::MaxI64(value) => storkv_proto::WireMergeOp::MaxI64(*value),
+        MergeOp::MinI64(value) => storkv_proto::WireMergeOp::MinI64(*value),
+        MergeOp::BitOr(bits) => storkv_proto::WireMergeOp::BitOr(*bits),
+        MergeOp::BitAnd(bits) => storkv_proto::WireMergeOp::BitAnd(*bits),
+        _ => {
+            return Err(crate::SdkError::Unsupported(
+                "unknown merge operator".into(),
+            ));
+        }
+    })
 }

@@ -2,6 +2,8 @@
 
 use std::time::Duration;
 
+use bytes::Bytes;
+
 use crate::error::Result;
 use crate::scope::Scope;
 
@@ -71,6 +73,123 @@ impl Transaction {
                 Ok(())
             }
         }
+    }
+
+    /// Buffer a merge operation.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the key is invalid or the operator is unknown.
+    pub async fn merge<K: AsRef<[u8]>>(
+        &mut self,
+        scope: &Scope,
+        key: K,
+        op: storkv_core::MergeOp,
+    ) -> Result<()> {
+        let resolved = self.resolve(scope).await?;
+        match &mut self.inner {
+            TxInner::Embedded(transaction) => transaction
+                .merge(&resolved_core(&resolved), key, op)
+                .map_err(Into::into),
+            TxInner::Networked(transaction) => {
+                let op = crate::backend::wire_merge_op(&op)?;
+                transaction.merge(&resolved_client(&resolved), key, op);
+                Ok(())
+            }
+        }
+    }
+
+    /// Buffer an atomic integer counter increment.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the key is invalid.
+    pub async fn counter_add<K: AsRef<[u8]>>(
+        &mut self,
+        scope: &Scope,
+        key: K,
+        delta: i64,
+    ) -> Result<()> {
+        self.merge(scope, key, storkv_core::MergeOp::CounterAdd(delta))
+            .await
+    }
+
+    /// Buffer a bounded or unbounded byte append.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the key is invalid.
+    pub async fn append_bytes<K: AsRef<[u8]>, V: AsRef<[u8]>>(
+        &mut self,
+        scope: &Scope,
+        key: K,
+        data: V,
+        max_len: Option<usize>,
+    ) -> Result<()> {
+        self.merge(
+            scope,
+            key,
+            storkv_core::MergeOp::AppendBytes {
+                data: Bytes::copy_from_slice(data.as_ref()),
+                max_len,
+            },
+        )
+        .await
+    }
+
+    /// Buffer a monotonic `i64` maximum update.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the key is invalid.
+    pub async fn max_i64<K: AsRef<[u8]>>(
+        &mut self,
+        scope: &Scope,
+        key: K,
+        value: i64,
+    ) -> Result<()> {
+        self.merge(scope, key, storkv_core::MergeOp::MaxI64(value))
+            .await
+    }
+
+    /// Buffer a monotonic `i64` minimum update.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the key is invalid.
+    pub async fn min_i64<K: AsRef<[u8]>>(
+        &mut self,
+        scope: &Scope,
+        key: K,
+        value: i64,
+    ) -> Result<()> {
+        self.merge(scope, key, storkv_core::MergeOp::MinI64(value))
+            .await
+    }
+
+    /// Buffer a bitwise OR update on a `u64` value.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the key is invalid.
+    pub async fn bit_or<K: AsRef<[u8]>>(&mut self, scope: &Scope, key: K, bits: u64) -> Result<()> {
+        self.merge(scope, key, storkv_core::MergeOp::BitOr(bits))
+            .await
+    }
+
+    /// Buffer a bitwise AND update on a `u64` value.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the key is invalid.
+    pub async fn bit_and<K: AsRef<[u8]>>(
+        &mut self,
+        scope: &Scope,
+        key: K,
+        bits: u64,
+    ) -> Result<()> {
+        self.merge(scope, key, storkv_core::MergeOp::BitAnd(bits))
+            .await
     }
 
     /// Buffer a half-open range delete.

@@ -113,6 +113,19 @@ pub(super) async fn delete(client: &AsyncClient, scope: &ResolvedScope, key: &[u
         .map_err(SdkError::from)
 }
 
+pub(super) async fn merge(
+    client: &AsyncClient,
+    scope: &ResolvedScope,
+    key: &[u8],
+    op: &storkv_core::MergeOp,
+) -> Result<()> {
+    let op = super::wire_merge_op(op)?;
+    client
+        .merge(&scope.client_handle(), key, op)
+        .await
+        .map_err(SdkError::from)
+}
+
 pub(super) async fn scan_prefix(
     client: &AsyncClient,
     scope: &ResolvedScope,

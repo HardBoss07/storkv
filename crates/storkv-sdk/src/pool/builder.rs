@@ -10,6 +10,7 @@ use storkv_core::{Db, DbOptions};
 use crate::backend::{Conn, IdleClient, NetworkedBackend};
 use crate::error::{Result, SdkError};
 use crate::options::StorkvPoolOptions;
+use crate::scope::Scope;
 
 use super::routing::{connect_networked, take_networked_client};
 use super::{Backend, PoolInner, StorkvPool};
@@ -126,6 +127,17 @@ impl std::fmt::Debug for PoolConnection {
 impl PoolConnection {
     pub(crate) fn conn(&self) -> Result<&Conn> {
         self.connection.as_ref().ok_or(SdkError::PoolClosed)
+    }
+
+    pub(crate) async fn merge(
+        &self,
+        scope: &Scope,
+        key: &[u8],
+        op: &storkv_core::MergeOp,
+    ) -> Result<()> {
+        let connection = self.conn()?;
+        let resolved = scope.resolve_via(connection).await?;
+        connection.merge(&resolved, key, op).await
     }
 }
 

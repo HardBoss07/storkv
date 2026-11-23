@@ -92,6 +92,22 @@ pub(super) async fn delete(db: &Db, scope: &ResolvedScope, key: &[u8]) -> Result
         .map_err(SdkError::from)
 }
 
+pub(super) async fn merge(
+    db: &Db,
+    scope: &ResolvedScope,
+    key: &[u8],
+    op: &storkv_core::MergeOp,
+) -> Result<()> {
+    let db = db.clone();
+    let handle = scope.core_handle();
+    let key = Bytes::copy_from_slice(key);
+    let op = op.clone();
+    tokio::task::spawn_blocking(move || db.merge(&handle, key, op))
+        .await
+        .map_err(join_error)?
+        .map_err(SdkError::from)
+}
+
 pub(super) async fn scan_prefix(
     db: &Db,
     scope: &ResolvedScope,
