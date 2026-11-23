@@ -109,6 +109,7 @@ fn scope_options_from_meta(meta: &ScopeMeta) -> ScopeOptions {
         min_ttl: None,
         max_ttl: None,
         allow_permanent: true,
+        active_ttl_tracking: false,
     }
 }
 

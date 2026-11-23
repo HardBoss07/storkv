@@ -13,10 +13,16 @@ use std::sync::Arc;
 mod handle_backup;
 #[path = "handle_kv.rs"]
 mod handle_kv;
+#[path = "handle_meta.rs"]
+mod handle_meta;
 #[path = "handle_scopes.rs"]
 mod handle_scopes;
 #[path = "handle_streams.rs"]
 mod handle_streams;
+#[path = "ttl_worker.rs"]
+mod ttl_worker;
+
+pub use ttl_worker::TtlWorkerHandle;
 
 /// Identifier and name of one scope.
 #[derive(Debug, Clone)]
@@ -44,6 +50,7 @@ pub struct Db {
     inner: Arc<DbInner<AnyFs<PosixFs>>>,
     _lock_file: Option<Arc<StdFile>>,
     auto_backup: Arc<Mutex<Option<Arc<AutoBackupHandle>>>>,
+    _ttl_worker: Arc<TtlWorkerHandle>,
 }
 
 impl Db {
@@ -72,12 +79,14 @@ impl Db {
             .map_err(|_| crate::StorkvError::DatabaseLocked(lock_path.clone()))?;
 
         let fs = Arc::new(AnyFs::Disk(PosixFs));
-        let inner = DbInner::open(fs, db_root, options)?;
+        let inner = Arc::new(DbInner::open(fs, db_root, options)?);
+        let ttl_worker = Arc::new(TtlWorkerHandle::start(inner.clone()));
 
         Ok(Self {
-            inner: Arc::new(inner),
+            inner,
             _lock_file: Some(Arc::new(lock_file)),
             auto_backup: Arc::new(Mutex::new(None)),
+            _ttl_worker: ttl_worker,
         })
     }
 
@@ -91,11 +100,13 @@ impl Db {
     pub fn open_in_memory(options: DbOptions) -> crate::Result<Self> {
         let fs = Arc::new(AnyFs::Memory(InMemoryFs::new()));
         let db_root = std::path::PathBuf::from("/storkv-memory");
-        let inner = DbInner::open(fs, db_root, options)?;
+        let inner = Arc::new(DbInner::open(fs, db_root, options)?);
+        let ttl_worker = Arc::new(TtlWorkerHandle::start(inner.clone()));
         Ok(Self {
-            inner: Arc::new(inner),
+            inner,
             _lock_file: None,
             auto_backup: Arc::new(Mutex::new(None)),
+            _ttl_worker: ttl_worker,
         })
     }
 

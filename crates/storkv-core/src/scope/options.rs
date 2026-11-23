@@ -61,6 +61,8 @@ pub struct ScopeOptions {
     pub max_ttl: Option<Duration>,
     /// Permit writes without an expiry.
     pub allow_permanent: bool,
+    /// Actively track TTL deadlines and emit expiry events.
+    pub active_ttl_tracking: bool,
 }
 
 impl Default for ScopeOptions {
@@ -73,6 +75,7 @@ impl Default for ScopeOptions {
             min_ttl: None,
             max_ttl: None,
             allow_permanent: true,
+            active_ttl_tracking: false,
         }
     }
 }

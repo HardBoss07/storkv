@@ -148,6 +148,12 @@ fn apply_mutation<FS: FileSystem>(
                 .active_memtable
                 .read()
                 .insert(internal_key.encode(), val.clone(), op_seq);
+            if scope.options.active_ttl_tracking && expires_at_ms > 0 {
+                scope
+                    .ttl_tracker
+                    .lock()
+                    .push(std::cmp::Reverse((expires_at_ms, user_key.clone())));
+            }
             db.watch_registry.broadcast(ChangeEvent::Put {
                 scope_id: scope.scope_id,
                 key: user_key,

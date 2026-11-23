@@ -4,7 +4,8 @@ use crate::memtable::{FlushQueue, MemTable};
 use crate::vfs::FileSystem;
 use bytes::Bytes;
 use parking_lot::RwLock;
-use std::collections::BTreeMap;
+use std::cmp::Reverse;
+use std::collections::{BTreeMap, BinaryHeap};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -44,6 +45,8 @@ pub struct Scope<FS: FileSystem> {
     /// The map value holds the exclusive end key. Point reads consult this
     /// index because a range tombstone has no entry at the covered keys.
     pub range_tombstones: RwLock<BTreeMap<(Bytes, u64), Bytes>>,
+    /// Active TTL deadline min-heap for keys with an expiry.
+    pub ttl_tracker: parking_lot::Mutex<BinaryHeap<Reverse<(u64, Bytes)>>>,
     /// Filesystem backend.
     pub fs: Arc<FS>,
     /// Directory that holds the scope files.
@@ -83,6 +86,7 @@ impl<FS: FileSystem> Scope<FS> {
             drop_seq: AtomicU64::new(0),
             snapshot_seq: AtomicU64::new(0),
             range_tombstones: RwLock::new(BTreeMap::new()),
+            ttl_tracker: parking_lot::Mutex::new(BinaryHeap::new()),
             fs,
             scope_dir,
         })
