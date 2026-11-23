@@ -1,6 +1,7 @@
 use crate::common;
+use bytes::Bytes;
 use std::time::Duration;
-use storkv_core::mvcc::MergeOp;
+use storkv_core::mvcc::{DefaultMergeOperator, MergeOp, MergeOperator};
 use storkv_core::{
     CompactionStyle, Db, DbOptions, Durability, Retention, ScopeHandle, ScopeOptions,
 };
@@ -32,6 +33,201 @@ fn test_merge_operator_resolution() {
     assert_eq!(final_value.as_ref(), b"35");
 
     temp.close();
+}
+
+#[test]
+fn extended_merge_operators_resolve_and_persist() {
+    let mut temp = common::TempDb::new("mvcc_extended_merge");
+    let scope = default_scope();
+    {
+        let db = temp.db();
+
+        // AppendBytes with max_len bound
+        db.merge(
+            &scope,
+            b"log",
+            MergeOp::AppendBytes {
+                data: Bytes::from_static(b"line1\n"),
+                max_len: Some(12),
+            },
+        )
+        .unwrap();
+        db.flush().unwrap();
+        db.merge(
+            &scope,
+            b"log",
+            MergeOp::AppendBytes {
+                data: Bytes::from_static(b"line2\n"),
+                max_len: Some(12),
+            },
+        )
+        .unwrap();
+        db.merge(
+            &scope,
+            b"log",
+            MergeOp::AppendBytes {
+                data: Bytes::from_static(b"line3\n"),
+                max_len: Some(12),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            db.get(&scope, b"log").unwrap().as_deref(),
+            Some(&b"line2\nline3\n"[..])
+        );
+
+        // Unbounded AppendBytes
+        db.put(&scope, b"stream", b"head-").unwrap();
+        db.merge(
+            &scope,
+            b"stream",
+            MergeOp::AppendBytes {
+                data: Bytes::from_static(b"mid-"),
+                max_len: None,
+            },
+        )
+        .unwrap();
+        db.merge(
+            &scope,
+            b"stream",
+            MergeOp::AppendBytes {
+                data: Bytes::from_static(b"tail"),
+                max_len: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            db.get(&scope, b"stream").unwrap().as_deref(),
+            Some(&b"head-mid-tail"[..])
+        );
+
+        // MaxI64 & MinI64
+        db.merge(&scope, b"high", MergeOp::MaxI64(-10)).unwrap();
+        db.flush().unwrap();
+        db.merge(&scope, b"high", MergeOp::MaxI64(25)).unwrap();
+        db.merge(&scope, b"high", MergeOp::MaxI64(12)).unwrap();
+        assert_eq!(
+            db.get(&scope, b"high").unwrap().as_deref(),
+            Some(&b"25"[..])
+        );
+
+        db.merge(&scope, b"low", MergeOp::MinI64(50)).unwrap();
+        db.flush().unwrap();
+        db.merge(&scope, b"low", MergeOp::MinI64(-7)).unwrap();
+        db.merge(&scope, b"low", MergeOp::MinI64(3)).unwrap();
+        assert_eq!(db.get(&scope, b"low").unwrap().as_deref(), Some(&b"-7"[..]));
+
+        // BitOr & BitAnd
+        db.merge(&scope, b"flags", MergeOp::BitOr(0b0101)).unwrap();
+        db.flush().unwrap();
+        db.merge(&scope, b"flags", MergeOp::BitOr(0b1010)).unwrap();
+        db.merge(&scope, b"flags", MergeOp::BitAnd(0b1100)).unwrap();
+        assert_eq!(
+            db.get(&scope, b"flags").unwrap().as_deref(),
+            Some(&b"12"[..])
+        );
+    }
+
+    temp.close();
+    let db = Db::open(&temp.path, DbOptions::default()).unwrap();
+    assert_eq!(
+        db.get(&scope, b"log").unwrap().as_deref(),
+        Some(&b"line2\nline3\n"[..])
+    );
+    assert_eq!(
+        db.get(&scope, b"stream").unwrap().as_deref(),
+        Some(&b"head-mid-tail"[..])
+    );
+    assert_eq!(
+        db.get(&scope, b"high").unwrap().as_deref(),
+        Some(&b"25"[..])
+    );
+    assert_eq!(db.get(&scope, b"low").unwrap().as_deref(), Some(&b"-7"[..]));
+    assert_eq!(
+        db.get(&scope, b"flags").unwrap().as_deref(),
+        Some(&b"12"[..])
+    );
+}
+
+#[test]
+fn partial_merge_matches_full_merge_for_all_associative_variants() {
+    let operator = DefaultMergeOperator;
+    let cases: Vec<(Option<&[u8]>, MergeOp, MergeOp)> = vec![
+        (None, MergeOp::CounterAdd(5), MergeOp::CounterAdd(-2)),
+        (Some(b"10"), MergeOp::CounterAdd(5), MergeOp::CounterAdd(-2)),
+        (None, MergeOp::MaxI64(-20), MergeOp::MaxI64(-5)),
+        (Some(b"15"), MergeOp::MaxI64(8), MergeOp::MaxI64(12)),
+        (None, MergeOp::MinI64(-5), MergeOp::MinI64(-20)),
+        (Some(b"-30"), MergeOp::MinI64(-5), MergeOp::MinI64(-20)),
+        (None, MergeOp::BitOr(0b0101), MergeOp::BitOr(0b0011)),
+        (Some(b"8"), MergeOp::BitOr(0b0101), MergeOp::BitOr(0b0011)),
+        (None, MergeOp::BitAnd(0b1100), MergeOp::BitAnd(0b1010)),
+        (
+            Some(b"15"),
+            MergeOp::BitAnd(0b1100),
+            MergeOp::BitAnd(0b1010),
+        ),
+        (
+            Some(b"ab"),
+            MergeOp::AppendBytes {
+                data: Bytes::from_static(b"cd"),
+                max_len: None,
+            },
+            MergeOp::AppendBytes {
+                data: Bytes::from_static(b"ef"),
+                max_len: Some(4),
+            },
+        ),
+        (
+            Some(b"abcdef"),
+            MergeOp::AppendBytes {
+                data: Bytes::from_static(b"gh"),
+                max_len: Some(6),
+            },
+            MergeOp::AppendBytes {
+                data: Bytes::from_static(b"ij"),
+                max_len: Some(4),
+            },
+        ),
+    ];
+
+    for (base, left, right) in cases {
+        let mut temp = common::TempDb::new("partial_encode");
+        let db = temp.db();
+        let scope = default_scope();
+        db.merge(&scope, b"l", left.clone()).unwrap();
+        db.merge(&scope, b"r", right.clone()).unwrap();
+        let left_bytes = db
+            .inner()
+            .scopes
+            .read()
+            .get(&0)
+            .unwrap()
+            .get_versions(b"l", u64::MAX.into(), 0.into())
+            .unwrap()[0]
+            .1
+            .clone();
+        let right_bytes = db
+            .inner()
+            .scopes
+            .read()
+            .get(&0)
+            .unwrap()
+            .get_versions(b"r", u64::MAX.into(), 0.into())
+            .unwrap()[0]
+            .1
+            .clone();
+        temp.close();
+
+        let expected = operator
+            .full_merge(b"k", base, &[left_bytes.clone(), right_bytes.clone()])
+            .unwrap();
+        let folded = operator
+            .partial_merge(b"k", &left_bytes, &right_bytes)
+            .expect("associative operands must fold");
+        let actual = operator.full_merge(b"k", base, &[folded]).unwrap();
+        assert_eq!(actual, expected, "mismatch for {left:?} + {right:?}");
+    }
 }
 
 #[test]

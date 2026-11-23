@@ -43,6 +43,42 @@ fn test_round_trip_all_requests() {
             key: Bytes::from_static(b"custom"),
             op: WireMergeOp::Custom(Bytes::from_static(b"custom_payload")),
         },
+        Request::Merge {
+            scope_id: 6,
+            key: Bytes::from_static(b"append_unbounded"),
+            op: WireMergeOp::AppendBytes {
+                data: Bytes::from_static(b"chunk"),
+                max_len: None,
+            },
+        },
+        Request::Merge {
+            scope_id: 6,
+            key: Bytes::from_static(b"append_bounded"),
+            op: WireMergeOp::AppendBytes {
+                data: Bytes::from_static(b"chunk"),
+                max_len: Some(256),
+            },
+        },
+        Request::Merge {
+            scope_id: 6,
+            key: Bytes::from_static(b"max_key"),
+            op: WireMergeOp::MaxI64(-99),
+        },
+        Request::Merge {
+            scope_id: 6,
+            key: Bytes::from_static(b"min_key"),
+            op: WireMergeOp::MinI64(99),
+        },
+        Request::Merge {
+            scope_id: 6,
+            key: Bytes::from_static(b"or_key"),
+            op: WireMergeOp::BitOr(0xDEAD_BEEF),
+        },
+        Request::Merge {
+            scope_id: 6,
+            key: Bytes::from_static(b"and_key"),
+            op: WireMergeOp::BitAnd(0x00FF_FF00),
+        },
         Request::Scan {
             scope_id: 7,
             start_key: Some(Bytes::from_static(b"start")),

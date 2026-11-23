@@ -65,6 +65,58 @@ async fn shared_crud_behavior() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn typed_merge_helpers_work_across_backends() {
+    for context in support::contexts("merge_helpers").await {
+        let pool = &context.pool;
+        pool.provision_scopes(&[ScopeDefinition::new("metrics")])
+            .await
+            .unwrap_or_else(|error| panic!("provision {}: {error}", context.uri));
+
+        let scope = pool.scope("metrics");
+        scope.counter_add("hits", 5).await.unwrap();
+        scope.counter_add("hits", -2).await.unwrap();
+        assert_eq!(
+            scope.get("hits").await.unwrap(),
+            Some(Bytes::from_static(b"3"))
+        );
+
+        scope.append_bytes("events", b"a,", Some(4)).await.unwrap();
+        scope.append_bytes("events", b"b,", Some(4)).await.unwrap();
+        scope.append_bytes("events", b"c,", Some(4)).await.unwrap();
+        assert_eq!(
+            scope.get("events").await.unwrap(),
+            Some(Bytes::from_static(b"b,c,"))
+        );
+
+        scope.max_i64("high", -10).await.unwrap();
+        scope.max_i64("high", 42).await.unwrap();
+        scope.max_i64("high", 17).await.unwrap();
+        assert_eq!(
+            scope.get("high").await.unwrap(),
+            Some(Bytes::from_static(b"42"))
+        );
+
+        scope.min_i64("low", 25).await.unwrap();
+        scope.min_i64("low", -8).await.unwrap();
+        scope.min_i64("low", 4).await.unwrap();
+        assert_eq!(
+            scope.get("low").await.unwrap(),
+            Some(Bytes::from_static(b"-8"))
+        );
+
+        scope.bit_or("flags", 0b0101).await.unwrap();
+        scope.bit_or("flags", 0b1010).await.unwrap();
+        scope.bit_and("flags", 0b1100).await.unwrap();
+        assert_eq!(
+            scope.get("flags").await.unwrap(),
+            Some(Bytes::from_static(b"12"))
+        );
+
+        pool.close().await;
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn provisioning_is_idempotent() {
     for context in support::contexts("provision").await {
         let pool = &context.pool;
