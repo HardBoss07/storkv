@@ -26,6 +26,7 @@ impl AsyncClient {
             min_ttl: None,
             max_ttl: None,
             allow_permanent: true,
+            active_ttl_tracking: false,
         };
         self.create_scope_with_options(name, options).await
     }
@@ -171,6 +172,9 @@ impl AsyncClient {
                 scope_id: scope.scope_id,
                 start_key: start_key.map(|bound| Bytes::copy_from_slice(bound.as_ref())),
                 end_key: end_key.map(|bound| Bytes::copy_from_slice(bound.as_ref())),
+                limit: None,
+                reverse: false,
+                keys_only: false,
             })
             .await?
         {
@@ -189,6 +193,9 @@ impl AsyncClient {
             .send_request(Request::ScanPrefix {
                 scope_id: scope.scope_id,
                 prefix: Bytes::copy_from_slice(prefix.as_ref()),
+                limit: None,
+                reverse: false,
+                keys_only: false,
             })
             .await?
         {

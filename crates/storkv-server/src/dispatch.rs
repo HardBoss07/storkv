@@ -29,7 +29,7 @@ impl Server {
         if let Some(error) = self.replica_rejection(&request, consistency) {
             return Response::Error(error);
         }
-        let is_write = is_write_request(&request);
+        let is_write = request.is_write();
         let started = Instant::now();
         let response = self.route_request(request, consistency);
         if is_write {
@@ -47,7 +47,7 @@ impl Server {
         if self.role() != crate::ReplicationRole::Replica {
             return None;
         }
-        if is_write_request(request) {
+        if request.is_write() {
             return Some(storkv_proto::StorkvWireError::NotPrimary);
         }
         if !is_data_read(request) {
@@ -104,8 +104,17 @@ impl Server {
                 scope_id,
                 start_key,
                 end_key,
-            } => self.handle_scan(scope_id, start_key, end_key),
-            Request::ScanPrefix { scope_id, prefix } => self.handle_scan_prefix(scope_id, prefix),
+                limit,
+                reverse,
+                keys_only,
+            } => self.handle_scan(scope_id, start_key, end_key, limit, reverse, keys_only),
+            Request::ScanPrefix {
+                scope_id,
+                prefix,
+                limit,
+                reverse,
+                keys_only,
+            } => self.handle_scan_prefix(scope_id, prefix, limit, reverse, keys_only),
             Request::TxBegin => self.handle_tx_begin(),
             Request::TxCommit {
                 read_seq,
@@ -139,21 +148,6 @@ impl Server {
             Err(error) => Response::Error(core_error_to_wire(error)),
         }
     }
-}
-
-fn is_write_request(request: &Request) -> bool {
-    matches!(
-        request,
-        Request::Put { .. }
-            | Request::PutWithTtl { .. }
-            | Request::PutIf { .. }
-            | Request::Delete { .. }
-            | Request::DeleteRange { .. }
-            | Request::Merge { .. }
-            | Request::TxCommit { .. }
-            | Request::DropScope { .. }
-            | Request::CreateScope { .. }
-    )
 }
 
 fn is_data_read(request: &Request) -> bool {

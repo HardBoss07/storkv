@@ -87,6 +87,7 @@ fn create_scope(value: &Value) -> Request {
             min_ttl: None,
             max_ttl: None,
             allow_permanent: true,
+            active_ttl_tracking: false,
         },
     }
 }
@@ -196,12 +197,18 @@ fn scan(state: &HttpState, value: &Value, operation: &str) -> Result<Request, St
         return Ok(Request::ScanPrefix {
             scope_id,
             prefix: key_field(value, "prefix", "prefix_b64")?,
+            limit: None,
+            reverse: false,
+            keys_only: false,
         });
     }
     Ok(Request::Scan {
         scope_id,
         start_key: optional_key_field(value, "start", Some("start_b64")),
         end_key: optional_key_field(value, "end", Some("end_b64")),
+        limit: None,
+        reverse: false,
+        keys_only: false,
     })
 }
 

@@ -106,6 +106,9 @@ async fn test_32_concurrent_clients_crud_and_scan() {
                 Request::ScanPrefix {
                     scope_id: 0,
                     prefix: Bytes::from_static(b"bulk:"),
+                    limit: None,
+                    reverse: false,
+                    keys_only: false,
                 },
             )
             .await;

@@ -54,6 +54,9 @@ pub(crate) async fn scan(
             Request::ScanPrefix {
                 scope_id,
                 prefix: ProtoBytes::from(prefix),
+                limit: None,
+                reverse: false,
+                keys_only: false,
             },
             &headers,
         ));
@@ -63,6 +66,9 @@ pub(crate) async fn scan(
             Request::ScanPrefix {
                 scope_id,
                 prefix: ProtoBytes::from(prefix.as_bytes().to_vec()),
+                limit: None,
+                reverse: false,
+                keys_only: false,
             },
             &headers,
         ));
@@ -92,6 +98,9 @@ pub(crate) async fn scan(
             scope_id,
             start_key,
             end_key,
+            limit: None,
+            reverse: false,
+            keys_only: false,
         },
         &headers,
     ))

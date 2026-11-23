@@ -128,7 +128,15 @@ impl RedisSession {
             Ok(scope) => scope,
             Err(response) => return response,
         };
-        match self.db().scan(&scope, None::<&[u8]>, None::<&[u8]>) {
+        match self.db().scan_with(
+            &scope,
+            None::<&[u8]>,
+            None::<&[u8]>,
+            storkv_core::ScanOptions {
+                keys_only: true,
+                ..Default::default()
+            },
+        ) {
             Ok(pairs) => Resp::array(
                 pairs
                     .into_iter()
@@ -156,7 +164,18 @@ impl RedisSession {
             Ok(scope) => scope,
             Err(response) => return response,
         };
-        let pairs = match self.db().scan(&scope, start.as_deref(), None::<&[u8]>) {
+        // shortcut: COUNT is a hint, so the core limit is a small multiple of it.
+        // Upgrade when MATCH filters can stop inside the engine.
+        let pairs = match self.db().scan_with(
+            &scope,
+            start.as_deref(),
+            None::<&[u8]>,
+            storkv_core::ScanOptions {
+                limit: Some(count.saturating_mul(8).max(count)),
+                keys_only: true,
+                ..Default::default()
+            },
+        ) {
             Ok(pairs) => pairs,
             Err(error) => return storage_error(error),
         };

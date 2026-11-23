@@ -137,6 +137,12 @@ pub enum Request {
         start_key: Option<Bytes>,
         /// Exclusive end key, or `None` for the last key.
         end_key: Option<Bytes>,
+        /// Maximum live entries to return. `None` means no limit.
+        limit: Option<u32>,
+        /// Read keys from high to low when true.
+        reverse: bool,
+        /// Omit values when true.
+        keys_only: bool,
     },
     /// Read every key that starts with a prefix.
     ScanPrefix {
@@ -144,6 +150,12 @@ pub enum Request {
         scope_id: u32,
         /// Prefix to match.
         prefix: Bytes,
+        /// Maximum live entries to return. `None` means no limit.
+        limit: Option<u32>,
+        /// Read keys from high to low when true.
+        reverse: bool,
+        /// Omit values when true.
+        keys_only: bool,
     },
     /// Begin a transaction and receive a read sequence number.
     TxBegin,

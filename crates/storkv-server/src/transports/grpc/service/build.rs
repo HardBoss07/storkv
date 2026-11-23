@@ -88,11 +88,17 @@ pub(super) fn scan(message: &ScanRequest) -> Request {
             scope_id: message.scope_id,
             start_key: optional_bytes(&message.start_key),
             end_key: optional_bytes(&message.end_key),
+            limit: None,
+            reverse: false,
+            keys_only: false,
         }
     } else {
         Request::ScanPrefix {
             scope_id: message.scope_id,
             prefix: bytes::Bytes::from(message.prefix.clone()),
+            limit: None,
+            reverse: false,
+            keys_only: false,
         }
     }
 }

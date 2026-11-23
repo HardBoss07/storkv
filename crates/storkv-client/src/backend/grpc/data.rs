@@ -81,6 +81,7 @@ impl GrpcBackend {
                 scope_id,
                 start_key,
                 end_key,
+                ..
             } => {
                 let reply = self
                     .client
@@ -94,7 +95,9 @@ impl GrpcBackend {
                     .into_inner();
                 Response::Scan(pairs(reply.pairs))
             }
-            Request::ScanPrefix { scope_id, prefix } => {
+            Request::ScanPrefix {
+                scope_id, prefix, ..
+            } => {
                 let reply = self
                     .client
                     .scan(ScanRequest {

@@ -140,11 +140,16 @@ impl Server {
         scope_id: u32,
         start_key: Option<Bytes>,
         end_key: Option<Bytes>,
+        limit: Option<u32>,
+        reverse: bool,
+        keys_only: bool,
     ) -> Response {
-        match self.db.scan(
+        let options = scan_options(limit, reverse, keys_only);
+        match self.db.scan_with(
             &scope_handle(scope_id),
             start_key.as_deref(),
             end_key.as_deref(),
+            options,
         ) {
             Ok(entries) => {
                 self.stats.record_read(scope_id);
@@ -167,14 +172,33 @@ impl Server {
         }
     }
 
-    pub(super) fn handle_scan_prefix(&self, scope_id: u32, prefix: Bytes) -> Response {
-        match self.db.scan_prefix(&scope_handle(scope_id), prefix) {
+    pub(super) fn handle_scan_prefix(
+        &self,
+        scope_id: u32,
+        prefix: Bytes,
+        limit: Option<u32>,
+        reverse: bool,
+        keys_only: bool,
+    ) -> Response {
+        let options = scan_options(limit, reverse, keys_only);
+        match self
+            .db
+            .scan_prefix_with(&scope_handle(scope_id), prefix, options)
+        {
             Ok(entries) => {
                 self.stats.record_read(scope_id);
                 Response::Scan(entries)
             }
             Err(error) => Response::Error(core_error_to_wire(error)),
         }
+    }
+}
+
+fn scan_options(limit: Option<u32>, reverse: bool, keys_only: bool) -> storkv_core::ScanOptions {
+    storkv_core::ScanOptions {
+        limit: limit.map(|limit| limit as usize),
+        reverse,
+        keys_only,
     }
 }
 

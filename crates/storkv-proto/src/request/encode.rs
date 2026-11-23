@@ -1,9 +1,8 @@
 use bytes::{BufMut, BytesMut};
 
+use super::encode_merge::encode_merge_op;
 use super::encode_tx;
-use super::types::{
-    Request, WireCompactionStyle, WireDurability, WireMergeOp, WireRetention, WireScopeOptions,
-};
+use super::types::{Request, WireCompactionStyle, WireDurability, WireRetention, WireScopeOptions};
 use crate::frame::{put_bytes, put_opt_bytes, put_str};
 
 pub(crate) fn encode_request(destination: &mut BytesMut, request: &Request) {
@@ -71,16 +70,27 @@ pub(crate) fn encode_request(destination: &mut BytesMut, request: &Request) {
             scope_id,
             start_key,
             end_key,
+            limit,
+            reverse,
+            keys_only,
         } => {
             destination.put_u8(7);
             destination.put_u32_le(*scope_id);
             put_opt_bytes(destination, start_key.as_ref());
             put_opt_bytes(destination, end_key.as_ref());
+            encode_scan_flags(destination, *limit, *reverse, *keys_only);
         }
-        Request::ScanPrefix { scope_id, prefix } => {
+        Request::ScanPrefix {
+            scope_id,
+            prefix,
+            limit,
+            reverse,
+            keys_only,
+        } => {
             destination.put_u8(8);
             destination.put_u32_le(*scope_id);
             put_bytes(destination, prefix);
+            encode_scan_flags(destination, *limit, *reverse, *keys_only);
         }
         Request::TxCommit {
             read_seq,
@@ -151,6 +161,31 @@ pub(crate) fn encode_request(destination: &mut BytesMut, request: &Request) {
     }
 }
 
+fn encode_scan_flags(
+    destination: &mut BytesMut,
+    limit: Option<u32>,
+    reverse: bool,
+    keys_only: bool,
+) {
+    if limit.is_none() && !reverse && !keys_only {
+        return;
+    }
+    let mut flags = 0u8;
+    if limit.is_some() {
+        flags |= 1;
+    }
+    if reverse {
+        flags |= 2;
+    }
+    if keys_only {
+        flags |= 4;
+    }
+    destination.put_u8(flags);
+    if let Some(limit) = limit {
+        destination.put_u32_le(limit);
+    }
+}
+
 fn put_opt_u64(destination: &mut BytesMut, value: Option<u64>) {
     match value {
         Some(seq) => {
@@ -158,46 +193,6 @@ fn put_opt_u64(destination: &mut BytesMut, value: Option<u64>) {
             destination.put_u64_le(seq);
         }
         None => destination.put_u8(0),
-    }
-}
-
-fn encode_merge_op(destination: &mut BytesMut, merge_op: &WireMergeOp) {
-    match merge_op {
-        WireMergeOp::CounterAdd(delta) => {
-            destination.put_u8(1);
-            destination.put_i64_le(*delta);
-        }
-        WireMergeOp::Custom(operand) => {
-            destination.put_u8(2);
-            put_bytes(destination, operand);
-        }
-        WireMergeOp::AppendBytes { data, max_len } => {
-            destination.put_u8(3);
-            match max_len {
-                Some(max_len) => {
-                    destination.put_u8(1);
-                    destination.put_u64_le(*max_len);
-                }
-                None => destination.put_u8(0),
-            }
-            put_bytes(destination, data);
-        }
-        WireMergeOp::MaxI64(value) => {
-            destination.put_u8(4);
-            destination.put_i64_le(*value);
-        }
-        WireMergeOp::MinI64(value) => {
-            destination.put_u8(5);
-            destination.put_i64_le(*value);
-        }
-        WireMergeOp::BitOr(bits) => {
-            destination.put_u8(6);
-            destination.put_u64_le(*bits);
-        }
-        WireMergeOp::BitAnd(bits) => {
-            destination.put_u8(7);
-            destination.put_u64_le(*bits);
-        }
     }
 }
 
@@ -236,6 +231,9 @@ fn encode_scope_options(destination: &mut BytesMut, options: &WireScopeOptions) 
     }
     if options.max_ttl.is_some() {
         flags |= 4;
+    }
+    if options.active_ttl_tracking {
+        flags |= 8;
     }
     destination.put_u8(flags);
     if let Some(min_ttl) = options.min_ttl {

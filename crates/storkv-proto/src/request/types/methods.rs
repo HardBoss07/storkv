@@ -21,4 +21,22 @@ impl Request {
                 | Request::ReplicationStart { .. }
         )
     }
+
+    /// Return true when the request mutates stored data or scope layout.
+    ///
+    /// Replicas reject these requests with [`crate::StorkvWireError::NotPrimary`].
+    pub fn is_write(&self) -> bool {
+        matches!(
+            self,
+            Request::Put { .. }
+                | Request::PutWithTtl { .. }
+                | Request::PutIf { .. }
+                | Request::Delete { .. }
+                | Request::DeleteRange { .. }
+                | Request::Merge { .. }
+                | Request::TxCommit { .. }
+                | Request::DropScope { .. }
+                | Request::CreateScope { .. }
+        )
+    }
 }

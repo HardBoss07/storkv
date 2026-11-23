@@ -2,6 +2,7 @@ mod decode;
 mod decode_scope;
 mod decode_tx;
 mod encode;
+mod encode_merge;
 mod encode_tx;
 mod types;
 

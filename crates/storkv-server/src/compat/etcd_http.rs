@@ -67,7 +67,14 @@ pub(crate) async fn range(State(state): State<HttpState>, Json(body): Json<Value
         .and_then(Value::as_bool)
         .unwrap_or(false);
 
-    let pairs = match scan_range(&state, &scope, &key, &range_end) {
+    let pairs = match scan_range(
+        &state,
+        &scope,
+        &key,
+        &range_end,
+        if limit == 0 { None } else { Some(limit) },
+        keys_only,
+    ) {
         Ok(pairs) => pairs,
         Err(error) => {
             return gateway_error(StatusCode::INTERNAL_SERVER_ERROR, 13, &error.to_string());
@@ -76,10 +83,7 @@ pub(crate) async fn range(State(state): State<HttpState>, Json(body): Json<Value
     let count = pairs.len();
     let mut kvs = Vec::new();
     if !count_only {
-        for (key, value) in pairs
-            .into_iter()
-            .take(if limit == 0 { usize::MAX } else { limit })
-        {
+        for (key, value) in pairs {
             let meta = state.server.db().key_meta(&scope, &key).ok().flatten();
             let version = meta.map(|meta| meta.seq).unwrap_or(0);
             let mut entry = json!({
@@ -120,7 +124,7 @@ pub(crate) async fn delete_range(
         return gateway_error(StatusCode::BAD_REQUEST, 3, "key is required");
     };
     let range_end = field(&body, "range_end").unwrap_or_default();
-    let pairs = match scan_range(&state, &scope, &key, &range_end) {
+    let pairs = match scan_range(&state, &scope, &key, &range_end, None, true) {
         Ok(pairs) => pairs,
         Err(error) => {
             return gateway_error(StatusCode::INTERNAL_SERVER_ERROR, 13, &error.to_string());
@@ -178,12 +182,17 @@ fn scan_range(
     scope: &ScopeHandle,
     key: &[u8],
     range_end: &[u8],
+    limit: Option<usize>,
+    keys_only: bool,
 ) -> storkv_core::Result<Vec<(Bytes, Bytes)>> {
     let db = state.server.db();
     if range_end.is_empty() {
         return Ok(db
             .get(scope, key)?
-            .map(|value| vec![(Bytes::copy_from_slice(key), value)])
+            .map(|value| {
+                let value = if keys_only { Bytes::new() } else { value };
+                vec![(Bytes::copy_from_slice(key), value)]
+            })
             .unwrap_or_default());
     }
     let end = if range_end == [0] {
@@ -191,13 +200,15 @@ fn scan_range(
     } else {
         Some(range_end)
     };
-    db.inner().scan(
-        scope.scope_id,
+    db.scan_with(
+        scope,
         Some(key),
         end,
-        db.inner()
-            .last_visible_seq
-            .load(std::sync::atomic::Ordering::Acquire),
+        storkv_core::ScanOptions {
+            limit,
+            keys_only,
+            ..Default::default()
+        },
     )
 }
 
