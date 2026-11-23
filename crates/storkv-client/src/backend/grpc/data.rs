@@ -6,8 +6,8 @@ use storkv_proto::{Request, Response, WireMergeOp, WireScopeHandle};
 use super::GrpcBackend;
 use super::{mutation_to_proto, pairs, scope_options, telemetry};
 use crate::grpc::{
-    self, DeleteRangeRequest, DeleteRequest, Empty, GetRequest, MergeRequest, PutRequest,
-    ReadEntry, ScanRequest, ScopeRef,
+    self, DeleteRangeRequest, DeleteRequest, Empty, GetRequest, MergeOp, MergeRequest, PutRequest,
+    ReadEntry, ScanRequest, ScopeRef, merge_op,
 };
 use crate::transport::{ClientError, ClientResult};
 
@@ -67,17 +67,12 @@ impl GrpcBackend {
                 Response::Empty
             }
             Request::Merge { scope_id, key, op } => {
-                let (counter_delta, custom) = match op {
-                    WireMergeOp::CounterAdd(delta) => (delta, Vec::new()),
-                    WireMergeOp::Custom(bytes) => (0, bytes.to_vec()),
-                    _ => (0, Vec::new()),
-                };
                 self.client
                     .merge(MergeRequest {
                         scope_id,
                         key: key.to_vec(),
-                        counter_delta,
-                        custom,
+                        op: Some(merge_op_to_proto(op)),
+                        ..MergeRequest::default()
                     })
                     .await?;
                 Response::Empty
@@ -197,4 +192,41 @@ impl GrpcBackend {
             .await?;
         Ok(())
     }
+}
+
+fn merge_op_to_proto(op: WireMergeOp) -> MergeOp {
+    let mut message = MergeOp::default();
+    match op {
+        WireMergeOp::CounterAdd(delta) => {
+            message.kind = merge_op::Kind::CounterAdd.into();
+            message.i64_value = delta;
+        }
+        WireMergeOp::Custom(bytes) => {
+            message.kind = merge_op::Kind::Custom.into();
+            message.data = bytes.to_vec();
+        }
+        WireMergeOp::AppendBytes { data, max_len } => {
+            message.kind = merge_op::Kind::AppendBytes.into();
+            message.data = data.to_vec();
+            message.max_len = max_len;
+        }
+        WireMergeOp::MaxI64(value) => {
+            message.kind = merge_op::Kind::MaxI64.into();
+            message.i64_value = value;
+        }
+        WireMergeOp::MinI64(value) => {
+            message.kind = merge_op::Kind::MinI64.into();
+            message.i64_value = value;
+        }
+        WireMergeOp::BitOr(bits) => {
+            message.kind = merge_op::Kind::BitOr.into();
+            message.u64_value = bits;
+        }
+        WireMergeOp::BitAnd(bits) => {
+            message.kind = merge_op::Kind::BitAnd.into();
+            message.u64_value = bits;
+        }
+        _ => message.kind = merge_op::Kind::Unspecified.into(),
+    }
+    message
 }

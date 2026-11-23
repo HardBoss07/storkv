@@ -10,6 +10,10 @@ use crate::transport::{ClientError, ClientResult, ScopeHandle};
 type ReadSet = HashSet<(u32, Bytes)>;
 type WriteSet = BTreeMap<(u32, Bytes), WireTxMutation>;
 
+mod merge;
+
+use merge::{apply_merge_operand, encode_merge_operand};
+
 /// Client-side transaction with read-your-own-writes and OCC commit.
 pub struct AsyncTransaction {
     read_seq: u64,
@@ -85,7 +89,7 @@ impl AsyncTransaction {
             WireTxMutation::Delete => Ok(None),
             WireTxMutation::Merge { operand } => {
                 let base_value = self.client.get(scope, key).await?;
-                Ok(Some(merge_counter_value(base_value, &operand)))
+                Ok(Some(apply_merge_operand(base_value, &operand)))
             }
             WireTxMutation::DeleteRange { .. } => Ok(None),
             _ => Err(ClientError::Protocol(
@@ -146,12 +150,13 @@ impl AsyncTransaction {
 
     /// Buffer a merge operand.
     pub fn merge<K: AsRef<[u8]>>(&mut self, scope: &ScopeHandle, key: K, op: WireMergeOp) {
-        let operand = match op {
-            WireMergeOp::CounterAdd(delta) => Bytes::from(delta.to_string()),
-            WireMergeOp::Custom(operand) => operand,
-            _ => return,
-        };
-        self.insert_mutation(scope, key, WireTxMutation::Merge { operand });
+        self.insert_mutation(
+            scope,
+            key,
+            WireTxMutation::Merge {
+                operand: encode_merge_operand(op),
+            },
+        );
     }
 
     /// Send the write set and read set to the server.
@@ -185,17 +190,4 @@ impl AsyncTransaction {
         let scoped_key = (scope.scope_id, Bytes::copy_from_slice(key.as_ref()));
         self.write_set.insert(scoped_key, mutation);
     }
-}
-
-fn merge_counter_value(base_value: Option<Bytes>, operand: &[u8]) -> Bytes {
-    let mut total = 0i64;
-    if let Some(base_bytes) = base_value
-        && let Ok(base_text) = std::str::from_utf8(&base_bytes)
-    {
-        total = base_text.parse::<i64>().unwrap_or(0);
-    }
-    if let Ok(operand_text) = std::str::from_utf8(operand) {
-        total += operand_text.parse::<i64>().unwrap_or(0);
-    }
-    Bytes::from(total.to_string())
 }
