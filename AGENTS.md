@@ -40,8 +40,8 @@ Follow `docs/internal/DECOMPOSITION_PLAN.md` and workspace lints strictly:
    - **Never create `mod.rs` files.** `[workspace.lints.clippy] mod_module_files = "warn"` is active, and CI runs Clippy with `-D warnings`.
 3. **Public API & Documentation (`#![warn(missing_docs)]`):**
    - Parent modules re-export public child items (`pub use`) to maintain a clean crate-level API.
-   - Document every public module, struct, enum, variant, field, trait, type alias, and function with `///` comments.
-   - Document failure modes under an `# Errors` section on every fallible public function.
+   - Write `///` rustdoc comments and `# Errors` sections **while writing the code**, not as a cleanup pass after `cargo doc` fails.
+   - Document every public module, struct, enum, variant, field, trait, type alias, and function with `///` comments, and document failure modes under `# Errors` on every fallible public function.
    - **ASD-STE100 Compliance:** All `///` and `//!` rustdoc code comments must be **100% compliant** with ASD-STE100 (Simplified Technical English: short sentences, active voice, approved vocabulary, one instruction per sentence). All Markdown documentation (`docs/*.md`, `README.md`, guides) must be at least **80% compliant** with ASD-STE100.
    - Do not use emojis in code comments, documentation, or CLI/TUI strings.
 4. **No Panics in Production Code:**
@@ -55,35 +55,13 @@ Follow `docs/internal/DECOMPOSITION_PLAN.md` and workspace lints strictly:
    - Every exported `extern "C"` function returns `StorkvStatus` and stores failure details in thread-local storage retrievable via `storkv_last_error_message`.
    - Input `StorkvSlice` buffers are borrowed only for the duration of the call. Output buffers (`StorkvBytes`, `StorkvEntries`, `StorkvString`) are owned by the caller and must be released via `storkv_bytes_free`, `storkv_entries_free`, and `storkv_string_free`.
 
-## 4. Core System & Security Invariants
+## 4. Subsystem Specifications & Audit Invariants
 
-Consult `SPEC.md`, `FORMAT.md`, and `docs/internal/SECURITY_AUDIT.md` before modifying storage, replication, wire codecs, or network listeners:
+Before modifying binary codecs, storage/compaction, replication, transport listeners, or SDK caching, read the relevant canonical file directly rather than guessing invariants:
 
-### 4.1 On-Disk & Wire Binary Format (`FORMAT.md`)
-
-- **Endianness & Checksums:** Multi-byte integers are Little-Endian (`LE`), except `inverted_tag` (`u64 BE = !((seq << 8) | value_type)`) in Internal Keys so raw byte comparison sorts by `user_key` ascending and `sequence_number` descending. All checksums use **CRC32C** (Castagnoli).
-- **Size Limits:** `MAX_KEY_LEN = 65,535` bytes (`u16::MAX`), `MAX_VAL_LEN = 268,435,456` bytes (`256 MiB`), `MAX_FRAME_SIZE = 64 MiB`, `MAX_SCOPES = 1024`.
-- **Golden Fixtures:** `tests/format/fixtures/v0_1_0.{mnf,prt,sst,wal}` verify backward-compatible binary decoding. Never alter v1 binary layouts in a breaking way.
-- **Decompression Caps:** WAL and SSTable decoders must validate `uncompressed_len <= MAX_VAL_LEN` before/during LZ4 and Zstd decompression to prevent decompression bombs.
-
-### 4.2 Storage Engine, MVCC & Compaction (`SPEC.md`)
-
-- **Shared WAL, Isolated Scopes:** All scopes share one segmented WAL (`wal/%016x.wal`) for atomic cross-scope commits, while each scope maintains independent `MemTable`s and `SSTable` levels (`scopes/%08x/`). Cross-scope batches execute with the strictest `Durability` of all touched scopes (`StrictFsync` overrides `Buffered`).
-- **OCC Transactions:** `tx.get()` and `tx.scan()` read the transaction's local `WriteSet` first, then merge storage layers at `seq <= tx.read_seq`, filtering expired keys (`expires_at_ms != 0 && expires_at_ms <= now_ms`). At `tx.commit()`, every key in `ReadSet` must satisfy `latest_seq <= tx.read_seq` or return `StorkvError::WriteConflict`. Blind writes do not check `ReadSet`.
-- **Compaction & GC Floor:** In v1, compaction is explicitly triggered (`Db::compact`, `POST /v1/admin/compact`, or gRPC `Compact`), not run by an autonomous background compaction thread. Compaction must preserve versions down to `gc_safe_seq = min(oldest_active_tx_read_seq, oldest_pinned_named_snapshot_seq, oldest_active_watch_cursor_seq)`.
-- **WAL-Pinning Watermarks:** Idle scopes holding old unflushed WAL segments are flushed automatically when `max_wal_pin_bytes` (`64 MiB`) or `max_wal_pin_age` (`60s`) is exceeded.
-
-### 4.3 Transport Parity, Bounds & Security (`SECURITY_AUDIT.md`)
-
-- **Unified Dispatch:** Native, HTTP REST/JSON-RPC, WebSocket, and gRPC paths must execute through `Server::dispatch_request` so admin gating (`--strict-admin`), replica write rejection (`NotPrimary`), telemetry, OCC validation, and watch broadcasts stay identical across transports.
-- **Scopes Are Not Tenants:** Scopes isolate storage layout, not access control. Never introduce partial/inconsistent per-scope auth assumptions.
-- **Bounded Streams & Replay:** Watch and replication registries cap subscriber queues at `1024` items and total subscribers at `1024` (`TooManySubscribers`), evicting slow subscribers non-blockingly. Cursor replays are capped at `1024` items and `16 MiB` (`ReplayBudgetExceeded`).
-- **Path Confinement & Secrets:** Backup/restore must reject path traversal (`..`, absolute paths, drive prefixes) and symlinks (`crates/storkv-core/src/backup/manifest/paths.rs`). Admin token checks must use constant-time comparison (`tokens_match`).
-- **Known Open Audit Items (`docs/internal/SECURITY_AUDIT.md`):**
-  - `F-01`: Compatibility listeners (Redis, Memcached, etcd) currently bypass replica write rejection (`NotPrimary`) by calling `Db` directly instead of enforcing the replica role guard.
-  - `F-02` / `F-03`: Expired replication cursor recovery sends `ReplicationSnapshot` before `Empty` (causing a client protocol error retry loop), and `replication_snapshot` / `apply_replication_snapshot` omit `expires_at_ms` and stale key/scope deletion.
-  - `F-04`: `storkv-sdk` `ScopeCache` does not track server-side `expires_at_ms` deadlines.
-  - When modifying replication, compatibility protocols, or SDK caching, ensure fixes address or respect these invariants.
+- **On-Disk & Wire Binary Format:** Read `FORMAT.md` (LE integers, `inverted_tag` BE sorting, CRC32C checksums, `MAX_KEY_LEN`/`MAX_VAL_LEN`/`MAX_FRAME_SIZE`/`MAX_SCOPES` bounds, decompression bomb checks, and `tests/format/fixtures/v0_1_0.*` backward compatibility).
+- **Storage Engine, MVCC, Compaction & Transport Parity:** Read `SPEC.md` (shared WAL across scopes, OCC `ReadSet`/`WriteSet` validation, explicit compaction `gc_safe_seq`, WAL-pinning watermarks, `Server::dispatch_request` unified dispatch, and bounded stream/replay caps).
+- **Open Security Audit Findings:** Read `docs/internal/SECURITY_AUDIT.md` before touching compatibility protocols (`F-01` replica write bypass in Redis/Memcached/etcd listeners), replication cursor recovery/snapshots (`F-02`/`F-03`), or SDK `ScopeCache` TTL tracking (`F-04`).
 
 ## 5. Code Generation & Synchronized Artifacts
 
@@ -114,7 +92,19 @@ project-structure . --minimize ascii --count
 better-git-diff --ai -u
 ```
 
-### `cargo xtask` Test Tiers
+### Fast Iteration Loop (Use During Coding)
+
+- **Never run `cargo xtask` during edit-compile-fix cycles.** Scope checks to the touched crate and use short diagnostics to keep output compact:
+
+```bash
+cargo check -p <crate> --tests --message-format=short
+cargo clippy -p <crate> --tests --message-format=short -- -D warnings
+cargo test -p <crate> --test <target_name> <test_filter>
+```
+
+### `cargo xtask` Final Verification Tiers
+
+Run workspace-wide `cargo xtask` **only once** after the crate-scoped loop passes:
 
 - **`cargo xtask test fast`**: Runs `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo test --workspace` (matches GitHub `push` to `main` CI).
 - **`cargo xtask test pr`**: Runs `fast` checks, `cargo test --workspace -- --skip chaos`, `cargo xtask verify-headers`, and `cargo doc --workspace --no-deps` (matches GitHub PR CI).

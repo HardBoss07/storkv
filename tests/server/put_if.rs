@@ -17,6 +17,7 @@ fn options() -> WireScopeOptions {
         min_ttl: None,
         max_ttl: None,
         allow_permanent: true,
+        active_ttl_tracking: false,
     }
 }
 

@@ -83,10 +83,16 @@ fn test_round_trip_all_requests() {
             scope_id: 7,
             start_key: Some(Bytes::from_static(b"start")),
             end_key: None,
+            limit: Some(10),
+            reverse: true,
+            keys_only: false,
         },
         Request::ScanPrefix {
             scope_id: 8,
             prefix: Bytes::from_static(b"pre:"),
+            limit: None,
+            reverse: false,
+            keys_only: true,
         },
         Request::TxCommit {
             read_seq: 100,
@@ -128,6 +134,7 @@ fn test_round_trip_all_requests() {
                 min_ttl: Some(Duration::from_millis(10)),
                 max_ttl: Some(Duration::from_secs(86400)),
                 allow_permanent: false,
+                active_ttl_tracking: false,
             },
         },
         Request::DropScope {

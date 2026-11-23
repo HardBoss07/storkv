@@ -1,7 +1,7 @@
 use crate::common;
 use bytes::Bytes;
 use std::time::Duration;
-use storkv_core::{Db, DbOptions, ScopeOptions};
+use storkv_core::{Db, DbOptions, ScanOptions, ScopeOptions};
 
 #[test]
 fn test_delete_range_and_scans() {
@@ -219,4 +219,67 @@ fn point_get_honors_range_tombstone_after_flush_and_reopen() {
         reopened.get(&scope, b"key:15").unwrap(),
         Some(Bytes::from_static(b"value"))
     );
+}
+
+#[test]
+fn bounded_scan_stops_at_limit_and_can_omit_values() {
+    let temp = common::TempDb::new("mvcc_bounded_scan");
+    let db = temp.db();
+    let scope = db.create_scope("bounded", ScopeOptions::default()).unwrap();
+    for index in 0..20 {
+        db.put(&scope, format!("k:{:02}", index).as_bytes(), b"value")
+            .unwrap();
+    }
+    db.delete(&scope, b"k:03").unwrap();
+
+    let page = db
+        .scan_prefix_with(
+            &scope,
+            b"k:",
+            ScanOptions {
+                limit: Some(3),
+                keys_only: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        page,
+        vec![
+            (Bytes::from_static(b"k:00"), Bytes::new()),
+            (Bytes::from_static(b"k:01"), Bytes::new()),
+            (Bytes::from_static(b"k:02"), Bytes::new()),
+        ]
+    );
+
+    let reverse = db
+        .scan_with(
+            &scope,
+            Some(b"k:10".as_slice()),
+            Some(b"k:14".as_slice()),
+            ScanOptions {
+                reverse: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        reverse
+            .iter()
+            .map(|(key, _)| key.as_ref())
+            .collect::<Vec<_>>(),
+        vec![b"k:13".as_slice(), b"k:12", b"k:11", b"k:10"]
+    );
+
+    let zero = db
+        .scan_prefix_with(
+            &scope,
+            b"k:",
+            ScanOptions {
+                limit: Some(0),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert!(zero.is_empty());
 }

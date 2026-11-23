@@ -44,6 +44,7 @@ async fn test_admin_stats_reports_levels_scopes_and_latency() {
                 min_ttl: None,
                 max_ttl: None,
                 allow_permanent: true,
+                active_ttl_tracking: false,
             },
         },
     )

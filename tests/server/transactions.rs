@@ -40,6 +40,7 @@ async fn test_cross_scope_transactions_and_occ_conflict() {
                 min_ttl: None,
                 max_ttl: None,
                 allow_permanent: true,
+                active_ttl_tracking: false,
             },
         },
     )
