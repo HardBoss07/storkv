@@ -131,30 +131,35 @@ impl ManifestState {
 }
 
 fn durability_mode(value: u8) -> DurabilityMode {
-    match value {
-        0 => DurabilityMode::StrictFsync,
-        _ => DurabilityMode::Buffered,
+    if value == DurabilityMode::StrictFsync as u8 {
+        DurabilityMode::StrictFsync
+    } else {
+        DurabilityMode::Buffered
     }
 }
 
 fn retention_mode(value: u8) -> RetentionMode {
-    match value {
-        0 => RetentionMode::Permanent,
-        _ => RetentionMode::Ttl,
+    if value == RetentionMode::Permanent as u8 {
+        RetentionMode::Permanent
+    } else {
+        RetentionMode::Ttl
     }
 }
 
 fn compaction_style_mode(value: u8) -> CompactionStyleMode {
-    match value {
-        0 => CompactionStyleMode::Leveled,
-        _ => CompactionStyleMode::Fifo,
+    if value == CompactionStyleMode::Leveled as u8 {
+        CompactionStyleMode::Leveled
+    } else {
+        CompactionStyleMode::Fifo
     }
 }
 
 fn storage_mode_mode(value: u8) -> StorageModeMode {
-    match value {
-        1 => StorageModeMode::InMemory,
-        2 => StorageModeMode::InMemoryPersistent,
-        _ => StorageModeMode::Disk,
+    if value == StorageModeMode::InMemory as u8 {
+        StorageModeMode::InMemory
+    } else if value == StorageModeMode::InMemoryPersistent as u8 {
+        StorageModeMode::InMemoryPersistent
+    } else {
+        StorageModeMode::Disk
     }
 }

@@ -3,13 +3,16 @@
 use bytes::{Buf, Bytes, BytesMut};
 
 use super::super::codec::{ParseError, Resp};
-use super::value::parse_value;
+use super::value::{CRLF_LEN, parse_value};
 
 pub(crate) const MAX_BULK_LEN: usize = storkv_core::format::MAX_VAL_LEN;
 pub(crate) const MAX_ARRAY_LEN: usize = 1_000_000;
 pub(crate) const MAX_NESTING: usize = 32;
 pub(crate) const MAX_INLINE_LINE_LEN: usize = 64 * 1024;
-pub(crate) const MAX_READ_BUFFER: usize = MAX_BULK_LEN + MAX_INLINE_LINE_LEN + 1024;
+/// Extra space allowed for framing bytes beyond the largest bulk or inline line.
+const READ_BUFFER_FRAMING_SLACK: usize = 1024;
+pub(crate) const MAX_READ_BUFFER: usize =
+    MAX_BULK_LEN + MAX_INLINE_LINE_LEN + READ_BUFFER_FRAMING_SLACK;
 
 /// Parse one RESP value or inline command from the front of `buffer`.
 ///
@@ -54,7 +57,7 @@ fn parse_inline(buffer: &[u8]) -> Result<Option<(Resp, usize)>, ParseError> {
             .map(|argument| Resp::Bulk(Some(Bytes::copy_from_slice(&argument))))
             .collect(),
     ));
-    Ok(Some((value, line_end + 2)))
+    Ok(Some((value, line_end + CRLF_LEN)))
 }
 
 fn split_inline(line: &[u8]) -> Result<Vec<Vec<u8>>, ParseError> {

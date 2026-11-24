@@ -11,8 +11,16 @@ pub const PROTOCOL_VERSION: u16 = 1;
 /// Maximum frame payload size (64 MiB)
 pub const MAX_FRAME_SIZE: usize = 64 * 1024 * 1024;
 
-const LENGTH_PREFIX_SIZE: usize = 4;
-const FRAME_HEADER_SIZE: usize = 8 + 2 + 8 + 1;
+/// Size of an unsigned 32-bit field.
+const U32_SIZE: usize = 4;
+const LENGTH_PREFIX_SIZE: usize = U32_SIZE;
+/// Size of an unsigned 16-bit field.
+const U16_SIZE: usize = 2;
+/// Size of an unsigned 64-bit field.
+const U64_SIZE: usize = 8;
+/// Size of an unsigned 8-bit field.
+const U8_SIZE: usize = 1;
+const FRAME_HEADER_SIZE: usize = U64_SIZE + U16_SIZE + U64_SIZE + U8_SIZE;
 const REQUEST_PAYLOAD_TAG: u8 = 1;
 const RESPONSE_PAYLOAD_TAG: u8 = 2;
 
@@ -189,7 +197,7 @@ pub(crate) fn get_u8(source: &mut BytesMut) -> Result<u8, StorkvWireError> {
 }
 
 pub(crate) fn get_u32_le(source: &mut BytesMut) -> Result<u32, StorkvWireError> {
-    if source.len() < 4 {
+    if source.len() < U32_SIZE {
         return Err(StorkvWireError::Protocol(
             "Unexpected EOF reading u32".into(),
         ));
@@ -198,7 +206,7 @@ pub(crate) fn get_u32_le(source: &mut BytesMut) -> Result<u32, StorkvWireError> 
 }
 
 pub(crate) fn get_i64_le(source: &mut BytesMut) -> Result<i64, StorkvWireError> {
-    if source.len() < 8 {
+    if source.len() < U64_SIZE {
         return Err(StorkvWireError::Protocol(
             "Unexpected EOF reading i64".into(),
         ));
@@ -207,7 +215,7 @@ pub(crate) fn get_i64_le(source: &mut BytesMut) -> Result<i64, StorkvWireError> 
 }
 
 pub(crate) fn get_u64_le(source: &mut BytesMut) -> Result<u64, StorkvWireError> {
-    if source.len() < 8 {
+    if source.len() < U64_SIZE {
         return Err(StorkvWireError::Protocol(
             "Unexpected EOF reading u64".into(),
         ));

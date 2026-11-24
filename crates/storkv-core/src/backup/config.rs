@@ -7,6 +7,13 @@ use crate::backup::sink::BackupSink;
 use crate::backup::sink_local::LocalFilesystemSink;
 use crate::backup::sink_pipe::{CommandPipeSink, CommandPipeSinkConfig};
 
+const DEFAULT_MAX_FULL_BACKUPS: usize = 7;
+const SECONDS_PER_MINUTE: u64 = 60;
+const SECONDS_PER_HOUR: u64 = 60 * SECONDS_PER_MINUTE;
+const SECONDS_PER_DAY: u64 = 24 * SECONDS_PER_HOUR;
+const DEFAULT_MAX_WAL_AGE_SECS: u64 = 7 * SECONDS_PER_DAY;
+const DEFAULT_FULL_BACKUP_INTERVAL_SECS: u64 = SECONDS_PER_HOUR;
+
 /// How the auto-backup scheduler behaves and where artifacts are written.
 pub struct BackupConfig {
     /// Ship sealed WAL segments between full backups when true.
@@ -73,8 +80,8 @@ impl BackupCompression {
 impl Default for BackupRetention {
     fn default() -> Self {
         Self {
-            max_full_backups: 7,
-            max_wal_age: Duration::from_secs(7 * 24 * 60 * 60),
+            max_full_backups: DEFAULT_MAX_FULL_BACKUPS,
+            max_wal_age: Duration::from_secs(DEFAULT_MAX_WAL_AGE_SECS),
         }
     }
 }
@@ -107,7 +114,7 @@ impl BackupConfig {
     fn with_sink(backup_root: PathBuf, sink: Arc<dyn BackupSink>) -> Self {
         Self {
             backup_root,
-            full_backup_interval: Duration::from_secs(3600),
+            full_backup_interval: Duration::from_secs(DEFAULT_FULL_BACKUP_INTERVAL_SECS),
             ship_sealed_wal: true,
             retention: BackupRetention::default(),
             compression: BackupCompression::None,

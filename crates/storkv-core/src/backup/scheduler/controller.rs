@@ -17,6 +17,8 @@ use crate::backup::{retention, wal_index};
 
 use super::{BackupReport, BackupStatus, SCHEDULER_TICK};
 
+const MIN_SCHEDULER_WAIT: Duration = Duration::from_millis(10);
+
 pub(super) struct BackupController {
     pub(super) config: BackupConfig,
     pub(super) inner: Arc<DbInner<AnyFs<PosixFs>>>,
@@ -224,7 +226,7 @@ pub(super) fn run_worker(controller: Arc<BackupController>) {
         let timeout = next_due
             .saturating_duration_since(Instant::now())
             .min(SCHEDULER_TICK)
-            .max(Duration::from_millis(10));
+            .max(MIN_SCHEDULER_WAIT);
         wake_condvar.wait_for(&mut wake_requested, timeout);
     }
 }

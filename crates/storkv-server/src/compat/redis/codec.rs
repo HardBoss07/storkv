@@ -4,6 +4,11 @@
 
 use bytes::Bytes;
 
+/// RESP2 protocol version.
+pub(crate) const RESP2_VERSION: u8 = 2;
+/// RESP3 protocol version.
+pub(crate) const RESP3_VERSION: u8 = 3;
+
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Resp {
     Simple(Bytes),

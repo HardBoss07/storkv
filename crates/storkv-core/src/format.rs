@@ -5,6 +5,10 @@ pub const MAX_KEY_LEN: usize = 65_535;
 /// Maximum value length in bytes (256 MiB).
 pub const MAX_VAL_LEN: usize = 268_435_456; // 256 MiB
 
+const INTERNAL_KEY_TAG_LEN: usize = std::mem::size_of::<u64>();
+const INTERNAL_KEY_EXPIRY_LEN: usize = std::mem::size_of::<u64>();
+const INTERNAL_KEY_OVERHEAD: usize = INTERNAL_KEY_TAG_LEN + INTERNAL_KEY_EXPIRY_LEN;
+
 /// Kind of an internal key entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(u8)]
@@ -89,7 +93,7 @@ impl InternalKey {
 
     /// Encode the key in sort order.
     pub fn encode(&self) -> Bytes {
-        let mut buf = BytesMut::with_capacity(self.user_key.len() + 16);
+        let mut buf = BytesMut::with_capacity(self.user_key.len() + INTERNAL_KEY_OVERHEAD);
         buf.extend_from_slice(&self.user_key);
         let tag = !((self.seq << 8) | (self.value_type as u64));
         buf.put_u64(tag); // Big-Endian
@@ -99,13 +103,18 @@ impl InternalKey {
 
     /// Decode a key. `None` means the input is too short or invalid.
     pub fn decode(bytes: Bytes) -> Option<Self> {
-        if bytes.len() < 16 {
+        if bytes.len() < INTERNAL_KEY_OVERHEAD {
             return None;
         }
-        let user_key_len = bytes.len() - 16;
+        let user_key_len = bytes.len() - INTERNAL_KEY_OVERHEAD;
         let user_key = bytes.slice(0..user_key_len);
-        let tag_bytes: [u8; 8] = bytes[user_key_len..user_key_len + 8].try_into().ok()?;
-        let exp_bytes: [u8; 8] = bytes[user_key_len + 8..].try_into().ok()?;
+        let tag_bytes: [u8; INTERNAL_KEY_TAG_LEN] = bytes
+            [user_key_len..user_key_len + INTERNAL_KEY_TAG_LEN]
+            .try_into()
+            .ok()?;
+        let exp_bytes: [u8; INTERNAL_KEY_EXPIRY_LEN] = bytes[user_key_len + INTERNAL_KEY_TAG_LEN..]
+            .try_into()
+            .ok()?;
 
         let inverted_tag = u64::from_be_bytes(tag_bytes);
         let tag = !inverted_tag;

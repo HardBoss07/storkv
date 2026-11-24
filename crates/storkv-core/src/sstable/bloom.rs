@@ -2,6 +2,13 @@ use crate::error::{Result, StorkvError};
 use crate::format::compute_crc32c;
 use bytes::Bytes;
 
+const DEFAULT_BITS_PER_KEY: usize = 10;
+const DEFAULT_NUM_PROBES: u8 = 7;
+const MIN_BITSET_BITS: usize = 64;
+const BITS_PER_BYTE: usize = 8;
+const PROBE_DELTA_ROTATION: u32 = 15;
+const FILTER_HEADER_SIZE: usize = 8;
+
 /// Builder for a prefix Bloom filter block.
 pub struct BloomFilterBuilder {
     num_probes: u8,
@@ -13,8 +20,8 @@ impl BloomFilterBuilder {
     /// Create a builder with 10 bits per key and 7 probes.
     pub fn new() -> Self {
         Self {
-            bits_per_key: 10,
-            num_probes: 7,
+            bits_per_key: DEFAULT_BITS_PER_KEY,
+            num_probes: DEFAULT_NUM_PROBES,
             hashes: Vec::new(),
         }
     }
@@ -27,24 +34,24 @@ impl BloomFilterBuilder {
     /// Serialize the filter block.
     pub fn build(self) -> Vec<u8> {
         let bitset_bits = if self.hashes.is_empty() {
-            64
+            MIN_BITSET_BITS
         } else {
-            (self.hashes.len() * self.bits_per_key).max(64)
+            (self.hashes.len() * self.bits_per_key).max(MIN_BITSET_BITS)
         };
-        let bitset_bytes = bitset_bits.div_ceil(8);
+        let bitset_bytes = bitset_bits.div_ceil(BITS_PER_BYTE);
         let mut bitset = vec![0u8; bitset_bytes];
 
         for hash in self.hashes {
-            let delta = hash.rotate_left(15);
+            let delta = hash.rotate_left(PROBE_DELTA_ROTATION);
             let mut probe_hash = hash;
             for _ in 0..self.num_probes {
-                let bit_position = (probe_hash as usize) % (bitset_bytes * 8);
-                bitset[bit_position / 8] |= 1 << (bit_position % 8);
+                let bit_position = (probe_hash as usize) % (bitset_bytes * BITS_PER_BYTE);
+                bitset[bit_position / BITS_PER_BYTE] |= 1 << (bit_position % BITS_PER_BYTE);
                 probe_hash = probe_hash.wrapping_add(delta);
             }
         }
 
-        let mut encoded = Vec::with_capacity(8 + bitset_bytes);
+        let mut encoded = Vec::with_capacity(FILTER_HEADER_SIZE + bitset_bytes);
         encoded.push(self.num_probes);
         encoded.push(self.bits_per_key as u8);
         encoded.extend_from_slice(&0u16.to_le_bytes());
@@ -67,7 +74,7 @@ impl BloomFilterReader {
     ///
     /// Returns [`StorkvError::Corruption`] on a short or invalid block.
     pub fn new(data: Bytes) -> Result<Self> {
-        if data.len() < 8 {
+        if data.len() < FILTER_HEADER_SIZE {
             return Err(StorkvError::Corruption("Filter block too short".into()));
         }
         let num_probes = data[0];
@@ -76,13 +83,13 @@ impl BloomFilterReader {
                 .try_into()
                 .map_err(|_| StorkvError::Corruption("Invalid filter length field".into()))?,
         ) as usize;
-        let bitset_end = 8usize
+        let bitset_end = FILTER_HEADER_SIZE
             .checked_add(bitset_length)
             .ok_or_else(|| StorkvError::Corruption("Filter bitset length overflow".into()))?;
         if data.len() < bitset_end {
             return Err(StorkvError::Corruption("Truncated filter bitset".into()));
         }
-        let bitset = data.slice(8..bitset_end);
+        let bitset = data.slice(FILTER_HEADER_SIZE..bitset_end);
         Ok(Self { num_probes, bitset })
     }
 
@@ -91,13 +98,15 @@ impl BloomFilterReader {
         if self.bitset.is_empty() {
             return true;
         }
-        let total_bits = self.bitset.len() * 8;
+        let total_bits = self.bitset.len() * BITS_PER_BYTE;
         let hash = compute_crc32c(key);
-        let delta = hash.rotate_left(15);
+        let delta = hash.rotate_left(PROBE_DELTA_ROTATION);
         let mut probe_hash = hash;
         for _ in 0..self.num_probes {
             let bit_position = (probe_hash as usize) % total_bits;
-            if (self.bitset[bit_position / 8] & (1 << (bit_position % 8))) == 0 {
+            if (self.bitset[bit_position / BITS_PER_BYTE] & (1 << (bit_position % BITS_PER_BYTE)))
+                == 0
+            {
                 return false;
             }
             probe_hash = probe_hash.wrapping_add(delta);

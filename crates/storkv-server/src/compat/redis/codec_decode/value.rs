@@ -7,6 +7,12 @@ use super::parse::{MAX_ARRAY_LEN, MAX_BULK_LEN, MAX_NESTING};
 
 type ArrayParse = Result<Option<(Option<Vec<Resp>>, usize)>, ParseError>;
 
+const INITIAL_ARRAY_CAPACITY: usize = 1024;
+/// Length of the `\r\n` line terminator in bytes.
+pub(super) const CRLF_LEN: usize = 2;
+/// Number of array elements that form one map entry.
+const MAP_FIELDS_PER_PAIR: usize = 2;
+
 pub(super) fn parse_value(
     buffer: &[u8],
     position: usize,
@@ -23,7 +29,7 @@ pub(super) fn parse_value(
         return Ok(None);
     };
     let line = &buffer[line_start..line_end];
-    let consumed_line = line_end + 2;
+    let consumed_line = line_end + CRLF_LEN;
     let count_line = line_start;
     match prefix {
         b'+' => Ok(Some((Resp::Simple(bytes_from(line)), consumed_line))),
@@ -88,7 +94,7 @@ fn parse_bulk(
     let Some(body) = buffer.get(consumed_line..data_end) else {
         return Ok(None);
     };
-    let Some(terminator) = buffer.get(data_end..data_end.saturating_add(2)) else {
+    let Some(terminator) = buffer.get(data_end..data_end.saturating_add(CRLF_LEN)) else {
         return Ok(None);
     };
     if terminator != b"\r\n" {
@@ -100,7 +106,7 @@ fn parse_bulk(
     } else {
         Resp::Bulk(Some(value))
     };
-    Ok(Some((value, data_end + 2)))
+    Ok(Some((value, data_end + CRLF_LEN)))
 }
 
 fn parse_map(
@@ -112,7 +118,7 @@ fn parse_map(
         return Ok(None);
     };
     let flattened = values.unwrap_or_default();
-    let mut pairs = Vec::with_capacity(flattened.len() / 2);
+    let mut pairs = Vec::with_capacity(flattened.len() / MAP_FIELDS_PER_PAIR);
     let mut iterator = flattened.into_iter();
     while let Some(key) = iterator.next() {
         let Some(value) = iterator.next() else {
@@ -128,7 +134,7 @@ fn parse_array(buffer: &[u8], start: usize, depth: usize) -> ArrayParse {
         return Ok(None);
     };
     let count = parse_i64(&buffer[start..line_end])?;
-    let mut position = line_end + 2;
+    let mut position = line_end + CRLF_LEN;
     if count < 0 {
         return Ok(Some((None, position)));
     }
@@ -137,7 +143,7 @@ fn parse_array(buffer: &[u8], start: usize, depth: usize) -> ArrayParse {
     if count > MAX_ARRAY_LEN {
         return Err(ParseError::Protocol("array length exceeds limit".into()));
     }
-    let mut values = Vec::with_capacity(count.min(1024));
+    let mut values = Vec::with_capacity(count.min(INITIAL_ARRAY_CAPACITY));
     for _ in 0..count {
         let Some((value, consumed)) = parse_value(buffer, position, depth + 1)? else {
             return Ok(None);

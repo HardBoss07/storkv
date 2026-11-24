@@ -6,7 +6,16 @@ use crate::error::{Result, StorkvError};
 
 use super::super::config::BackupCompression;
 use super::super::manifest::{BackupFileKind, MANIFEST_FILENAME, manifest_path_string};
-use super::{ENTRY_END, ENTRY_WAL};
+use super::{ENTRY_END, ENTRY_OTHER, ENTRY_WAL};
+
+/// Compression tag for an uncompressed payload.
+const COMPRESSION_NONE: u8 = 0;
+/// Compression tag for a Zstandard payload.
+const COMPRESSION_ZSTD: u8 = 1;
+/// Compression tag for an LZ4 payload.
+const COMPRESSION_LZ4: u8 = 2;
+/// Zstandard compression level used for backup payloads.
+const ZSTD_COMPRESSION_LEVEL: i32 = 3;
 
 pub(super) fn encode_entries(entries: &[(u8, String, Vec<u8>)]) -> Result<Vec<u8>> {
     let mut encoded = Vec::new();
@@ -28,17 +37,21 @@ pub(super) fn compress_payload(
     compression: BackupCompression,
 ) -> Result<(u8, Vec<u8>)> {
     match compression {
-        BackupCompression::None => Ok((0, payload)),
+        BackupCompression::None => Ok((COMPRESSION_NONE, payload)),
         BackupCompression::Zstd => {
-            let compressed = zstd::stream::encode_all(payload.as_slice(), 3).map_err(|error| {
+            let compressed = zstd::stream::encode_all(payload.as_slice(), ZSTD_COMPRESSION_LEVEL)
+                .map_err(|error| {
                 StorkvError::BackupSink {
                     sink: "command-pipe".into(),
                     detail: format!("zstd compression failed: {error}"),
                 }
             })?;
-            Ok((1, compressed))
+            Ok((COMPRESSION_ZSTD, compressed))
         }
-        BackupCompression::Lz4 => Ok((2, lz4_flex::compress_prepend_size(&payload))),
+        BackupCompression::Lz4 => Ok((
+            COMPRESSION_LZ4,
+            lz4_flex::compress_prepend_size(&payload),
+        )),
     }
 }
 
@@ -68,7 +81,7 @@ pub(super) fn collect_entries(
         let bytes = std::fs::read(&path)?;
         let kind = match BackupFileKind::from_relative_path(relative_path) {
             BackupFileKind::Wal => ENTRY_WAL,
-            _ => 1,
+            _ => ENTRY_OTHER,
         };
         entries.push((kind, relative_name, bytes));
     }

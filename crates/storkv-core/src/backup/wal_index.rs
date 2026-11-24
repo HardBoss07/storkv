@@ -3,6 +3,13 @@ use std::path::{Path, PathBuf};
 use crate::error::{Result, StorkvError};
 use crate::wal::{WAL_HEADER_SIZE, WAL_MAGIC, WalBatchFrame};
 
+/// Number of hexadecimal digits in a WAL segment file name.
+const WAL_SEGMENT_NAME_HEX_LEN: usize = 16;
+/// Offset of the creation timestamp field in a WAL segment header.
+pub(crate) const WAL_CREATED_AT_OFFSET: usize = 12;
+/// Size of the creation timestamp field in a WAL segment header.
+pub(crate) const WAL_CREATED_AT_LEN: usize = 4;
+
 /// Sequence span and metadata of one WAL segment.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WalSegmentInfo {
@@ -28,7 +35,7 @@ pub fn inspect_segment(path: &Path) -> Result<WalSegmentInfo> {
     let bytes = std::fs::read(path)?;
     validate_header(&bytes, path)?;
     let created_at_sec = u32::from_le_bytes(
-        bytes[12..16]
+        bytes[WAL_CREATED_AT_OFFSET..WAL_CREATED_AT_OFFSET + WAL_CREATED_AT_LEN]
             .try_into()
             .map_err(|_| corruption(path, "truncated WAL creation timestamp"))?,
     );
@@ -89,7 +96,7 @@ pub fn list_segments(wal_dir: &Path) -> Result<Vec<WalSegmentInfo>> {
 /// Parse a 16-digit hexadecimal WAL segment file name.
 pub fn parse_file_number(path: &Path) -> Option<u64> {
     let stem = path.file_stem()?.to_str()?;
-    if stem.len() != 16 {
+    if stem.len() != WAL_SEGMENT_NAME_HEX_LEN {
         return None;
     }
     u64::from_str_radix(stem, 16).ok()

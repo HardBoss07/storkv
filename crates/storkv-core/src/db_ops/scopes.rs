@@ -1,5 +1,7 @@
 use crate::db::{DbInner, ScopeHandle};
-use crate::manifest::{EditRecord, VersionEdit};
+use crate::manifest::{
+    CompactionStyleMode, DurabilityMode, EditRecord, RetentionMode, StorageModeMode, VersionEdit,
+};
 use crate::mvcc::TransactionContext;
 use crate::scope::Scope;
 use crate::vfs::FileSystem;
@@ -136,24 +138,28 @@ fn log_drop_scope_edit<FS: FileSystem>(
 
 fn scope_creation_edit(scope_id: u32, name: &str, options: &crate::ScopeOptions) -> VersionEdit {
     let durability = match options.durability {
-        Durability::StrictFsync => 0,
-        Durability::Buffered { .. } => 1,
+        Durability::StrictFsync => DurabilityMode::StrictFsync as u8,
+        Durability::Buffered { .. } => DurabilityMode::Buffered as u8,
     };
     let sync_ms = match options.durability {
         Durability::Buffered { sync_interval } => sync_interval.as_millis() as u32,
         _ => 0,
     };
     let (retention, default_ttl_ms, compaction_style) = match options.retention {
-        Retention::Permanent => (0, 0, 0),
+        Retention::Permanent => (
+            RetentionMode::Permanent as u8,
+            0,
+            CompactionStyleMode::Leveled as u8,
+        ),
         Retention::Ttl {
             default_ttl,
             compaction_style,
         } => (
-            1,
+            RetentionMode::Ttl as u8,
             default_ttl.as_millis() as u64,
             match compaction_style {
-                CompactionStyle::Leveled => 0,
-                CompactionStyle::Fifo => 1,
+                CompactionStyle::Leveled => CompactionStyleMode::Leveled as u8,
+                CompactionStyle::Fifo => CompactionStyleMode::Fifo as u8,
             },
         ),
     };
@@ -167,9 +173,11 @@ fn scope_creation_edit(scope_id: u32, name: &str, options: &crate::ScopeOptions)
         default_ttl_ms,
         compaction_style,
         storage_mode: match options.storage_mode {
-            crate::StorageMode::Disk => 0,
-            crate::StorageMode::InMemory => 1,
-            crate::StorageMode::InMemoryPersistent => 2,
+            crate::StorageMode::Disk => StorageModeMode::Disk as u8,
+            crate::StorageMode::InMemory => StorageModeMode::InMemory as u8,
+            crate::StorageMode::InMemoryPersistent => {
+                StorageModeMode::InMemoryPersistent as u8
+            }
         },
         name: name.to_string(),
     });

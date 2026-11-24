@@ -4,6 +4,14 @@ use super::types::{WireAdminStats, WireLevelStat, WireScopeStat, WireTransportSt
 use crate::error::StorkvWireError;
 use crate::frame::{get_str, get_u8, get_u32_le, get_u64_le};
 
+const U8_SIZE: usize = std::mem::size_of::<u8>();
+const U32_SIZE: usize = std::mem::size_of::<u32>();
+const U64_SIZE: usize = std::mem::size_of::<u64>();
+const BACKUP_COUNTERS_SIZE: usize = 5 * U64_SIZE;
+const TRANSPORT_STAT_MIN_SIZE: usize = U8_SIZE + 3 * U64_SIZE;
+const LEVEL_STAT_MIN_SIZE: usize = U8_SIZE + U32_SIZE + U64_SIZE;
+const SCOPE_STAT_MIN_SIZE: usize = 2 * U32_SIZE + 2 * U64_SIZE + U32_SIZE;
+
 pub(super) fn decode_admin_stats(source: &mut BytesMut) -> Result<WireAdminStats, StorkvWireError> {
     let levels = decode_level_stats(source)?;
     let scopes = decode_scope_stats(source)?;
@@ -17,7 +25,7 @@ pub(super) fn decode_admin_stats(source: &mut BytesMut) -> Result<WireAdminStats
     // Append-only extension; older peers end the payload here.
     if !source.is_empty() && get_u8(source)? == 1 {
         stats.transports = decode_transport_stats(source)?;
-        if source.len() >= 40 {
+        if source.len() >= BACKUP_COUNTERS_SIZE {
             stats.backups_completed_total = get_u64_le(source)?;
             stats.backups_failed_total = get_u64_le(source)?;
             stats.last_backup_timestamp_ms = get_u64_le(source)?;
@@ -33,7 +41,7 @@ fn decode_transport_stats(
 ) -> Result<Vec<WireTransportStat>, StorkvWireError> {
     let count = get_u32_le(source)? as usize;
     // Each entry is u8 + three u64 fields.
-    if count > source.len() / 25 {
+    if count > source.len() / TRANSPORT_STAT_MIN_SIZE {
         return Err(StorkvWireError::Protocol(
             "Transport count exceeds available payload".into(),
         ));
@@ -53,7 +61,7 @@ fn decode_transport_stats(
 fn decode_level_stats(source: &mut BytesMut) -> Result<Vec<WireLevelStat>, StorkvWireError> {
     let level_count = get_u32_le(source)? as usize;
     // A level entry is at least u8 + u32 + u64.
-    if level_count > source.len() / 13 {
+    if level_count > source.len() / LEVEL_STAT_MIN_SIZE {
         return Err(StorkvWireError::Protocol(
             "Level count exceeds available payload".into(),
         ));
@@ -72,7 +80,7 @@ fn decode_level_stats(source: &mut BytesMut) -> Result<Vec<WireLevelStat>, Stork
 fn decode_scope_stats(source: &mut BytesMut) -> Result<Vec<WireScopeStat>, StorkvWireError> {
     let scope_count = get_u32_le(source)? as usize;
     // A scope entry is at least u32 + u32 name length + u64 + u64 + u32.
-    if scope_count > source.len() / 28 {
+    if scope_count > source.len() / SCOPE_STAT_MIN_SIZE {
         return Err(StorkvWireError::Protocol(
             "Scope count exceeds available payload".into(),
         ));

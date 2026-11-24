@@ -4,7 +4,7 @@ use bytes::Bytes;
 use storkv_core::{ScopeHandle, Transaction};
 
 use super::super::codec::Resp;
-use super::super::commands::RedisSession;
+use super::super::commands::{MILLIS_PER_SECOND, RedisSession};
 use super::super::helpers::{parse_i64, storage_error, wrong_arity};
 use super::super::keyspace;
 
@@ -65,7 +65,9 @@ pub(super) fn tx_ttl(
     match keyspace::remaining_ms(session.db(), scope, key) {
         Ok(None) => Resp::Integer(-2),
         Ok(Some(0)) => Resp::Integer(-1),
-        Ok(Some(remaining)) if scale == 1000 => Resp::Integer(remaining.div_ceil(1000) as i64),
+        Ok(Some(remaining)) if scale == MILLIS_PER_SECOND => {
+            Resp::Integer(remaining.div_ceil(MILLIS_PER_SECOND) as i64)
+        }
         Ok(Some(remaining)) => Resp::Integer(remaining as i64),
         Err(error) => storage_error(error),
     }

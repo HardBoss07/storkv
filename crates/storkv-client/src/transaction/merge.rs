@@ -7,6 +7,10 @@ use bytes::Bytes;
 use storkv_proto::WireMergeOp;
 
 const TAG: u8 = 0xFF;
+const OPERAND_KIND_INDEX: usize = 1;
+const APPEND_HAS_BOUND_INDEX: usize = 2;
+const APPEND_UNBOUNDED_DATA_INDEX: usize = 3;
+const APPEND_BOUNDED_HEADER_LEN: usize = APPEND_UNBOUNDED_DATA_INDEX + std::mem::size_of::<u64>();
 
 pub(super) fn encode_merge_operand(op: WireMergeOp) -> Bytes {
     match op {
@@ -33,7 +37,7 @@ pub(super) fn apply_merge_operand(current: Option<Bytes>, operand: &[u8]) -> Byt
         let total = parse_i64(current.as_deref()).wrapping_add(parse_i64(Some(operand)));
         return Bytes::from(total.to_string());
     }
-    match operand[1] {
+    match operand[OPERAND_KIND_INDEX] {
         1 => append(current, operand),
         2 => {
             let next = match current {
@@ -62,14 +66,23 @@ pub(super) fn apply_merge_operand(current: Option<Bytes>, operand: &[u8]) -> Byt
 }
 
 fn append(current: Option<Bytes>, operand: &[u8]) -> Bytes {
-    let has_bound = operand.get(2).copied().unwrap_or(0);
+    let has_bound = operand.get(APPEND_HAS_BOUND_INDEX).copied().unwrap_or(0);
     let (max_len, data) = if has_bound == 0 {
-        (None, operand.get(3..).unwrap_or_default())
+        (
+            None,
+            operand
+                .get(APPEND_UNBOUNDED_DATA_INDEX..)
+                .unwrap_or_default(),
+        )
     } else {
-        let bound = read_u64(operand.get(3..).unwrap_or_default());
+        let bound = read_u64(
+            operand
+                .get(APPEND_UNBOUNDED_DATA_INDEX..)
+                .unwrap_or_default(),
+        );
         (
             Some(usize::try_from(bound).unwrap_or(usize::MAX)),
-            operand.get(11..).unwrap_or_default(),
+            operand.get(APPEND_BOUNDED_HEADER_LEN..).unwrap_or_default(),
         )
     };
     let mut joined = current.unwrap_or_default().to_vec();

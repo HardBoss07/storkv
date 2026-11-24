@@ -7,6 +7,11 @@ use crate::pool::StorkvPool;
 
 use super::{CacheOptions, RetryPolicy};
 
+const DEFAULT_MAX_CONNECTIONS: u32 = 10;
+const DEFAULT_MIN_CONNECTIONS: u32 = 1;
+const DEFAULT_ACQUIRE_TIMEOUT_SECS: u64 = 5;
+const DEFAULT_IDLE_TIMEOUT_SECS: u64 = 300;
+
 /// Configuration for a [`StorkvPool`].
 #[derive(Debug, Clone)]
 pub struct StorkvPoolOptions {
@@ -32,10 +37,10 @@ impl Default for StorkvPoolOptions {
     fn default() -> Self {
         Self {
             health_check: true,
-            max_connections: 10,
-            min_connections: 1,
-            acquire_timeout: Duration::from_secs(5),
-            idle_timeout: Some(Duration::from_secs(300)),
+            max_connections: DEFAULT_MAX_CONNECTIONS,
+            min_connections: DEFAULT_MIN_CONNECTIONS,
+            acquire_timeout: Duration::from_secs(DEFAULT_ACQUIRE_TIMEOUT_SECS),
+            idle_timeout: Some(Duration::from_secs(DEFAULT_IDLE_TIMEOUT_SECS)),
             retry: RetryPolicy::default(),
             cache: CacheOptions::default(),
             consistency: Consistency::Strong,

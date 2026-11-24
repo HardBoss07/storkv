@@ -7,6 +7,8 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 use crate::backend::decode_response;
 use crate::transport::{ClientError, ClientResult};
 
+const READ_BUFFER_CAPACITY: usize = 8192;
+
 /// WebSocket backend carrying native `STORKPRT` frames as binary messages.
 pub(crate) struct WsBackend {
     socket: WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>,
@@ -21,7 +23,7 @@ impl WsBackend {
             .map_err(|error| ClientError::Http(error.to_string()))?;
         Ok(Self {
             socket,
-            read_buf: BytesMut::with_capacity(8192),
+            read_buf: BytesMut::with_capacity(READ_BUFFER_CAPACITY),
         })
     }
 

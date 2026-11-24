@@ -4,6 +4,7 @@ use bytes::Bytes;
 
 use super::RedisSession;
 use super::codec::Resp;
+use super::commands::MILLIS_PER_SECOND;
 use super::helpers::{
     cursor_from_key, decode_cursor, glob_match, parse_i64, parse_u64, storage_error, upper,
     validate_glob_pattern, wrong_arity,
@@ -177,8 +178,8 @@ impl RedisSession {
 }
 
 fn ttl_value(remaining: u64, scale: u64) -> i64 {
-    if scale == 1000 {
-        remaining.div_ceil(1000) as i64
+    if scale == MILLIS_PER_SECOND {
+        remaining.div_ceil(MILLIS_PER_SECOND) as i64
     } else {
         remaining as i64
     }

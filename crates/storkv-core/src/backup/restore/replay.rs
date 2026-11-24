@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use crate::backup::manifest::write_synced;
-use crate::backup::wal_index;
+use crate::backup::wal_index::{self, WAL_CREATED_AT_LEN, WAL_CREATED_AT_OFFSET};
 use crate::error::{Result, StorkvError};
 use crate::wal::{WAL_HEADER_SIZE, WAL_MAGIC, WalBatchFrame};
 
@@ -44,7 +44,8 @@ fn replay_segment_filtered(source: &Path, destination_wal: &Path, target_seq: u6
     }
     std::fs::create_dir_all(destination_wal)?;
 
-    let mut output = wal_header(&bytes[12..16]);
+    let mut output =
+        wal_header(&bytes[WAL_CREATED_AT_OFFSET..WAL_CREATED_AT_OFFSET + WAL_CREATED_AT_LEN]);
     let mut offset = WAL_HEADER_SIZE;
     let mut kept_any = false;
     while offset < bytes.len() {
@@ -87,7 +88,7 @@ fn wal_header(created_at_sec: &[u8]) -> Vec<u8> {
     header.extend_from_slice(WAL_MAGIC);
     header.extend_from_slice(&1u16.to_le_bytes());
     header.extend_from_slice(&0u16.to_le_bytes());
-    if created_at_sec.len() == 4 {
+    if created_at_sec.len() == WAL_CREATED_AT_LEN {
         header.extend_from_slice(created_at_sec);
     } else {
         header.extend_from_slice(&0u32.to_le_bytes());

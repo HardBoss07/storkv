@@ -15,6 +15,8 @@ use crate::vfs::FileSystem;
 use crate::wal::{Durability, WalOp};
 use crate::watch::ChangeEvent;
 
+const DEFAULT_BUFFERED_SYNC_INTERVAL_MS: u64 = 100;
+
 impl<FS: FileSystem + 'static> DbInner<FS> {
     /// Persist range tombstones before the memtable applies them.
     ///
@@ -91,7 +93,7 @@ pub(super) fn build_wal_ops<FS: FileSystem + 'static>(
 ) -> (Vec<WalOp>, Durability) {
     let mut ops = Vec::with_capacity(transaction.write_set.len());
     let mut durability = Durability::Buffered {
-        sync_interval: Duration::from_millis(100),
+        sync_interval: Duration::from_millis(DEFAULT_BUFFERED_SYNC_INTERVAL_MS),
     };
 
     let scopes = db.scopes.read();

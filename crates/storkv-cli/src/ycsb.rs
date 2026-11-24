@@ -5,6 +5,8 @@ use storkv_client::{AsyncClient, ClientError, ScopeHandle};
 use crate::CliRunner;
 
 const DEFAULT_SCOPE_NAME: &str = "default";
+const KEY_INDEX_WIDTH: usize = 8;
+const YCSB_B_UPDATE_INTERVAL: usize = 20;
 
 /// Result of one YCSB-style workload run.
 #[derive(Debug, Clone)]
@@ -57,7 +59,7 @@ async fn load_records(
     record_count: usize,
 ) -> Result<(), ClientError> {
     for index in 0..record_count {
-        let key = format!("user{:08}", index);
+        let key = format!("user{index:0width$}", width = KEY_INDEX_WIDTH);
         let value = format!("val_{}_{}", index, "payload_padding_data_for_ycsb");
         client.put(scope, key.as_bytes(), value.as_bytes()).await?;
     }
@@ -72,7 +74,11 @@ async fn execute_workload(
     operation_count: usize,
 ) -> Result<(), ClientError> {
     for index in 0..operation_count {
-        let target_key = format!("user{:08}", index % record_count);
+        let target_key = format!(
+            "user{:0width$}",
+            index % record_count,
+            width = KEY_INDEX_WIDTH
+        );
         match workload {
             "a" => execute_workload_a(client, scope, &target_key, index).await?,
             "b" => execute_workload_b(client, scope, &target_key, index).await?,
@@ -101,7 +107,7 @@ async fn execute_workload_b(
     target_key: &str,
     index: usize,
 ) -> Result<(), ClientError> {
-    if !index.is_multiple_of(20) {
+    if !index.is_multiple_of(YCSB_B_UPDATE_INTERVAL) {
         read_one(client, scope, target_key).await
     } else {
         update_one(client, scope, target_key, index).await
