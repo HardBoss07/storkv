@@ -4,9 +4,13 @@ use std::sync::Mutex;
 use storkv_core::Db;
 use storkv_proto::{WireAdminStats, WireLevelStat, WireScopeStat, WireTransportStat};
 
+/// Maximum number of latency samples to track per connection.
 const MAX_LATENCY_SAMPLES: usize = 2048;
+/// Number of compaction levels in the LSM tree.
 const LEVEL_COUNT: usize = 7;
+/// The percentile threshold for the 99th percentile latency calculation.
 const P99_PERCENT: usize = 99;
+/// The total percentage sum used for weighted percentile calculations.
 const PERCENT_TOTAL: usize = 100;
 
 #[derive(Debug, Default, Clone, Copy)]

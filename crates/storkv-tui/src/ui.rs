@@ -47,15 +47,26 @@ pub fn render_dashboard_full(
     render_scope_panel(frame, admin, chunks[4]);
 }
 
+/// Width of the amplification panel.
+const AMPLIFICATION_PANEL_WIDTH: usize = 5;
+/// Width of the levels panel.
+const LEVELS_PANEL_WIDTH: usize = 11;
+/// Width of the WAL panel.
+const WAL_PANEL_WIDTH: usize = 6;
+/// Width of the backup panel.
+const BACKUP_PANEL_WIDTH: usize = 7;
+/// Minimum width of the scope panel.
+const SCOPE_PANEL_MIN_WIDTH: usize = 4;
+
 fn dashboard_chunks(area: Rect) -> std::rc::Rc<[Rect]> {
     Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(5),
-            Constraint::Length(11),
-            Constraint::Length(6),
-            Constraint::Length(7),
-            Constraint::Min(4),
+            Constraint::Length(AMPLIFICATION_PANEL_WIDTH),
+            Constraint::Length(LEVELS_PANEL_WIDTH),
+            Constraint::Length(WAL_PANEL_WIDTH),
+            Constraint::Length(BACKUP_PANEL_WIDTH),
+            Constraint::Min(SCOPE_PANEL_MIN_WIDTH),
         ])
         .split(area)
 }
@@ -241,12 +252,17 @@ fn scope_line(scope: &crate::model::ScopeStats) -> Line<'static> {
     ])
 }
 
+/// Number of bytes per unit in the human-readable format.
+const BYTES_PER_UNIT: u64 = 1024;
+
+/// Units for human-readable byte representation.
+const UNITS: [&str; 4] = ["B", "KiB", "MiB", "GiB"];
+
 fn format_bytes(bytes: u64) -> String {
-    const UNITS: [&str; 4] = ["B", "KiB", "MiB", "GiB"];
     let mut value = bytes as f64;
     let mut unit = 0;
-    while value >= 1024.0 && unit < UNITS.len() - 1 {
-        value /= 1024.0;
+    while value >= BYTES_PER_UNIT && unit < UNITS.len() - 1 {
+        value /= BYTES_PER_UNIT;
         unit += 1;
     }
     if unit == 0 {
@@ -256,10 +272,14 @@ fn format_bytes(bytes: u64) -> String {
     }
 }
 
+/// Maximum number of characters to truncate a string to.
+const MAX_TRUNCATE_CHARS: usize = 28;
+
 fn truncate(value: &str, max_chars: usize) -> String {
-    if value.chars().count() <= max_chars {
+    let limit = std::cmp::min(value.chars().count(), max_chars);
+    if value.chars().count() <= limit {
         value.to_string()
     } else {
-        value.chars().take(max_chars).collect()
+        value.chars().take(limit).collect()
     }
 }
