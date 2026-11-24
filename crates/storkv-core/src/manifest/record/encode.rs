@@ -1,15 +1,19 @@
 use bytes::{BufMut, BytesMut};
 
-use super::types::{EditRecord, SstFileMeta};
+use super::types::{
+    EditRecord, SstFileMeta, StorageModeMode, TAG_ADD_RANGE_TOMBSTONE, TAG_ADD_SST_FILE, TAG_CREATE_SCOPE,
+    TAG_CREATE_SCOPE_WITH_STORAGE, TAG_DELETE_SST_FILE, TAG_DROP_SCOPE, TAG_PIN_SNAPSHOT,
+    TAG_SET_NEXT_SEQUENCE, TAG_SET_WAL_NUMBER, TAG_UNPIN_SNAPSHOT,
+};
 
 pub(super) fn encode_edit_record(record: &EditRecord, destination: &mut BytesMut) {
     match record {
         EditRecord::SetNextSequence(sequence_number) => {
-            destination.put_u8(0x01);
+            destination.put_u8(TAG_SET_NEXT_SEQUENCE);
             destination.put_u64_le(*sequence_number);
         }
         EditRecord::SetWalNumber(wal_number) => {
-            destination.put_u8(0x02);
+            destination.put_u8(TAG_SET_WAL_NUMBER);
             destination.put_u64_le(*wal_number);
         }
         EditRecord::CreateScope {
@@ -22,10 +26,10 @@ pub(super) fn encode_edit_record(record: &EditRecord, destination: &mut BytesMut
             storage_mode,
             name,
         } => {
-            if *storage_mode == 0 {
-                destination.put_u8(0x03);
+            if *storage_mode == StorageModeMode::Disk as u8 {
+                destination.put_u8(TAG_CREATE_SCOPE);
             } else {
-                destination.put_u8(0x09);
+                destination.put_u8(TAG_CREATE_SCOPE_WITH_STORAGE);
             }
             destination.put_u32_le(*scope_id);
             destination.put_u8(*durability);
@@ -34,17 +38,17 @@ pub(super) fn encode_edit_record(record: &EditRecord, destination: &mut BytesMut
             destination.put_u64_le(*default_ttl_ms);
             destination.put_u8(*compaction_style);
             put_name(destination, name);
-            if *storage_mode != 0 {
+            if *storage_mode != StorageModeMode::Disk as u8 {
                 destination.put_u8(*storage_mode);
             }
         }
         EditRecord::DropScope { scope_id, drop_seq } => {
-            destination.put_u8(0x04);
+            destination.put_u8(TAG_DROP_SCOPE);
             destination.put_u32_le(*scope_id);
             destination.put_u64_le(*drop_seq);
         }
         EditRecord::AddSstFile(metadata) => {
-            destination.put_u8(0x05);
+            destination.put_u8(TAG_ADD_SST_FILE);
             encode_sst_file_meta(destination, metadata);
         }
         EditRecord::DeleteSstFile {
@@ -52,7 +56,7 @@ pub(super) fn encode_edit_record(record: &EditRecord, destination: &mut BytesMut
             level,
             file_num,
         } => {
-            destination.put_u8(0x06);
+            destination.put_u8(TAG_DELETE_SST_FILE);
             destination.put_u32_le(*scope_id);
             destination.put_u8(*level);
             destination.put_u64_le(*file_num);
@@ -62,13 +66,13 @@ pub(super) fn encode_edit_record(record: &EditRecord, destination: &mut BytesMut
             created_at_ms,
             name,
         } => {
-            destination.put_u8(0x07);
+            destination.put_u8(TAG_PIN_SNAPSHOT);
             destination.put_u64_le(*seq);
             destination.put_u64_le(*created_at_ms);
             put_name(destination, name);
         }
         EditRecord::UnpinSnapshot { name } => {
-            destination.put_u8(0x08);
+            destination.put_u8(TAG_UNPIN_SNAPSHOT);
             put_name(destination, name);
         }
         EditRecord::AddRangeTombstone {
@@ -77,7 +81,7 @@ pub(super) fn encode_edit_record(record: &EditRecord, destination: &mut BytesMut
             start_key,
             end_key,
         } => {
-            destination.put_u8(0x0a);
+            destination.put_u8(TAG_ADD_RANGE_TOMBSTONE);
             destination.put_u32_le(*scope_id);
             destination.put_u64_le(*seq);
             put_bytes_field(destination, start_key);

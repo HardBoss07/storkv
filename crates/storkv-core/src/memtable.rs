@@ -5,6 +5,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 
+/// Estimated per-entry bookkeeping overhead for memtable accounting, in bytes.
+const MEMTABLE_ENTRY_OVERHEAD_BYTES: usize = 32;
+
 /// Concurrent in-memory write buffer ordered by internal key.
 pub struct MemTable {
     created_at: Instant,
@@ -26,7 +29,7 @@ impl MemTable {
 
     /// Insert an encoded internal key with its value and commit sequence.
     pub fn insert(&self, encoded_internal_key: Bytes, value: Bytes, seq: u64) {
-        let entry_size = encoded_internal_key.len() + value.len() + 32;
+        let entry_size = encoded_internal_key.len() + value.len() + MEMTABLE_ENTRY_OVERHEAD_BYTES;
         self.approx_bytes.fetch_add(entry_size, Ordering::Relaxed);
 
         let mut oldest = self.oldest_seq.write();

@@ -5,6 +5,27 @@ pub const MANIFEST_MAGIC: &[u8; 8] = b"STORKMNF";
 /// Current manifest record version.
 pub const MANIFEST_VERSION: u16 = 1;
 
+/// Tag of a set-next-sequence record.
+pub(super) const TAG_SET_NEXT_SEQUENCE: u8 = 0x01;
+/// Tag of a set-WAL-number record.
+pub(super) const TAG_SET_WAL_NUMBER: u8 = 0x02;
+/// Tag of a create-scope record.
+pub(super) const TAG_CREATE_SCOPE: u8 = 0x03;
+/// Tag of a drop-scope record.
+pub(super) const TAG_DROP_SCOPE: u8 = 0x04;
+/// Tag of an add-SSTable record.
+pub(super) const TAG_ADD_SST_FILE: u8 = 0x05;
+/// Tag of a delete-SSTable record.
+pub(super) const TAG_DELETE_SST_FILE: u8 = 0x06;
+/// Tag of a pin-snapshot record.
+pub(super) const TAG_PIN_SNAPSHOT: u8 = 0x07;
+/// Tag of an unpin-snapshot record.
+pub(super) const TAG_UNPIN_SNAPSHOT: u8 = 0x08;
+/// Tag of a create-scope record that carries a storage mode.
+pub(super) const TAG_CREATE_SCOPE_WITH_STORAGE: u8 = 0x09;
+/// Tag of an add-range-tombstone record.
+pub(super) const TAG_ADD_RANGE_TOMBSTONE: u8 = 0x0a;
+
 /// Durability mode stored in the manifest.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DurabilityMode {

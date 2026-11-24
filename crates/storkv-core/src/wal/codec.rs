@@ -8,6 +8,8 @@ use super::record::{WalBatchFrame, WalOp};
 /// Size of the fixed WAL frame header in bytes.
 pub const WAL_FRAME_HEADER_SIZE: usize = 24;
 
+/// Size of an unsigned 32-bit field.
+const U32_SIZE: usize = 4;
 const FRAME_LENGTH_AND_CRC_FIELDS: usize = 8;
 const FIXED_BODY_SIZE: usize = 16;
 const COMPRESSION_THRESHOLD: usize = 128;
@@ -25,7 +27,7 @@ impl WalBatchFrame {
         let (flags, frame_payload) = maybe_compress(payload, compress);
 
         let frame_length = FIXED_BODY_SIZE + frame_payload.len();
-        let mut body_with_length = BytesMut::with_capacity(4 + frame_length);
+        let mut body_with_length = BytesMut::with_capacity(U32_SIZE + frame_length);
         body_with_length.put_u32_le(frame_length as u32);
         body_with_length.put_u64_le(self.batch_seq);
         body_with_length.put_u32_le(self.ops.len() as u32);
@@ -34,7 +36,7 @@ impl WalBatchFrame {
         body_with_length.extend_from_slice(&frame_payload);
 
         let checksum = compute_crc32c(&body_with_length);
-        let mut frame = Vec::with_capacity(4 + body_with_length.len());
+        let mut frame = Vec::with_capacity(U32_SIZE + body_with_length.len());
         frame.put_u32_le(checksum);
         frame.extend_from_slice(&body_with_length);
         Ok(frame)
@@ -127,7 +129,7 @@ fn decode_payload(mut body: &[u8], flags: u16) -> Result<Bytes> {
 }
 
 fn decode_compressed_payload(body: &mut &[u8]) -> Result<Bytes> {
-    if body.remaining() < 4 {
+    if body.remaining() < U32_SIZE {
         return Err(StorkvError::Corruption(
             "Truncated compressed WAL payload".into(),
         ));
@@ -139,12 +141,12 @@ fn decode_compressed_payload(body: &mut &[u8]) -> Result<Bytes> {
         )));
     }
     let stored: &[u8] = body;
-    if stored.len() < 4 {
+    if stored.len() < U32_SIZE {
         return Err(StorkvError::Corruption(
             "Truncated compressed WAL payload".into(),
         ));
     }
-    let decompressed = lz4_flex::decompress(&stored[4..], uncompressed_len)
+    let decompressed = lz4_flex::decompress(&stored[U32_SIZE..], uncompressed_len)
         .map_err(|error| StorkvError::Corruption(error.to_string()))?;
     Ok(Bytes::from(decompressed))
 }

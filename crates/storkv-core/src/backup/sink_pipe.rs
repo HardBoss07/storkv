@@ -15,8 +15,12 @@ pub const ARCHIVE_MAGIC: &[u8; 8] = b"STORKBAK";
 /// Version of the command-pipe archive format.
 pub const ARCHIVE_VERSION: u16 = 1;
 const ENTRY_END: u8 = 0;
+const ENTRY_OTHER: u8 = 1;
 const ENTRY_WAL: u8 = 2;
 const ENTRY_MANIFEST: u8 = 3;
+const ARCHIVE_VERSION_SIZE: usize = std::mem::size_of::<u16>();
+const COMPRESSION_TAG_SIZE: usize = std::mem::size_of::<u8>();
+const ARCHIVE_HEADER_LEN: usize = ARCHIVE_MAGIC.len() + ARCHIVE_VERSION_SIZE + COMPRESSION_TAG_SIZE;
 
 /// Configuration of a [`CommandPipeSink`].
 #[derive(Debug, Clone)]
@@ -171,7 +175,7 @@ impl CommandPipeSink {
         let payload = archive::encode_entries(entries)?;
         let (compression_tag, payload) =
             archive::compress_payload(payload, self.config.compression)?;
-        let mut archive_bytes = Vec::with_capacity(payload.len() + 11);
+        let mut archive_bytes = Vec::with_capacity(payload.len() + ARCHIVE_HEADER_LEN);
         archive_bytes.extend_from_slice(ARCHIVE_MAGIC);
         archive_bytes.extend_from_slice(&ARCHIVE_VERSION.to_le_bytes());
         archive_bytes.push(compression_tag);

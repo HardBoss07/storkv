@@ -15,6 +15,15 @@ use crate::compat;
 use crate::transports::http::HttpState;
 use crate::transports::http::json::{decode_base64, encode_base64};
 
+/// etcd gRPC status code for an invalid argument.
+const CODE_INVALID_ARGUMENT: i32 = 3;
+/// etcd gRPC status code for a failed precondition.
+const CODE_FAILED_PRECONDITION: i32 = 9;
+/// etcd gRPC status code for an internal error.
+const CODE_INTERNAL: i32 = 13;
+/// A one-byte range end of zero means "scan to the last key".
+const RANGE_END_TO_LAST_KEY: [u8; 1] = [0];
+
 pub(crate) async fn put(State(state): State<HttpState>, Json(body): Json<Value>) -> HttpResponse {
     if let Err(response) = require_primary(&state) {
         return *response;
@@ -25,10 +34,14 @@ pub(crate) async fn put(State(state): State<HttpState>, Json(body): Json<Value>)
     };
     let lease = body.get("lease").and_then(Value::as_u64).unwrap_or(0);
     if lease != 0 {
-        return gateway_error(StatusCode::BAD_REQUEST, 3, "leases are not supported");
+        return gateway_error(
+            StatusCode::BAD_REQUEST,
+            CODE_INVALID_ARGUMENT,
+            "leases are not supported",
+        );
     }
     let Some(key) = field(&body, "key") else {
-        return gateway_error(StatusCode::BAD_REQUEST, 3, "key is required");
+        return gateway_error(StatusCode::BAD_REQUEST, CODE_INVALID_ARGUMENT, "key is required");
     };
     let value = field(&body, "value").unwrap_or_default();
     if let Err(error) = crate::compat::redis::keyspace::put_absolute(
@@ -50,7 +63,7 @@ pub(crate) async fn range(State(state): State<HttpState>, Json(body): Json<Value
         Err(response) => return *response,
     };
     let Some(key) = field(&body, "key") else {
-        return gateway_error(StatusCode::BAD_REQUEST, 3, "key is required");
+        return gateway_error(StatusCode::BAD_REQUEST, CODE_INVALID_ARGUMENT, "key is required");
     };
     let range_end = field(&body, "range_end").unwrap_or_default();
     let limit = body
@@ -77,7 +90,11 @@ pub(crate) async fn range(State(state): State<HttpState>, Json(body): Json<Value
     ) {
         Ok(pairs) => pairs,
         Err(error) => {
-            return gateway_error(StatusCode::INTERNAL_SERVER_ERROR, 13, &error.to_string());
+            return gateway_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                CODE_INTERNAL,
+                &error.to_string(),
+            );
         }
     };
     let count = pairs.len();
@@ -121,13 +138,17 @@ pub(crate) async fn delete_range(
         Err(response) => return *response,
     };
     let Some(key) = field(&body, "key") else {
-        return gateway_error(StatusCode::BAD_REQUEST, 3, "key is required");
+        return gateway_error(StatusCode::BAD_REQUEST, CODE_INVALID_ARGUMENT, "key is required");
     };
     let range_end = field(&body, "range_end").unwrap_or_default();
     let pairs = match scan_range(&state, &scope, &key, &range_end, None, true) {
         Ok(pairs) => pairs,
         Err(error) => {
-            return gateway_error(StatusCode::INTERNAL_SERVER_ERROR, 13, &error.to_string());
+            return gateway_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                CODE_INTERNAL,
+                &error.to_string(),
+            );
         }
     };
     let deleted = pairs.len();
@@ -160,10 +181,14 @@ fn write_error(error: storkv_core::StorkvError) -> HttpResponse {
     match error {
         storkv_core::StorkvError::NotPrimary => gateway_error(
             StatusCode::BAD_REQUEST,
-            9,
+            CODE_FAILED_PRECONDITION,
             "This node is a replica and cannot accept writes",
         ),
-        other => gateway_error(StatusCode::INTERNAL_SERVER_ERROR, 13, &other.to_string()),
+        other => gateway_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            CODE_INTERNAL,
+            &other.to_string(),
+        ),
     }
 }
 
@@ -171,7 +196,7 @@ fn scope(state: &HttpState) -> Result<ScopeHandle, Box<HttpResponse>> {
     compat::etcd_scope(state.server.db(), state.server.is_primary()).map_err(|error| {
         Box::new(gateway_error(
             StatusCode::INTERNAL_SERVER_ERROR,
-            13,
+            CODE_INTERNAL,
             &format!("scope unavailable: {error}"),
         ))
     })
@@ -195,7 +220,7 @@ fn scan_range(
             })
             .unwrap_or_default());
     }
-    let end = if range_end == [0] {
+    let end = if range_end == RANGE_END_TO_LAST_KEY {
         None
     } else {
         Some(range_end)

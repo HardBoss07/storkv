@@ -2,6 +2,9 @@
 
 use storkv_core::StorkvError;
 
+const MILLIS_PER_SECOND: u64 = 1_000;
+const MAX_RELATIVE_EXPTIME_SECS: u64 = 30 * 24 * 60 * 60;
+
 pub(super) fn silence_if(noreply: bool, response: Vec<u8>) -> Vec<u8> {
     if noreply { Vec::new() } else { response }
 }
@@ -25,11 +28,11 @@ pub(super) fn expiry_from_exptime(exptime: u32) -> u64 {
         return 0;
     }
     let seconds = u64::from(exptime);
-    if seconds > 30 * 24 * 60 * 60 {
-        seconds.saturating_mul(1000)
+    if seconds > MAX_RELATIVE_EXPTIME_SECS {
+        seconds.saturating_mul(MILLIS_PER_SECOND)
     } else {
         storkv_core::TimestampMs::now()
             .get()
-            .saturating_add(seconds.saturating_mul(1000))
+            .saturating_add(seconds.saturating_mul(MILLIS_PER_SECOND))
     }
 }

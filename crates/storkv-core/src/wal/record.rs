@@ -4,6 +4,21 @@ use std::time::Duration;
 use crate::error::{Result, StorkvError};
 use crate::format::{MAX_KEY_LEN, MAX_VAL_LEN};
 
+/// Opcode of a put operation.
+const OPCODE_PUT: u8 = 0x01;
+/// Opcode of a delete operation.
+const OPCODE_DELETE: u8 = 0x02;
+/// Opcode of a merge operation.
+const OPCODE_MERGE: u8 = 0x03;
+/// Opcode of a range delete operation.
+const OPCODE_DELETE_RANGE: u8 = 0x04;
+/// Opcode of a scope drop operation.
+const OPCODE_DROP_SCOPE: u8 = 0x05;
+/// Size of the fixed operation header: opcode, scope id, and expiry.
+const WAL_OP_HEADER_SIZE: usize = 1 + 4 + 8;
+/// Size of the length prefix of a sized byte field.
+const SIZED_FIELD_LENGTH_SIZE: usize = 4;
+
 /// Durability policy for committed writes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -68,11 +83,11 @@ impl WalOp {
     /// Return the one-byte opcode of the operation.
     pub fn opcode(&self) -> u8 {
         match self {
-            WalOp::Put { .. } => 0x01,
-            WalOp::Delete { .. } => 0x02,
-            WalOp::Merge { .. } => 0x03,
-            WalOp::DeleteRange { .. } => 0x04,
-            WalOp::DropScope { .. } => 0x05,
+            WalOp::Put { .. } => OPCODE_PUT,
+            WalOp::Delete { .. } => OPCODE_DELETE,
+            WalOp::Merge { .. } => OPCODE_MERGE,
+            WalOp::DeleteRange { .. } => OPCODE_DELETE_RANGE,
+            WalOp::DropScope { .. } => OPCODE_DROP_SCOPE,
         }
     }
 
@@ -92,20 +107,20 @@ impl WalOp {
             } => {
                 validate_key(key)?;
                 validate_value(val)?;
-                encode_header(destination, 0x01, *scope_id, *expires_at_ms);
+                encode_header(destination, OPCODE_PUT, *scope_id, *expires_at_ms);
                 put_sized_bytes(destination, key);
                 put_sized_bytes(destination, val);
             }
             WalOp::Delete { scope_id, key } => {
                 validate_key(key)?;
-                encode_header(destination, 0x02, *scope_id, 0);
+                encode_header(destination, OPCODE_DELETE, *scope_id, 0);
                 put_sized_bytes(destination, key);
                 put_sized_bytes(destination, &[]);
             }
             WalOp::Merge { scope_id, key, val } => {
                 validate_key(key)?;
                 validate_value(val)?;
-                encode_header(destination, 0x03, *scope_id, 0);
+                encode_header(destination, OPCODE_MERGE, *scope_id, 0);
                 put_sized_bytes(destination, key);
                 put_sized_bytes(destination, val);
             }
@@ -116,12 +131,12 @@ impl WalOp {
             } => {
                 validate_key(start_key)?;
                 validate_key(end_key)?;
-                encode_header(destination, 0x04, *scope_id, 0);
+                encode_header(destination, OPCODE_DELETE_RANGE, *scope_id, 0);
                 put_sized_bytes(destination, start_key);
                 put_sized_bytes(destination, end_key);
             }
             WalOp::DropScope { scope_id } => {
-                encode_header(destination, 0x05, *scope_id, 0);
+                encode_header(destination, OPCODE_DROP_SCOPE, *scope_id, 0);
                 put_sized_bytes(destination, &[]);
                 put_sized_bytes(destination, &[]);
             }
@@ -135,7 +150,7 @@ impl WalOp {
     ///
     /// Returns [`StorkvError::Corruption`] on a short header or unknown opcode.
     pub fn decode(source: &mut impl Buf) -> Result<Self> {
-        if source.remaining() < 17 {
+        if source.remaining() < WAL_OP_HEADER_SIZE {
             return Err(StorkvError::Corruption("Incomplete WalOp header".into()));
         }
         let opcode = source.get_u8();
@@ -145,24 +160,24 @@ impl WalOp {
         let value = read_sized_bytes(source, "val")?;
 
         match opcode {
-            0x01 => Ok(WalOp::Put {
+            OPCODE_PUT => Ok(WalOp::Put {
                 scope_id,
                 expires_at_ms,
                 key,
                 val: value,
             }),
-            0x02 => Ok(WalOp::Delete { scope_id, key }),
-            0x03 => Ok(WalOp::Merge {
+            OPCODE_DELETE => Ok(WalOp::Delete { scope_id, key }),
+            OPCODE_MERGE => Ok(WalOp::Merge {
                 scope_id,
                 key,
                 val: value,
             }),
-            0x04 => Ok(WalOp::DeleteRange {
+            OPCODE_DELETE_RANGE => Ok(WalOp::DeleteRange {
                 scope_id,
                 start_key: key,
                 end_key: value,
             }),
-            0x05 => Ok(WalOp::DropScope { scope_id }),
+            OPCODE_DROP_SCOPE => Ok(WalOp::DropScope { scope_id }),
             _ => Err(StorkvError::Corruption(format!(
                 "Unknown WalOp opcode: 0x{:02x}",
                 opcode
@@ -224,7 +239,7 @@ fn put_sized_bytes(destination: &mut BytesMut, field: &[u8]) {
 }
 
 fn read_sized_bytes(source: &mut impl Buf, field: &str) -> Result<Bytes> {
-    if source.remaining() < 4 {
+    if source.remaining() < SIZED_FIELD_LENGTH_SIZE {
         return Err(StorkvError::Corruption(format!(
             "Incomplete WalOp {} length",
             field

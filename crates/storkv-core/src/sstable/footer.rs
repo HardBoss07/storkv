@@ -10,6 +10,8 @@ pub const SST_MAGIC: &[u8; 8] = b"STORKSST";
 pub const FOOTER_SIZE: usize = 56;
 /// Size of the compression and checksum trailer on each block.
 pub const BLOCK_TRAILER_SIZE: usize = 5;
+/// Encoded size of a [`BlockHandle`] in bytes.
+pub const BLOCK_HANDLE_SIZE: usize = 16;
 
 /// Offset and size of one SSTable block.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -27,13 +29,14 @@ impl BlockHandle {
         buffer.put_u64_le(self.size);
     }
 
-    /// Decode a handle from 16 bytes.
+    /// Decode a handle. The encoded handle is [`BLOCK_HANDLE_SIZE`] bytes.
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::Corruption`] when fewer than 16 bytes are present.
+    /// Returns [`StorkvError::Corruption`] when fewer than [`BLOCK_HANDLE_SIZE`]
+    /// bytes are present.
     pub fn decode(buffer: &mut impl Buf) -> Result<Self> {
-        if buffer.remaining() < 16 {
+        if buffer.remaining() < BLOCK_HANDLE_SIZE {
             return Err(StorkvError::Corruption("Incomplete BlockHandle".into()));
         }
         Ok(Self {

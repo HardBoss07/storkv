@@ -114,7 +114,7 @@ fn decode_telemetry(source: &mut BytesMut) -> Result<WireTelemetrySnapshot, Stor
         ..WireTelemetrySnapshot::default()
     };
     // Backup counters are an append-only extension; older peers omit them.
-    if source.len() >= 40 {
+    if source.len() >= 5 * std::mem::size_of::<u64>() {
         snapshot.backups_completed_total = get_u64_le(source)?;
         snapshot.backups_failed_total = get_u64_le(source)?;
         snapshot.last_backup_timestamp_ms = get_u64_le(source)?;

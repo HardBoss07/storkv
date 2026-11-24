@@ -3,7 +3,7 @@
 use bytes::Bytes;
 
 use super::RedisSession;
-use super::codec::Resp;
+use super::codec::{RESP2_VERSION, RESP3_VERSION, Resp};
 use super::helpers::{storage_error, wrong_arity};
 use crate::compat;
 
@@ -25,8 +25,8 @@ impl RedisSession {
     pub(super) fn hello(&mut self, args: &[Bytes]) -> Resp {
         if let Some(version) = args.get(1) {
             match version.as_ref() {
-                b"2" => self.resp_version = 2,
-                b"3" => self.resp_version = 3,
+                b"2" => self.resp_version = RESP2_VERSION,
+                b"3" => self.resp_version = RESP3_VERSION,
                 other => {
                     return Resp::error(format!(
                         "NOPROTO unsupported protocol version {}",

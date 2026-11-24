@@ -5,10 +5,13 @@ use std::sync::Arc;
 use bytes::Bytes;
 use storkv_core::{Db, ScopeHandle};
 
-use super::codec::Resp;
+use super::codec::{RESP2_VERSION, Resp};
 use super::helpers::{is_known_command, readonly_error, storage_error, upper};
 use crate::compat;
 use crate::server::Server;
+
+/// Milliseconds in one second, used to scale Redis expiry values.
+pub(super) const MILLIS_PER_SECOND: u64 = 1_000;
 
 pub(super) struct WatchState {
     pub(super) read_seq: u64,
@@ -32,7 +35,7 @@ impl RedisSession {
         Self {
             server,
             database: 0,
-            resp_version: 2,
+            resp_version: RESP2_VERSION,
             multi: None,
             multi_error: false,
             watch: None,
@@ -101,7 +104,7 @@ impl RedisSession {
             "FLUSHALL" => self.flush_all(),
             "GET" => self.get(args),
             "SET" => self.set(args),
-            "SETEX" => self.setex(args, 1000),
+            "SETEX" => self.setex(args, MILLIS_PER_SECOND),
             "PSETEX" => self.setex(args, 1),
             "SETNX" => self.setnx(args),
             "MGET" => self.mget(args),
@@ -114,10 +117,10 @@ impl RedisSession {
             "DECRBY" => self.counter_by(args, -1),
             "APPEND" => self.append(args),
             "STRLEN" => self.strlen(args),
-            "EXPIRE" => self.expire(args, 1000),
+            "EXPIRE" => self.expire(args, MILLIS_PER_SECOND),
             "PEXPIRE" => self.expire(args, 1),
             "PERSIST" => self.persist(args),
-            "TTL" => self.ttl(args, 1000),
+            "TTL" => self.ttl(args, MILLIS_PER_SECOND),
             "PTTL" => self.ttl(args, 1),
             "KEYS" => self.keys(args),
             "SCAN" => self.scan(args),

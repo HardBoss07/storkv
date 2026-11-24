@@ -21,6 +21,10 @@ pub const WAL_SEAL_INTERVAL: Duration = Duration::from_secs(300); // 5 minutes
 
 const SEALED_FLAG_OFFSET: u64 = 10;
 const SEALED_FLAG_SET: [u8; 2] = 1u16.to_le_bytes();
+/// Version number written into every segment header.
+const WAL_FORMAT_VERSION: u16 = 1;
+/// Reserved header field, always zero in this format version.
+const WAL_HEADER_RESERVED: u16 = 0;
 
 /// One open WAL segment file.
 pub struct WalSegment<FS: FileSystem> {
@@ -217,8 +221,8 @@ fn segment_path(wal_dir: &Path, file_num: u64) -> PathBuf {
 fn segment_header() -> BytesMut {
     let mut header = BytesMut::with_capacity(WAL_HEADER_SIZE);
     header.extend_from_slice(WAL_MAGIC);
-    header.put_u16_le(1);
-    header.put_u16_le(0);
+    header.put_u16_le(WAL_FORMAT_VERSION);
+    header.put_u16_le(WAL_HEADER_RESERVED);
     let now_secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()

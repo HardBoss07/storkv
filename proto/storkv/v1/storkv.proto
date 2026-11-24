@@ -2,6 +2,10 @@ syntax = "proto3";
 
 package storkv.v1;
 
+// Field numbers are stable wire identifiers. Assign the next unused number to
+// each new field. Never reuse or renumber an existing field. Enum values are
+// stable wire codes. Zero is reserved for "unspecified" or the default value.
+
 message Empty {}
 
 message PingReply {
@@ -92,6 +96,7 @@ message Mutation {
   bytes key = 2;
   bytes value = 3;
   uint64 expires_at_ms = 4;
+  // Mutation kind: 0 = put (default), 1 = delete, 2 = merge, 3 = delete range.
   uint32 kind = 5;
   bytes end_key = 6;
 }
@@ -117,10 +122,13 @@ message CreateScopeRequest {
 }
 
 message ScopeOptions {
+  // Durability code: 0 = strict fsync, 1 = buffered.
   uint32 durability = 1;
   uint64 sync_interval_ms = 2;
+  // Retention code: 0 = permanent, 1 = TTL.
   uint32 retention = 3;
   uint64 default_ttl_ms = 4;
+  // Compaction style code: 0 = leveled, 1 = FIFO.
   uint32 compaction_style = 5;
   uint32 prefix_bloom_len = 6;
   bool has_prefix_bloom = 7;
@@ -139,6 +147,7 @@ message WatchRequest {
 }
 
 message ChangeEvent {
+  // Change kind: 0 = put, 1 = delete, 2 = drop scope, 3 = invalidate scope.
   uint32 kind = 1;
   uint32 scope_id = 2;
   bytes key = 3;
@@ -201,6 +210,7 @@ message VerifyBackupReply {
 
 message BackupEntry {
   string generation_id = 1;
+  // Backup kind: 1 = full, 2 = WAL segment.
   uint32 kind = 2;
   uint64 created_at_ms = 3;
   uint64 min_seq = 4;

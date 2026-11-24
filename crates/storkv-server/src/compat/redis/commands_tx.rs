@@ -4,7 +4,7 @@ use bytes::Bytes;
 use storkv_core::{StorkvError, Transaction};
 
 use super::codec::Resp;
-use super::commands::{RedisSession, WatchState};
+use super::commands::{MILLIS_PER_SECOND, RedisSession, WatchState};
 use super::helpers::{storage_error, upper, wrong_arity};
 
 mod counters;
@@ -108,7 +108,7 @@ impl RedisSession {
         match command {
             "GET" => tx_get(tx, &scope, args),
             "SET" => tx_set(self, tx, &scope, args),
-            "SETEX" => tx_setex(tx, &scope, args, 1000),
+            "SETEX" => tx_setex(tx, &scope, args, MILLIS_PER_SECOND),
             "PSETEX" => tx_setex(tx, &scope, args, 1),
             "SETNX" => tx_setnx(tx, &scope, args),
             "MGET" => tx_mget(tx, &scope, args),
@@ -121,10 +121,10 @@ impl RedisSession {
             "DECRBY" => tx_counter_by(self, tx, &scope, args, -1),
             "APPEND" => tx_append(self, tx, &scope, args),
             "STRLEN" => tx_strlen(tx, &scope, args),
-            "EXPIRE" => tx_expire(tx, &scope, args, 1000),
+            "EXPIRE" => tx_expire(tx, &scope, args, MILLIS_PER_SECOND),
             "PEXPIRE" => tx_expire(tx, &scope, args, 1),
             "PERSIST" => tx_persist(tx, &scope, args),
-            "TTL" => tx_ttl(self, &scope, args, 1000),
+            "TTL" => tx_ttl(self, &scope, args, MILLIS_PER_SECOND),
             "PTTL" => tx_ttl(self, &scope, args, 1),
             "KEYS" => tx_keys(tx, &scope, args),
             "SCAN" => tx_scan(tx, &scope, args),

@@ -2,6 +2,12 @@ use std::time::Duration;
 
 use storkv_core::{CompactionStyle, Durability, Retention};
 
+const DEFAULT_MAX_RETRIES: u32 = 5;
+const DEFAULT_BASE_DELAY_MS: u64 = 2;
+const DEFAULT_MAX_DELAY_MS: u64 = 250;
+const MAX_BACKOFF_SHIFT: u32 = 16;
+const DEFAULT_MAX_CACHE_ENTRIES_PER_SCOPE: usize = 1024;
+
 /// Retry policy for closure-based OCC transactions.
 #[derive(Debug, Clone)]
 pub struct RetryPolicy {
@@ -19,9 +25,9 @@ impl Default for RetryPolicy {
     fn default() -> Self {
         Self {
             jitter: true,
-            max_retries: 5,
-            base_delay: Duration::from_millis(2),
-            max_delay: Duration::from_millis(250),
+            max_retries: DEFAULT_MAX_RETRIES,
+            base_delay: Duration::from_millis(DEFAULT_BASE_DELAY_MS),
+            max_delay: Duration::from_millis(DEFAULT_MAX_DELAY_MS),
         }
     }
 }
@@ -62,7 +68,9 @@ impl RetryPolicy {
     }
 
     pub(crate) fn delay(&self, attempt: u32) -> Duration {
-        let factor = 1u32.checked_shl(attempt.min(16)).unwrap_or(u32::MAX);
+        let factor = 1u32
+            .checked_shl(attempt.min(MAX_BACKOFF_SHIFT))
+            .unwrap_or(u32::MAX);
         let base = self.base_delay.saturating_mul(factor);
         let capped = if self.max_delay.is_zero() {
             base
@@ -98,7 +106,7 @@ impl Default for CacheOptions {
     fn default() -> Self {
         Self {
             enabled: false,
-            max_entries_per_scope: 1024,
+            max_entries_per_scope: DEFAULT_MAX_CACHE_ENTRIES_PER_SCOPE,
         }
     }
 }

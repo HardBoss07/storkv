@@ -6,6 +6,8 @@ use storkv_proto::{WireAdminStats, WireLevelStat, WireScopeStat, WireTransportSt
 
 const MAX_LATENCY_SAMPLES: usize = 2048;
 const LEVEL_COUNT: usize = 7;
+const P99_PERCENT: usize = 99;
+const PERCENT_TOTAL: usize = 100;
 
 #[derive(Debug, Default, Clone, Copy)]
 struct ScopeCounters {
@@ -106,7 +108,7 @@ impl ServerStats {
         let sample_count = sorted_samples.len() as u64;
         sorted_samples.sort_unstable();
         let rank = sorted_samples.len().saturating_sub(1);
-        let p99_index = ((sorted_samples.len() * 99).div_ceil(100)).max(1) - 1;
+        let p99_index = ((sorted_samples.len() * P99_PERCENT).div_ceil(PERCENT_TOTAL)).max(1) - 1;
         (sorted_samples[p99_index.min(rank)], sample_count)
     }
 

@@ -12,6 +12,15 @@ use std::sync::atomic::Ordering;
 pub(crate) const SNAPSHOT_MAGIC: &[u8; 9] = b"STORKSNAP";
 pub(crate) const SNAPSHOT_VERSION: u16 = 1;
 const SNAPSHOT_DIR: &str = "snapshots";
+/// Size of the fixed-width fields that follow the magic bytes: version,
+/// sequence number, and entry count.
+const SNAPSHOT_FIXED_HEADER_SIZE: usize = 2 + 8 + 8;
+/// Size of a little-endian `u16` field.
+const U16_SIZE: usize = 2;
+/// Size of a little-endian `u32` field.
+const U32_SIZE: usize = 4;
+/// Size of a little-endian `u64` field.
+const U64_SIZE: usize = 8;
 
 /// Path of the recovery snapshot for one scope.
 pub(crate) fn snapshot_path(db_root: &Path, scope_id: u32) -> PathBuf {
@@ -124,7 +133,7 @@ struct LoadedSnapshot {
 }
 
 fn parse_snapshot(bytes: &[u8]) -> crate::Result<LoadedSnapshot> {
-    let header_len = SNAPSHOT_MAGIC.len() + 2 + 8 + 8;
+    let header_len = SNAPSHOT_MAGIC.len() + SNAPSHOT_FIXED_HEADER_SIZE;
     if bytes.len() < header_len || &bytes[..SNAPSHOT_MAGIC.len()] != SNAPSHOT_MAGIC {
         return Err(crate::StorkvError::Corruption(
             "Invalid recovery snapshot header".into(),
@@ -156,18 +165,18 @@ fn parse_snapshot(bytes: &[u8]) -> crate::Result<LoadedSnapshot> {
 }
 
 fn read_u16(bytes: &[u8], cursor: &mut usize) -> crate::Result<u16> {
-    let slice = take(bytes, cursor, 2)?;
+    let slice = take(bytes, cursor, U16_SIZE)?;
     Ok(u16::from_le_bytes([slice[0], slice[1]]))
 }
 
 fn read_u32(bytes: &[u8], cursor: &mut usize) -> crate::Result<u32> {
-    let slice = take(bytes, cursor, 4)?;
+    let slice = take(bytes, cursor, U32_SIZE)?;
     Ok(u32::from_le_bytes([slice[0], slice[1], slice[2], slice[3]]))
 }
 
 fn read_u64(bytes: &[u8], cursor: &mut usize) -> crate::Result<u64> {
-    let slice = take(bytes, cursor, 8)?;
-    let mut raw = [0u8; 8];
+    let slice = take(bytes, cursor, U64_SIZE)?;
+    let mut raw = [0u8; U64_SIZE];
     raw.copy_from_slice(slice);
     Ok(u64::from_le_bytes(raw))
 }

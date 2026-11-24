@@ -12,6 +12,8 @@ use storkv_proto::{Request, WireCompactionStyle, WireDurability, WireRetention, 
 use super::HttpState;
 use super::json::{json_error, response_payload};
 
+const DEFAULT_SYNC_INTERVAL_MS: u64 = 100;
+
 pub(super) async fn create_scope(
     State(state): State<HttpState>,
     headers: HeaderMap,
@@ -82,7 +84,7 @@ fn parse_durability(value: Option<&Value>) -> Option<WireDurability> {
         None | Some(Value::Null) => Some(WireDurability::StrictFsync),
         Some(Value::String(mode)) if mode == "strict_fsync" => Some(WireDurability::StrictFsync),
         Some(Value::String(mode)) if mode == "buffered" => Some(WireDurability::Buffered {
-            sync_interval: Duration::from_millis(100),
+            sync_interval: Duration::from_millis(DEFAULT_SYNC_INTERVAL_MS),
         }),
         Some(Value::Object(map)) => {
             let buffered = map.get("buffered")?;
@@ -91,7 +93,7 @@ fn parse_durability(value: Option<&Value>) -> Option<WireDurability> {
                     buffered
                         .get("sync_interval_ms")
                         .and_then(Value::as_u64)
-                        .unwrap_or(100),
+                        .unwrap_or(DEFAULT_SYNC_INTERVAL_MS),
                 ),
             })
         }
