@@ -40,18 +40,13 @@ pub(super) fn compress_payload(
         BackupCompression::None => Ok((COMPRESSION_NONE, payload)),
         BackupCompression::Zstd => {
             let compressed = zstd::stream::encode_all(payload.as_slice(), ZSTD_COMPRESSION_LEVEL)
-                .map_err(|error| {
-                StorkvError::BackupSink {
-                    sink: "command-pipe".into(),
-                    detail: format!("zstd compression failed: {error}"),
-                }
+                .map_err(|error| StorkvError::BackupSink {
+                sink: "command-pipe".into(),
+                detail: format!("zstd compression failed: {error}"),
             })?;
             Ok((COMPRESSION_ZSTD, compressed))
         }
-        BackupCompression::Lz4 => Ok((
-            COMPRESSION_LZ4,
-            lz4_flex::compress_prepend_size(&payload),
-        )),
+        BackupCompression::Lz4 => Ok((COMPRESSION_LZ4, lz4_flex::compress_prepend_size(&payload))),
     }
 }
 

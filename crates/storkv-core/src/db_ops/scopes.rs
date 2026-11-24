@@ -175,9 +175,7 @@ fn scope_creation_edit(scope_id: u32, name: &str, options: &crate::ScopeOptions)
         storage_mode: match options.storage_mode {
             crate::StorageMode::Disk => StorageModeMode::Disk as u8,
             crate::StorageMode::InMemory => StorageModeMode::InMemory as u8,
-            crate::StorageMode::InMemoryPersistent => {
-                StorageModeMode::InMemoryPersistent as u8
-            }
+            crate::StorageMode::InMemoryPersistent => StorageModeMode::InMemoryPersistent as u8,
         },
         name: name.to_string(),
     });

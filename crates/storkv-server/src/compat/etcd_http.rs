@@ -41,7 +41,11 @@ pub(crate) async fn put(State(state): State<HttpState>, Json(body): Json<Value>)
         );
     }
     let Some(key) = field(&body, "key") else {
-        return gateway_error(StatusCode::BAD_REQUEST, CODE_INVALID_ARGUMENT, "key is required");
+        return gateway_error(
+            StatusCode::BAD_REQUEST,
+            CODE_INVALID_ARGUMENT,
+            "key is required",
+        );
     };
     let value = field(&body, "value").unwrap_or_default();
     if let Err(error) = crate::compat::redis::keyspace::put_absolute(
@@ -63,7 +67,11 @@ pub(crate) async fn range(State(state): State<HttpState>, Json(body): Json<Value
         Err(response) => return *response,
     };
     let Some(key) = field(&body, "key") else {
-        return gateway_error(StatusCode::BAD_REQUEST, CODE_INVALID_ARGUMENT, "key is required");
+        return gateway_error(
+            StatusCode::BAD_REQUEST,
+            CODE_INVALID_ARGUMENT,
+            "key is required",
+        );
     };
     let range_end = field(&body, "range_end").unwrap_or_default();
     let limit = body
@@ -138,7 +146,11 @@ pub(crate) async fn delete_range(
         Err(response) => return *response,
     };
     let Some(key) = field(&body, "key") else {
-        return gateway_error(StatusCode::BAD_REQUEST, CODE_INVALID_ARGUMENT, "key is required");
+        return gateway_error(
+            StatusCode::BAD_REQUEST,
+            CODE_INVALID_ARGUMENT,
+            "key is required",
+        );
     };
     let range_end = field(&body, "range_end").unwrap_or_default();
     let pairs = match scan_range(&state, &scope, &key, &range_end, None, true) {
