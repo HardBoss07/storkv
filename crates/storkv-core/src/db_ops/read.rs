@@ -17,6 +17,27 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
         self.get_at(scope_id, key, SequenceNumber::new(read_seq))
     }
 
+    /// Read key metadata at a fixed read sequence.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorkvError::ScopeIdNotFound`] when the scope is unknown, or a
+    /// storage read error.
+    pub fn key_meta_at(
+        &self,
+        scope_id: u32,
+        key: &[u8],
+        read_seq: SequenceNumber,
+    ) -> crate::Result<Option<crate::scope::KeyMeta>> {
+        let scope = self
+            .scopes
+            .read()
+            .get(&scope_id)
+            .cloned()
+            .ok_or(StorkvError::ScopeIdNotFound(scope_id))?;
+        scope.key_meta(key, read_seq, TimestampMs::now())
+    }
+
     /// Read one key at a fixed read sequence.
     ///
     /// # Errors

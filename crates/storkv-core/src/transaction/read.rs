@@ -38,6 +38,40 @@ impl<FS: FileSystem + 'static> Transaction<FS> {
         )
     }
 
+    /// Read the metadata of one key at the transaction snapshot.
+    ///
+    /// The key joins the OCC read set. Buffered writes in this transaction take
+    /// precedence over the committed state.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the storage read fails.
+    pub fn key_meta(
+        &mut self,
+        scope: &crate::ScopeHandle,
+        key: impl AsRef<[u8]>,
+    ) -> crate::Result<Option<crate::scope::KeyMeta>> {
+        let key = key.as_ref();
+        self.ctx
+            .record_read(scope.scope_id, Bytes::copy_from_slice(key));
+        if let Some(mutation) = self.ctx.get_local(scope.scope_id, key) {
+            return Ok(match mutation {
+                TxMutation::Put { expires_at_ms, .. } => Some(crate::scope::KeyMeta {
+                    expires_at_ms: *expires_at_ms,
+                    seq: 0,
+                }),
+                TxMutation::Delete | TxMutation::DeleteRange { .. } => None,
+                TxMutation::Merge { .. } => self.db.key_meta_at(
+                    scope.scope_id,
+                    key,
+                    SequenceNumber::new(self.ctx.read_seq),
+                )?,
+            });
+        }
+        self.db
+            .key_meta_at(scope.scope_id, key, SequenceNumber::new(self.ctx.read_seq))
+    }
+
     fn local_value(
         &self,
         scope: &crate::ScopeHandle,
