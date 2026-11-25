@@ -28,6 +28,8 @@ pub struct Server {
     pub(crate) last_applied_seq: AtomicU64,
     pub(crate) last_frame_sent_at_ms: AtomicU64,
     pub(crate) primary_uri: Option<String>,
+    pub(crate) redis_password: Option<String>,
+    pub(crate) next_redis_client_id: AtomicU64,
     pub(crate) db: Arc<Db>,
     pub(crate) shutdown_sender: broadcast::Sender<()>,
     pub(crate) stats: Arc<ServerStats>,
@@ -55,6 +57,8 @@ impl Server {
             last_applied_seq: AtomicU64::new(db.newest_sequence()),
             last_frame_sent_at_ms: AtomicU64::new(0),
             primary_uri: None,
+            redis_password: None,
+            next_redis_client_id: AtomicU64::new(0),
             db,
             shutdown_sender,
             stats: Arc::new(ServerStats::default()),
@@ -86,6 +90,27 @@ impl Server {
     pub fn with_primary_uri(mut self, primary_uri: Option<String>) -> Self {
         self.primary_uri = primary_uri;
         self
+    }
+
+    /// Set the password for the Redis-compatible listener.
+    ///
+    /// When a password is set, a Redis connection must run `AUTH` or
+    /// `HELLO ... AUTH` before it can run any command other than `AUTH`,
+    /// `HELLO`, and `PING`. When no password is set, connections start
+    /// authenticated. Call this only while building the server.
+    pub fn with_redis_password(mut self, password: Option<String>) -> Self {
+        self.redis_password = password;
+        self
+    }
+
+    /// Return the configured Redis password, when set.
+    pub fn redis_password(&self) -> Option<&str> {
+        self.redis_password.as_deref()
+    }
+
+    /// Allocate the next Redis connection identifier.
+    pub(crate) fn next_redis_client_id(&self) -> u64 {
+        self.next_redis_client_id.fetch_add(1, Ordering::Relaxed) + 1
     }
 
     /// Return the configured replication role.

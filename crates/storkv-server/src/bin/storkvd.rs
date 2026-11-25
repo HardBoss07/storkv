@@ -71,6 +71,9 @@ struct Args {
     /// Serve the Redis RESP2/RESP3 API on this address.
     #[arg(long)]
     redis_listen: Option<String>,
+    /// Password for the Redis RESP listener. Falls back to --admin-token.
+    #[arg(long, env = "STORKV_REDIS_PASSWORD")]
+    redis_password: Option<String>,
     /// Serve the Memcached ASCII API on this address.
     #[arg(long)]
     memcached_listen: Option<String>,
@@ -92,13 +95,15 @@ struct Args {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     let admin_token = resolve_admin_token(&args)?;
+    let redis_password = args.redis_password.clone().or_else(|| admin_token.clone());
     let role = ReplicationRole::parse(&args.role)
         .map_err(|detail| std::io::Error::new(std::io::ErrorKind::InvalidInput, detail))?;
     let server = Arc::new(
         Server::new(args.data_dir)?
             .with_role(role)
             .with_primary_uri(args.primary_uri.clone())
-            .with_strict_admin(args.strict_admin),
+            .with_strict_admin(args.strict_admin)
+            .with_redis_password(redis_password),
     );
 
     let backup_handle = if let Some(backup_dir) = &args.backup_dir {
