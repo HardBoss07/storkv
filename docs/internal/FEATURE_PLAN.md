@@ -59,14 +59,14 @@ Do not introduce external crates for the following items; implement them using `
 
 ## Phase 2: LSM Engine Scalability & Resource Controls (`storkv-core`)
 
-- [ ] **Autonomous Background Compaction Scheduler**
+- [x] **Autonomous Background Compaction Scheduler**
   - **Target:** `crates/storkv-core/src/compaction.rs`, `crates/storkv-core/src/options.rs`, `crates/storkv-core/src/db/`
-  - **Description:** Add an autonomous background compaction worker (modeled after `AutoBackupHandle`) governed by new `DbOptions` fields: `enable_background_compaction: bool`, `l0_compaction_trigger: usize`, `max_background_compactions: usize`, and `compaction_rate_limit_bytes_per_sec: Option<u64>`.
+  - **Description:** Add an autonomous background compaction worker governed by new `DbOptions` fields: `enable_background_compaction: bool`, `l0_compaction_trigger: usize`, `max_background_compactions: usize`, and `compaction_rate_limit_bytes_per_sec: Option<u64>`.
   - **Behavior:** Wake the scheduler on MemTable flushes whenever a scope's L0 SSTable count reaches `l0_compaction_trigger`. Bound concurrent scope compactions to `max_background_compactions`, pace SSTable writes via a token-bucket rate limiter when configured, and shut down cleanly on `Db::close` or `Drop`.
 
-- [ ] **Shared Sharded SSTable Block Cache**
-  - **Target:** `crates/storkv-core/src/options.rs`, `crates/storkv-core/src/sst/`
-  - **Description:** Add `block_cache_bytes: usize` to `DbOptions` and implement a sharded LRU cache (using the pre-approved `lru` crate) keyed by `(scope_id, sst_id, block_offset)` for decompressed 4 KiB SSTable Data Blocks and Index Blocks.
+- [x] **Shared Sharded SSTable Block Cache**
+  - **Target:** `crates/storkv-core/src/options.rs`, `crates/storkv-core/src/sstable/block_cache.rs`
+  - **Description:** Add `block_cache_bytes: usize` to `DbOptions` and implement a sharded LRU cache keyed by `(scope_id, sst_id, block_offset)` for decompressed 4 KiB SSTable Data Blocks and Index Blocks.
   - **Behavior:** Check the block cache before reading/decompressing blocks from disk. Support a `fill_cache: bool` read option (default `true`, set to `false` for background compaction and full-scope scans) to avoid cache pollution. Track hit and miss counts in engine statistics.
 
 - [ ] **Write Stalls & WAL/L0 Backpressure Watermarks**
