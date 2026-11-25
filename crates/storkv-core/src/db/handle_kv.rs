@@ -7,6 +7,7 @@ use bytes::Bytes;
 
 use super::{Db, ScopeHandle};
 use crate::ScanOptions;
+use crate::WriteOptions;
 
 impl Db {
     /// Read one key from the newest visible state.
@@ -29,11 +30,7 @@ impl Db {
         key: K,
         val: V,
     ) -> crate::Result<()> {
-        self.scope_options(scope)?
-            .validate_expiry(0, crate::types::TimestampMs::now().get())?;
-        let mut tx = self.begin_tx();
-        tx.put(scope, key, val)?;
-        tx.commit()
+        self.put_with_options(scope, key, val, WriteOptions::default())
     }
 
     /// Store one key/value pair with a time to live.
@@ -48,14 +45,7 @@ impl Db {
         val: V,
         ttl: Duration,
     ) -> crate::Result<()> {
-        let now_ms = crate::types::TimestampMs::now().get();
-        let expires_at_ms =
-            now_ms.saturating_add(u64::try_from(ttl.as_millis()).unwrap_or(u64::MAX));
-        self.scope_options(scope)?
-            .validate_expiry(expires_at_ms, now_ms)?;
-        let mut tx = self.begin_tx();
-        tx.put_with_expires_at(scope, key, val, expires_at_ms)?;
-        tx.commit()
+        self.put_with_ttl_with_options(scope, key, val, ttl, WriteOptions::default())
     }
 
     /// Write or delete one key when `condition` matches the newest state.
@@ -75,33 +65,10 @@ impl Db {
         val: Option<V>,
         ttl: Option<Duration>,
     ) -> crate::Result<crate::PutIfResult> {
-        let now_ms = crate::types::TimestampMs::now().get();
-        let mutation = match val {
-            Some(val) => {
-                let expires_at_ms = match ttl {
-                    Some(ttl) => {
-                        now_ms.saturating_add(u64::try_from(ttl.as_millis()).unwrap_or(u64::MAX))
-                    }
-                    None => 0,
-                };
-                self.scope_options(scope)?
-                    .validate_expiry(expires_at_ms, now_ms)?;
-                crate::mvcc::TxMutation::Put {
-                    val: Bytes::copy_from_slice(val.as_ref()),
-                    expires_at_ms,
-                }
-            }
-            None => crate::mvcc::TxMutation::Delete,
-        };
-        self.inner.put_if(
-            scope.scope_id,
-            Bytes::copy_from_slice(key.as_ref()),
-            condition,
-            mutation,
-        )
+        self.put_if_with_options(scope, key, condition, val, ttl, WriteOptions::default())
     }
 
-    fn scope_options(&self, scope: &ScopeHandle) -> crate::Result<crate::ScopeOptions> {
+    pub(super) fn scope_options(&self, scope: &ScopeHandle) -> crate::Result<crate::ScopeOptions> {
         self.inner
             .scopes
             .read()
@@ -116,9 +83,7 @@ impl Db {
     ///
     /// Returns an error when the write fails.
     pub fn delete<K: AsRef<[u8]>>(&self, scope: &ScopeHandle, key: K) -> crate::Result<()> {
-        let mut tx = self.begin_tx();
-        tx.delete(scope, key)?;
-        tx.commit()
+        self.delete_with_options(scope, key, WriteOptions::default())
     }
 
     /// Apply a merge operand to one key.
@@ -132,9 +97,7 @@ impl Db {
         key: K,
         op: crate::MergeOp,
     ) -> crate::Result<()> {
-        let mut tx = self.begin_tx();
-        tx.merge(scope, key, op)?;
-        tx.commit()
+        self.merge_with_options(scope, key, op, WriteOptions::default())
     }
 
     /// Delete a half-open key range.
@@ -148,9 +111,7 @@ impl Db {
         start_key: K,
         end_key: K,
     ) -> crate::Result<()> {
-        let mut tx = self.begin_tx();
-        tx.delete_range(scope, start_key, end_key)?;
-        tx.commit()
+        self.delete_range_with_options(scope, start_key, end_key, WriteOptions::default())
     }
 
     /// Read an ordered key range. `None` bounds are open.

@@ -147,10 +147,22 @@ impl<FS: FileSystem + 'static> Transaction<FS> {
     ///
     /// Returns [`StorkvError::WriteConflict`] when a key in the read set changed
     /// after the transaction started.
-    pub fn commit(mut self) -> crate::Result<()> {
+    pub fn commit(self) -> crate::Result<()> {
+        self.commit_with_options(crate::WriteOptions::default())
+    }
+
+    /// Validate the read set and commit the write set with explicit options.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorkvError::WriteConflict`] when a key in the read set changed
+    /// after the transaction started, or
+    /// [`StorkvError::WriteStalled`] in non-blocking mode when a backpressure
+    /// watermark is exceeded.
+    pub fn commit_with_options(mut self, options: crate::WriteOptions) -> crate::Result<()> {
         let read_seq = self.ctx.read_seq;
         let context = std::mem::replace(&mut self.ctx, TransactionContext::new(0));
-        let result = self.db.commit_tx(context);
+        let result = self.db.commit_tx_with_options(context, options);
         self.release_reader(read_seq);
         result
     }

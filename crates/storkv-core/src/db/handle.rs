@@ -13,6 +13,8 @@ use std::sync::Arc;
 mod handle_backup;
 #[path = "handle_kv.rs"]
 mod handle_kv;
+#[path = "handle_kv_options.rs"]
+mod handle_kv_options;
 #[path = "handle_meta.rs"]
 mod handle_meta;
 #[path = "handle_scopes.rs"]
@@ -141,11 +143,23 @@ impl Db {
             .last_visible_seq
             .load(std::sync::atomic::Ordering::Acquire)
     }
+
+    /// Stop the database, unblock every stalled writer, and flush all scopes.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a flush or snapshot write fails.
+    pub fn close(self) -> crate::Result<()> {
+        self.inner.shutdown_write_stall();
+        self.inner.shutdown_compaction_scheduler();
+        self.inner.flush_all()
+    }
 }
 
 impl Drop for Db {
     fn drop(&mut self) {
         if Arc::strong_count(&self.inner) == 1 {
+            self.inner.shutdown_write_stall();
             self.inner.shutdown_compaction_scheduler();
             let _ = self.inner.flush_all();
         }
