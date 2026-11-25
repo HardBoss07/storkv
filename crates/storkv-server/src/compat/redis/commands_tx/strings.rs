@@ -48,7 +48,7 @@ pub(super) fn tx_set(
             Err(error) => return storage_error(error),
         }
     } else {
-        keyspace::expiry_from_ttl(options.ttl)
+        options.expires_at_ms.unwrap_or(0)
     };
     if let Err(error) = tx.put_with_expires_at(scope, key, value, expires) {
         return storage_error(error);

@@ -8,6 +8,7 @@ use super::helpers::{parse_i64, parse_set_options, storage_error, wrong_arity};
 use super::keyspace::{self, Outcome};
 
 mod counter;
+mod extended;
 
 impl RedisSession {
     pub(super) fn get(&self, args: &[Bytes]) -> Resp {
@@ -51,7 +52,7 @@ impl RedisSession {
                     .map(|meta| meta.expires_at_ms)
                     .unwrap_or(0)
             } else {
-                keyspace::expiry_from_ttl(options.ttl)
+                options.expires_at_ms.unwrap_or(0)
             };
             atomic.put(&scope, key, value, expires);
             Ok(Outcome::Commit((previous, true)))

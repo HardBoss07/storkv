@@ -9,16 +9,20 @@ use super::helpers::{storage_error, upper, wrong_arity};
 
 mod counters;
 mod expiry;
+mod keys_ext;
 mod scan;
 mod strings;
+mod strings_ext;
 
 use counters::{tx_counter, tx_counter_by};
 use expiry::{tx_expire, tx_persist, tx_ttl};
+use keys_ext::{tx_expire_at, tx_expiretime, tx_rename, tx_type};
 use scan::{tx_keys, tx_scan};
 use strings::{
     tx_append, tx_delete, tx_exists, tx_get, tx_mget, tx_mset, tx_set, tx_setex, tx_setnx,
     tx_strlen,
 };
+use strings_ext::{tx_getdel, tx_getex, tx_msetnx};
 
 impl RedisSession {
     pub(super) fn watch(&mut self, args: &[Bytes]) -> Resp {
@@ -106,14 +110,20 @@ impl RedisSession {
         };
         match command {
             "GET" => tx_get(tx, &scope, args),
+            "GETDEL" => tx_getdel(tx, &scope, args),
+            "GETEX" => tx_getex(tx, &scope, args),
             "SET" => tx_set(self, tx, &scope, args),
             "SETEX" => tx_setex(tx, &scope, args, MILLIS_PER_SECOND),
             "PSETEX" => tx_setex(tx, &scope, args, 1),
             "SETNX" => tx_setnx(tx, &scope, args),
             "MGET" => tx_mget(tx, &scope, args),
             "MSET" => tx_mset(tx, &scope, args),
+            "MSETNX" => tx_msetnx(tx, &scope, args),
             "DEL" | "UNLINK" => tx_delete(tx, &scope, args),
             "EXISTS" => tx_exists(tx, &scope, args),
+            "RENAME" => tx_rename(tx, &scope, args, false),
+            "RENAMENX" => tx_rename(tx, &scope, args, true),
+            "TYPE" => tx_type(tx, &scope, args),
             "INCR" => tx_counter(self, tx, &scope, args, 1),
             "DECR" => tx_counter(self, tx, &scope, args, -1),
             "INCRBY" => tx_counter_by(self, tx, &scope, args, 1),
@@ -122,6 +132,10 @@ impl RedisSession {
             "STRLEN" => tx_strlen(tx, &scope, args),
             "EXPIRE" => tx_expire(tx, &scope, args, MILLIS_PER_SECOND),
             "PEXPIRE" => tx_expire(tx, &scope, args, 1),
+            "EXPIREAT" => tx_expire_at(tx, &scope, args, MILLIS_PER_SECOND),
+            "PEXPIREAT" => tx_expire_at(tx, &scope, args, 1),
+            "EXPIRETIME" => tx_expiretime(tx, &scope, args, MILLIS_PER_SECOND),
+            "PEXPIRETIME" => tx_expiretime(tx, &scope, args, 1),
             "PERSIST" => tx_persist(tx, &scope, args),
             "TTL" => tx_ttl(self, &scope, args, MILLIS_PER_SECOND),
             "PTTL" => tx_ttl(self, &scope, args, 1),

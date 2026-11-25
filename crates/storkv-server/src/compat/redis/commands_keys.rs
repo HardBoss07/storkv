@@ -11,6 +11,10 @@ use super::helpers::{
 };
 use super::keyspace::{self, Outcome};
 
+mod abs_expiry;
+mod key_info;
+mod rename;
+
 impl RedisSession {
     pub(super) fn delete(&self, args: &[Bytes]) -> Resp {
         if args.len() < 2 {

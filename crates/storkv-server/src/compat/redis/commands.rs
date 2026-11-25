@@ -117,14 +117,20 @@ impl RedisSession {
             "FLUSHDB" => self.flush_db(),
             "FLUSHALL" => self.flush_all(),
             "GET" => self.get(args),
+            "GETDEL" => self.getdel(args),
+            "GETEX" => self.getex(args),
             "SET" => self.set(args),
             "SETEX" => self.setex(args, MILLIS_PER_SECOND),
             "PSETEX" => self.setex(args, 1),
             "SETNX" => self.setnx(args),
             "MGET" => self.mget(args),
             "MSET" => self.mset(args),
+            "MSETNX" => self.msetnx(args),
             "DEL" | "UNLINK" => self.delete(args),
             "EXISTS" => self.exists(args),
+            "RENAME" => self.rename(args),
+            "RENAMENX" => self.renamenx(args),
+            "TYPE" => self.key_type(args),
             "INCR" => self.counter(args, 1),
             "DECR" => self.counter(args, -1),
             "INCRBY" => self.counter_by(args, 1),
@@ -133,6 +139,10 @@ impl RedisSession {
             "STRLEN" => self.strlen(args),
             "EXPIRE" => self.expire(args, MILLIS_PER_SECOND),
             "PEXPIRE" => self.expire(args, 1),
+            "EXPIREAT" => self.expire_at(args, MILLIS_PER_SECOND),
+            "PEXPIREAT" => self.expire_at(args, 1),
+            "EXPIRETIME" => self.expiretime(args, MILLIS_PER_SECOND),
+            "PEXPIRETIME" => self.expiretime(args, 1),
             "PERSIST" => self.persist(args),
             "TTL" => self.ttl(args, MILLIS_PER_SECOND),
             "PTTL" => self.ttl(args, 1),
@@ -190,6 +200,11 @@ fn is_write_command(command: &str) -> bool {
             | "PSETEX"
             | "SETNX"
             | "MSET"
+            | "MSETNX"
+            | "GETDEL"
+            | "GETEX"
+            | "RENAME"
+            | "RENAMENX"
             | "DEL"
             | "UNLINK"
             | "INCR"
@@ -199,6 +214,8 @@ fn is_write_command(command: &str) -> bool {
             | "APPEND"
             | "EXPIRE"
             | "PEXPIRE"
+            | "EXPIREAT"
+            | "PEXPIREAT"
             | "PERSIST"
             | "FLUSHDB"
             | "FLUSHALL"
