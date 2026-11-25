@@ -367,6 +367,22 @@ curl -sS -X POST http://127.0.0.1:8080/v1/admin/compact
 { "ok": true }
 ```
 
+Add the `scope` query parameter to compact one scope. Add `start` and `end` to compact only the SSTables that overlap the half-open range `[start, end)`:
+
+```bash
+curl -sS -X POST 'http://127.0.0.1:8080/v1/admin/compact?scope=default&start=a&end=z'
+```
+
+| Parameter   | Default | Meaning                             |
+| :---------- | :------ | :---------------------------------- |
+| `scope`     | (all)   | Scope to compact                    |
+| `start`     | (open)  | Inclusive start key, UTF-8 text     |
+| `end`       | (open)  | Exclusive end key, UTF-8 text       |
+| `start_b64` | (none)  | Base64 start key. Overrides `start` |
+| `end_b64`   | (none)  | Base64 end key. Overrides `end`     |
+
+An omitted bound is open. The route returns `400` with code `invalid_operation` when `start >= end`.
+
 ### Trigger a backup
 
 ```bash

@@ -74,7 +74,7 @@ Do not introduce external crates for the following items; implement them using `
   - **Description:** Extend `DbOptions` with `max_total_wal_bytes: u64`, `l0_slowdown_writes_trigger: usize`, and `l0_stop_writes_trigger: usize`.
   - **Behavior:** Inject progressive write delays when L0 SSTable counts reach `l0_slowdown_writes_trigger`. When L0 files reach `l0_stop_writes_trigger` or total un-flushed WAL bytes exceed `max_total_wal_bytes`, stall foreground writers (or return `Error::WriteStalled` when non-blocking mode is requested) until background flushes and compactions drain the backlog.
 
-- [ ] **Targeted Key-Range Compaction (`Db::compact_range`)**
+- [x] **Targeted Key-Range Compaction (`Db::compact_range`)**
   - **Target:** `crates/storkv-core/src/compaction.rs`, `crates/storkv-core/src/db/`, `crates/storkv-server`, `crates/storkvctl`
   - **Description:** Implement `Db::compact_range(scope: &str, start: Option<&[u8]>, end: Option<&[u8]>)` to compact only SSTables whose key ranges overlap `[start, end)`.
   - **Behavior:** Reclaim disk space immediately after bulk `DeleteRange` operations or Redis `FLUSHDB` without rewriting unrelated key ranges. Expose `--start` and `--end` flags in `storkvctl compact` and corresponding parameters on HTTP/gRPC admin endpoints.

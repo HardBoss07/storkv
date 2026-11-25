@@ -17,6 +17,7 @@ The tool reads no environment variables. It takes every value from a flag.
 | `backup`        | Running daemon      | Write a checkpoint image                       |
 | `backup-status` | Running daemon      | Show autonomous backup state                   |
 | `backup-verify` | Running daemon      | Verify archived backup generations             |
+| `compact`       | Running daemon      | Run compaction, optionally over a key range    |
 | `restore`       | Backup directory    | Restore a generation into a new data directory |
 | `migrate`       | Daemon or directory | Export, import, or copy keys                   |
 | `ycsb`          | Running daemon      | Run a benchmark workload                       |
@@ -158,6 +159,24 @@ All backup checks PASSED.
 | `--target-seq` | none             | Verify only the generations for this sequence |
 
 The check reads the backup catalog through the daemon and validates file sizes and CRC32C checksums. On an error, it prints each path and detail, then exits with code 1.
+
+## compact
+
+Run full compaction, or compact only one key range:
+
+```bash
+storkvctl compact --sock 127.0.0.1:7878
+storkvctl compact --sock 127.0.0.1:7878 --scope default --start a --end z
+```
+
+| Flag      | Default          | Meaning                               |
+| :-------- | :--------------- | :------------------------------------ |
+| `--sock`  | `127.0.0.1:7878` | Daemon address                        |
+| `--scope` | none             | Scope to compact. Omit for all scopes |
+| `--start` | none             | Inclusive start key, UTF-8 text       |
+| `--end`   | none             | Exclusive end key, UTF-8 text         |
+
+`--start` and `--end` apply only when `--scope` is set. An omitted bound is open. The command fails when `start >= end`.
 
 ## restore
 
