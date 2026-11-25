@@ -2,6 +2,8 @@
 
 mod fifo;
 mod leveled;
+mod leveled_range;
+mod range_filter;
 
 use crate::db::DbInner;
 use crate::error::Result;

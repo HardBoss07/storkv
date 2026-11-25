@@ -7,6 +7,8 @@ use crate::vfs::FileSystem;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
+mod compact_range;
+
 type CompactResult<FS> = crate::Result<(Arc<Scope<FS>>, Option<VersionEdit>)>;
 
 impl<FS: FileSystem + 'static> DbInner<FS> {

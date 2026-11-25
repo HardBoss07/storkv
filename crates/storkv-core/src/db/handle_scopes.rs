@@ -60,4 +60,23 @@ impl Db {
     pub fn compact(&self) -> crate::Result<()> {
         self.inner.run_compaction()
     }
+
+    /// Compact only the SSTables that overlap the half-open user-key range
+    /// `[start, end)` in one scope.
+    ///
+    /// `None` bounds are open. SSTables outside the range stay untouched.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::StorkvError::InvalidOperation`] when `start >= end`.
+    /// Returns [`crate::StorkvError::ScopeNotFound`] when the scope is unknown.
+    /// Returns an error when compaction or manifest logging fails.
+    pub fn compact_range(
+        &self,
+        scope: &str,
+        start: Option<&[u8]>,
+        end: Option<&[u8]>,
+    ) -> crate::Result<()> {
+        self.inner.compact_range(scope, start, end)
+    }
 }
