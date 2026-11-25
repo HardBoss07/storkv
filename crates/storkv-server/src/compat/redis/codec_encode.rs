@@ -10,12 +10,6 @@ use super::codec::{RESP3_VERSION, Resp};
 /// Number of array elements that represent one map entry in RESP2.
 const RESP2_MAP_FIELDS_PER_PAIR: usize = 2;
 
-/// Number of bytes in a RESP2 inline line CRLF terminator.
-const RESP2_INLINE_CRLF_LEN: usize = 2;
-
-/// Number of bulk string payload bytes representing "nil" in RESP.
-const RESP2_NIL_BULK: usize = 0;
-
 /// Append one value to `destination` using the requested RESP version.
 pub(crate) fn encode(value: &Resp, version: u8, destination: &mut BytesMut) {
     match value {

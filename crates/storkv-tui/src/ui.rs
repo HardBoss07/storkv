@@ -48,15 +48,15 @@ pub fn render_dashboard_full(
 }
 
 /// Width of the amplification panel.
-const AMPLIFICATION_PANEL_WIDTH: usize = 5;
+const AMPLIFICATION_PANEL_WIDTH: u16 = 5;
 /// Width of the levels panel.
-const LEVELS_PANEL_WIDTH: usize = 11;
+const LEVELS_PANEL_WIDTH: u16 = 11;
 /// Width of the WAL panel.
-const WAL_PANEL_WIDTH: usize = 6;
+const WAL_PANEL_WIDTH: u16 = 6;
 /// Width of the backup panel.
-const BACKUP_PANEL_WIDTH: usize = 7;
+const BACKUP_PANEL_WIDTH: u16 = 7;
 /// Minimum width of the scope panel.
-const SCOPE_PANEL_MIN_WIDTH: usize = 4;
+const SCOPE_PANEL_MIN_WIDTH: u16 = 4;
 
 fn dashboard_chunks(area: Rect) -> std::rc::Rc<[Rect]> {
     Layout::default()
@@ -261,8 +261,8 @@ const UNITS: [&str; 4] = ["B", "KiB", "MiB", "GiB"];
 fn format_bytes(bytes: u64) -> String {
     let mut value = bytes as f64;
     let mut unit = 0;
-    while value >= BYTES_PER_UNIT && unit < UNITS.len() - 1 {
-        value /= BYTES_PER_UNIT;
+    while value >= BYTES_PER_UNIT as f64 && unit < UNITS.len() - 1 {
+        value /= BYTES_PER_UNIT as f64;
         unit += 1;
     }
     if unit == 0 {
@@ -271,9 +271,6 @@ fn format_bytes(bytes: u64) -> String {
         format!("{value:.1} {}", UNITS[unit])
     }
 }
-
-/// Maximum number of characters to truncate a string to.
-const MAX_TRUNCATE_CHARS: usize = 28;
 
 fn truncate(value: &str, max_chars: usize) -> String {
     let limit = std::cmp::min(value.chars().count(), max_chars);
