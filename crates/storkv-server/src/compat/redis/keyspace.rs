@@ -65,6 +65,26 @@ impl<'a> Atomic<'a> {
         self.context
             .delete(scope.scope_id, Bytes::copy_from_slice(key));
     }
+
+    /// Absolute expiry of a live key, including buffered writes in this atomic.
+    pub(crate) fn expires_at(
+        &mut self,
+        scope: &ScopeHandle,
+        key: &[u8],
+    ) -> storkv_core::Result<Option<u64>> {
+        self.context
+            .record_read(scope.scope_id, Bytes::copy_from_slice(key));
+        if let Some(mutation) = self.context.get_local(scope.scope_id, key) {
+            return Ok(match mutation {
+                TxMutation::Put { expires_at_ms, .. } => Some(*expires_at_ms),
+                TxMutation::Delete | TxMutation::DeleteRange { .. } => None,
+                TxMutation::Merge { .. } => {
+                    self.db.key_meta(scope, key)?.map(|meta| meta.expires_at_ms)
+                }
+            });
+        }
+        Ok(self.db.key_meta(scope, key)?.map(|meta| meta.expires_at_ms))
+    }
 }
 
 pub(crate) fn atomic<T, F>(db: &Db, primary: bool, mut operation: F) -> storkv_core::Result<T>
