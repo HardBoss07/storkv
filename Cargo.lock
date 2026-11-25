@@ -2643,6 +2643,7 @@ dependencies = [
  "storkv-client",
  "storkv-core",
  "storkv-proto",
+ "subtle",
  "tokio",
  "tokio-rustls",
  "tokio-stream",
