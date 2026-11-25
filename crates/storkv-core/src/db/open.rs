@@ -3,6 +3,7 @@ use crate::manifest::{EditRecord, ManifestManager, VersionEdit};
 use crate::mvcc::DefaultMergeOperator;
 use crate::options::DbOptions;
 use crate::recovery::{load_scopes, replay_wal};
+use crate::sstable::BlockCache;
 use crate::telemetry::Telemetry;
 use crate::vfs::FileSystem;
 use crate::wal::WalManager;
@@ -44,12 +45,18 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
 
         let wal_mgr = WalManager::open(fs.clone(), &wal_dir, active_wal_num)?;
 
+        let telemetry = Arc::new(Telemetry::new());
+        let block_cache = Arc::new(BlockCache::new(
+            options.block_cache_bytes,
+            telemetry.clone(),
+        ));
         let loaded = load_scopes(
             fs.clone(),
             &scopes_dir,
             &manifest_scopes,
             &manifest_sst_files,
             &manifest_range_tombstones,
+            block_cache.clone(),
         )?;
         if loaded.created_default {
             let mut edit = VersionEdit::new();
@@ -96,9 +103,12 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
             commit_lock: Mutex::new(()),
             watch_registry: WatchRegistry::new(),
             replication_registry: crate::ReplicationRegistry::new(),
-            telemetry: Telemetry::new(),
+            telemetry,
+            block_cache,
             active_tx_readers: RwLock::new(Vec::new()),
             merge_operator: Box::new(DefaultMergeOperator),
+            compaction_scheduler: Mutex::new(None),
+            compaction_cursor: std::sync::atomic::AtomicUsize::new(0),
         })
     }
 }

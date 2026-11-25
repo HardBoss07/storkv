@@ -1,7 +1,9 @@
+use crate::compaction::CompactionScheduler;
 use crate::manifest::ManifestManager;
 use crate::mvcc::MergeOperator;
 use crate::options::DbOptions;
 use crate::scope::Scope;
+use crate::sstable::BlockCache;
 use crate::telemetry::Telemetry;
 use crate::vfs::FileSystem;
 use crate::wal::WalManager;
@@ -46,9 +48,15 @@ pub struct DbInner<FS: FileSystem> {
     /// Replication frame subscribers.
     pub replication_registry: crate::ReplicationRegistry,
     /// Runtime counters.
-    pub telemetry: Telemetry,
+    pub telemetry: Arc<Telemetry>,
+    /// Shared SSTable block cache.
+    pub block_cache: Arc<BlockCache>,
     /// Read sequence numbers of open transactions.
     pub active_tx_readers: RwLock<Vec<u64>>,
     /// Merge operator for merge writes.
     pub merge_operator: Box<dyn MergeOperator>,
+    /// Autonomous background compaction scheduler (or `None` if disabled).
+    pub compaction_scheduler: Mutex<Option<CompactionScheduler<FS>>>,
+    /// Rotation cursor that gives every scope a fair compaction turn.
+    pub compaction_cursor: std::sync::atomic::AtomicUsize,
 }

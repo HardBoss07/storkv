@@ -52,6 +52,11 @@ impl<'a> SstWriter<'a> {
         }
     }
 
+    /// Return the number of bytes written to the file so far.
+    pub fn bytes_written(&self) -> u64 {
+        self.offset
+    }
+
     /// Append one entry. Keys must arrive in internal key order.
     ///
     /// # Errors

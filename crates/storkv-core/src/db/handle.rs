@@ -80,6 +80,7 @@ impl Db {
 
         let fs = Arc::new(AnyFs::Disk(PosixFs));
         let inner = Arc::new(DbInner::open(fs, db_root, options)?);
+        inner.start_compaction_scheduler()?;
         let ttl_worker = Arc::new(TtlWorkerHandle::start(inner.clone()));
 
         Ok(Self {
@@ -101,6 +102,7 @@ impl Db {
         let fs = Arc::new(AnyFs::Memory(InMemoryFs::new()));
         let db_root = std::path::PathBuf::from("/storkv-memory");
         let inner = Arc::new(DbInner::open(fs, db_root, options)?);
+        inner.start_compaction_scheduler()?;
         let ttl_worker = Arc::new(TtlWorkerHandle::start(inner.clone()));
         Ok(Self {
             inner,
@@ -125,7 +127,7 @@ impl Db {
 
     /// Return the per-database telemetry counters.
     pub fn telemetry(&self) -> &Telemetry {
-        &self.inner.telemetry
+        self.inner.telemetry.as_ref()
     }
 
     /// Return the shared engine state.
@@ -144,6 +146,7 @@ impl Db {
 impl Drop for Db {
     fn drop(&mut self) {
         if Arc::strong_count(&self.inner) == 1 {
+            self.inner.shutdown_compaction_scheduler();
             let _ = self.inner.flush_all();
         }
     }

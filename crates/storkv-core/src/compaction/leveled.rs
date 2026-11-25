@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use super::Compactor;
+use super::{Compactor, RateLimiter};
 
 const LEVEL_ZERO: u8 = 0;
 const LEVEL_ONE: u8 = 1;
@@ -23,6 +23,7 @@ impl Compactor {
         gc_safe_seq: SequenceNumber,
         next_file_num: &AtomicU64,
         now_ms: TimestampMs,
+        rate_limiter: Option<&RateLimiter>,
     ) -> Result<Option<VersionEdit>> {
         let Some(source_files) = select_source_files(scope) else {
             return Ok(None);
@@ -33,8 +34,14 @@ impl Compactor {
         }
 
         let new_file_num = next_file_num.fetch_add(1, Ordering::SeqCst);
-        let new_metadata =
-            write_compacted_sstable(scope, new_file_num, source_entries, gc_safe_seq, now_ms)?;
+        let new_metadata = write_compacted_sstable(
+            scope,
+            new_file_num,
+            source_entries,
+            gc_safe_seq,
+            now_ms,
+            rate_limiter,
+        )?;
 
         let mut edit = VersionEdit::new();
         for source in &source_files {
@@ -71,8 +78,20 @@ fn read_source_entries<FS: FileSystem>(
             .scope_dir
             .join(format!("{:016x}.sst", metadata.file_num));
         let mut file = scope.fs.open_file(&sst_path)?;
-        let reader = SstReader::open(&mut file)?;
-        for (encoded_key, value) in reader.read_all_entries(&mut file)? {
+        let reader = SstReader::open_cached(
+            &mut file,
+            &scope.block_cache,
+            scope.scope_id,
+            metadata.file_num,
+            false,
+        )?;
+        for (encoded_key, value) in reader.read_all_entries_cached(
+            &mut file,
+            &scope.block_cache,
+            scope.scope_id,
+            metadata.file_num,
+            false,
+        )? {
             if let Some(internal_key) = InternalKey::decode(encoded_key) {
                 all_entries.insert(internal_key, value);
             }
@@ -87,6 +106,7 @@ fn write_compacted_sstable<FS: FileSystem>(
     source_entries: BTreeMap<InternalKey, Bytes>,
     gc_safe_seq: SequenceNumber,
     now_ms: TimestampMs,
+    rate_limiter: Option<&RateLimiter>,
 ) -> Result<SstFileMeta> {
     let new_sst_path = scope.scope_dir.join(format!("{:016x}.sst", new_file_num));
     let mut new_file = scope.fs.create_file(&new_sst_path)?;
@@ -105,6 +125,7 @@ fn write_compacted_sstable<FS: FileSystem>(
     // `None` and a counter can resolve to `"0"` after compaction.
     let mut current_user_key: Option<Bytes> = None;
     let mut seen_terminal = false;
+    let mut throttled_bytes: u64 = 0;
     for (internal_key, value) in source_entries {
         if is_expired(&internal_key, now_ms) {
             continue;
@@ -138,10 +159,22 @@ fn write_compacted_sstable<FS: FileSystem>(
         if is_terminal {
             seen_terminal = true;
         }
+        if let Some(limiter) = rate_limiter {
+            let written = writer.bytes_written();
+            if written > throttled_bytes {
+                limiter.throttle(usize::try_from(written - throttled_bytes).unwrap_or(usize::MAX));
+                throttled_bytes = written;
+            }
+        }
     }
 
     let (_footer, metadata, min_key, max_key) = writer.finish()?;
     let file_size = new_file.file_size()?;
+    if let Some(limiter) = rate_limiter {
+        if file_size > throttled_bytes {
+            limiter.throttle(usize::try_from(file_size - throttled_bytes).unwrap_or(usize::MAX));
+        }
+    }
     Ok(SstFileMeta {
         scope_id: scope.scope_id,
         level: LEVEL_ONE,
