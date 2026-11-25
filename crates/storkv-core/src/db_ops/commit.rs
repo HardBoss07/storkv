@@ -22,6 +22,31 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
     /// Returns [`crate::StorkvError::WriteConflict`] when a read key changed after the
     /// transaction started, or an I/O error.
     pub fn commit_tx(&self, transaction: TransactionContext) -> crate::Result<()> {
+        self.commit_tx_with_options(transaction, crate::WriteOptions::default())
+    }
+
+    /// Validate the read set, append the write set to the WAL, and apply it
+    /// with explicit write options.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::StorkvError::WriteConflict`] when a read key changed
+    /// after the transaction started,
+    /// [`crate::StorkvError::WriteStalled`] in non-blocking mode when a
+    /// backpressure watermark is exceeded, or an I/O error.
+    pub fn commit_tx_with_options(
+        &self,
+        transaction: TransactionContext,
+        options: crate::WriteOptions,
+    ) -> crate::Result<()> {
+        if !transaction.write_set.is_empty() {
+            let scope_ids: Vec<u32> = transaction
+                .write_set
+                .keys()
+                .map(|(scope_id, _)| *scope_id)
+                .collect();
+            self.wait_for_write_capacity(&scope_ids, options)?;
+        }
         let touched_scopes = {
             let _commit_guard = self.commit_lock.lock();
             self.commit_tx_locked(transaction)?

@@ -109,6 +109,8 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
             merge_operator: Box::new(DefaultMergeOperator),
             compaction_scheduler: Mutex::new(None),
             compaction_cursor: std::sync::atomic::AtomicUsize::new(0),
+            unflushed_wal_bytes: AtomicU64::new(0),
+            write_stall: crate::db::inner::WriteStall::new(),
         })
     }
 }

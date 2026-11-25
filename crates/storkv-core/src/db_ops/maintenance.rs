@@ -244,6 +244,7 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
             let path = scope.scope_dir.join(format!("{:016x}.sst", file_num));
             scope.fs.remove_file(&path)?;
         }
+        self.notify_write_stall();
         Ok(true)
     }
 }

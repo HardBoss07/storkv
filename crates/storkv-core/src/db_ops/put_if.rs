@@ -26,6 +26,31 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
         condition: &PutCondition,
         mutation: TxMutation,
     ) -> crate::Result<PutIfResult> {
+        self.put_if_with_options(
+            scope_id,
+            user_key,
+            condition,
+            mutation,
+            crate::WriteOptions::default(),
+        )
+    }
+
+    /// Evaluate `condition` and apply `mutation` with explicit write options.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::StorkvError::ScopeIdNotFound`] when the scope is
+    /// unknown, [`crate::StorkvError::WriteStalled`] in non-blocking mode when
+    /// a backpressure watermark is exceeded, or a storage or WAL error.
+    pub fn put_if_with_options(
+        &self,
+        scope_id: u32,
+        user_key: Bytes,
+        condition: &PutCondition,
+        mutation: TxMutation,
+        options: crate::WriteOptions,
+    ) -> crate::Result<PutIfResult> {
+        self.wait_for_write_capacity(&[scope_id], options)?;
         let (result, touched) = {
             let _commit_guard = self.commit_lock.lock();
             let now_ms = TimestampMs::now();

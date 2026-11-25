@@ -135,7 +135,7 @@ fn wal_op_for_mutation(scope_id: u32, user_key: &Bytes, mutation: &TxMutation) -
     }
 }
 
-fn apply_mutation<FS: FileSystem>(
+fn apply_mutation<FS: FileSystem + 'static>(
     db: &DbInner<FS>,
     scope: &Scope<FS>,
     user_key: Bytes,
@@ -146,10 +146,12 @@ fn apply_mutation<FS: FileSystem>(
         TxMutation::Put { val, expires_at_ms } => {
             let internal_key =
                 InternalKey::new(user_key.clone(), op_seq, ValueType::Value, expires_at_ms);
-            scope
-                .active_memtable
-                .read()
-                .insert(internal_key.encode(), val.clone(), op_seq);
+            let added =
+                scope
+                    .active_memtable
+                    .read()
+                    .insert(internal_key.encode(), val.clone(), op_seq);
+            db.record_unflushed_wal_bytes(scope, added);
             if scope.options.active_ttl_tracking && expires_at_ms > 0 {
                 scope
                     .ttl_tracker
@@ -166,10 +168,12 @@ fn apply_mutation<FS: FileSystem>(
         }
         TxMutation::Delete => {
             let internal_key = InternalKey::new(user_key.clone(), op_seq, ValueType::Tombstone, 0);
-            scope
-                .active_memtable
-                .read()
-                .insert(internal_key.encode(), Bytes::new(), op_seq);
+            let added =
+                scope
+                    .active_memtable
+                    .read()
+                    .insert(internal_key.encode(), Bytes::new(), op_seq);
+            db.record_unflushed_wal_bytes(scope, added);
             db.watch_registry.broadcast(ChangeEvent::Delete {
                 scope_id: scope.scope_id,
                 key: user_key,
@@ -178,10 +182,11 @@ fn apply_mutation<FS: FileSystem>(
         }
         TxMutation::Merge { operand } => {
             let internal_key = InternalKey::new(user_key, op_seq, ValueType::MergeOperand, 0);
-            scope
+            let added = scope
                 .active_memtable
                 .read()
                 .insert(internal_key.encode(), operand, op_seq);
+            db.record_unflushed_wal_bytes(scope, added);
             db.watch_registry.broadcast(ChangeEvent::InvalidateScope {
                 scope_id: scope.scope_id,
                 seq: op_seq,
@@ -190,10 +195,11 @@ fn apply_mutation<FS: FileSystem>(
         TxMutation::DeleteRange { end_key } => {
             scope.record_range_tombstone(user_key.clone(), end_key.clone(), op_seq);
             let internal_key = InternalKey::new(user_key, op_seq, ValueType::RangeTombstone, 0);
-            scope
+            let added = scope
                 .active_memtable
                 .read()
                 .insert(internal_key.encode(), end_key, op_seq);
+            db.record_unflushed_wal_bytes(scope, added);
             db.watch_registry.broadcast(ChangeEvent::InvalidateScope {
                 scope_id: scope.scope_id,
                 seq: op_seq,

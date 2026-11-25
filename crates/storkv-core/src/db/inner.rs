@@ -8,14 +8,31 @@ use crate::telemetry::Telemetry;
 use crate::vfs::FileSystem;
 use crate::wal::WalManager;
 use crate::watch::WatchRegistry;
-use parking_lot::{Mutex, RwLock};
+use parking_lot::{Condvar, Mutex, RwLock};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicBool, AtomicU64};
 
 /// Default maximum number of scopes in one database.
 pub const MAX_SCOPES: usize = 1024;
+
+/// Coordination state for foreground write backpressure.
+pub(crate) struct WriteStall {
+    pub(crate) shutdown: AtomicBool,
+    pub(crate) state: Mutex<()>,
+    pub(crate) wake: Condvar,
+}
+
+impl WriteStall {
+    pub(crate) fn new() -> Self {
+        Self {
+            shutdown: AtomicBool::new(false),
+            state: Mutex::new(()),
+            wake: Condvar::new(),
+        }
+    }
+}
 
 /// Shared inner state of one database.
 pub struct DbInner<FS: FileSystem> {
@@ -59,4 +76,8 @@ pub struct DbInner<FS: FileSystem> {
     pub compaction_scheduler: Mutex<Option<CompactionScheduler<FS>>>,
     /// Rotation cursor that gives every scope a fair compaction turn.
     pub compaction_cursor: std::sync::atomic::AtomicUsize,
+    /// Approximate WAL bytes that no MemTable flush has drained yet.
+    pub(crate) unflushed_wal_bytes: AtomicU64,
+    /// Write-stall coordination state.
+    pub(crate) write_stall: WriteStall,
 }

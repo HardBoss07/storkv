@@ -41,6 +41,8 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
             .or_default()
             .push(sst_meta);
         let _ = scope.flush_queue.pop_oldest();
+        self.drain_unflushed_wal_bytes(memtable.size_bytes());
+        self.notify_write_stall();
         self.trigger_compaction_from_flush()?;
 
         Ok(())
