@@ -197,6 +197,15 @@ pub enum Request {
     },
     /// Run compaction immediately.
     Compact,
+    /// Compact only the SSTables that overlap a half-open user-key range.
+    CompactRange {
+        /// Name of the scope to compact.
+        scope: String,
+        /// Inclusive start key, or `None` for an unbounded start.
+        start: Option<Bytes>,
+        /// Exclusive end key, or `None` for an unbounded end.
+        end: Option<Bytes>,
+    },
     /// Subscribe the connection to change events.
     WatchSubscribe,
     /// Resume change events after a sequence cursor.

@@ -68,6 +68,11 @@ pub(crate) fn decode_request(source: &mut BytesMut) -> Result<Request, StorkvWir
             })
         }
         29 => decode_put_if_request(source),
+        30 => Ok(Request::CompactRange {
+            scope: get_str(source)?,
+            start: get_opt_bytes(source)?,
+            end: get_opt_bytes(source)?,
+        }),
         other => Err(StorkvWireError::Protocol(format!(
             "Unknown request opcode: {}",
             other

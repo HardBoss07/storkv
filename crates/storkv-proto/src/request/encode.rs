@@ -124,6 +124,12 @@ pub(crate) fn encode_request(destination: &mut BytesMut, request: &Request) {
             put_str(destination, dest_dir);
         }
         Request::Compact => destination.put_u8(15),
+        Request::CompactRange { scope, start, end } => {
+            destination.put_u8(30);
+            put_str(destination, scope);
+            put_opt_bytes(destination, start.as_ref());
+            put_opt_bytes(destination, end.as_ref());
+        }
         Request::WatchSubscribe => destination.put_u8(16),
         Request::TelemetryQuery => destination.put_u8(17),
         Request::HealthCheck => destination.put_u8(18),

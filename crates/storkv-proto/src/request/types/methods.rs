@@ -12,6 +12,7 @@ impl Request {
             self,
             Request::Checkpoint { .. }
                 | Request::Compact
+                | Request::CompactRange { .. }
                 | Request::CreateSnapshot { .. }
                 | Request::UnpinSnapshot { .. }
                 | Request::DropScope { .. }
