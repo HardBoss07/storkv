@@ -27,13 +27,28 @@ impl Drop for CompatServer {
 }
 
 pub async fn spawn(prefix: &str) -> CompatServer {
-    spawn_with_role(prefix, ReplicationRole::Standalone).await
+    spawn_configured(prefix, ReplicationRole::Standalone, None).await
 }
 
 pub async fn spawn_with_role(prefix: &str, role: ReplicationRole) -> CompatServer {
+    spawn_configured(prefix, role, None).await
+}
+
+pub async fn spawn_with_password(prefix: &str, password: Option<&str>) -> CompatServer {
+    spawn_configured(prefix, ReplicationRole::Standalone, password).await
+}
+
+async fn spawn_configured(
+    prefix: &str,
+    role: ReplicationRole,
+    redis_password: Option<&str>,
+) -> CompatServer {
     let mut temp = crate::common::TempDb::new(prefix);
-    let server =
-        Arc::new(Server::with_db(Arc::new(temp.db.take().expect("test db"))).with_role(role));
+    let server = Arc::new(
+        Server::with_db(Arc::new(temp.db.take().expect("test db")))
+            .with_role(role)
+            .with_redis_password(redis_password.map(str::to_owned)),
+    );
     let mut handles = Vec::new();
 
     let tcp_listener = TcpListener::bind("127.0.0.1:0").await.expect("tcp bind");

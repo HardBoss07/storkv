@@ -15,6 +15,8 @@ mod migrate;
 mod mixed_protocol;
 #[path = "compat/redis.rs"]
 mod redis;
+#[path = "compat/redis_auth.rs"]
+mod redis_auth;
 #[path = "compat/redis_contention.rs"]
 mod redis_contention;
 #[path = "compat/replica.rs"]
