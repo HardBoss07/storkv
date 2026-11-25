@@ -1,5 +1,7 @@
 mod common;
 
+#[path = "format/block_cache.rs"]
+mod block_cache;
 #[path = "format/golden.rs"]
 mod golden;
 #[path = "format/hardening.rs"]

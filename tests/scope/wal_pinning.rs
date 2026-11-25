@@ -9,6 +9,7 @@ fn test_wal_pinning_byte_and_time_watermarks() {
         DbOptions {
             max_wal_pin_bytes: 4096,
             max_wal_pin_age: Duration::from_millis(50),
+            ..DbOptions::default()
         },
     );
     let db = temp.db();
