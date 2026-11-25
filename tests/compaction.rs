@@ -2,6 +2,8 @@ mod common;
 
 #[path = "compaction/background.rs"]
 mod background;
+#[path = "compaction/backpressure.rs"]
+mod backpressure;
 #[path = "compaction/fifo.rs"]
 mod fifo;
 #[path = "compaction/folding.rs"]
