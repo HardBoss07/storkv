@@ -19,6 +19,12 @@ mod redis;
 mod redis_auth;
 #[path = "compat/redis_contention.rs"]
 mod redis_contention;
+#[path = "compat/redis_expiry.rs"]
+mod redis_expiry;
+#[path = "compat/redis_extended.rs"]
+mod redis_extended;
+#[path = "compat/redis_rename.rs"]
+mod redis_rename;
 #[path = "compat/replica.rs"]
 mod replica;
 #[path = "compat/tree.rs"]
