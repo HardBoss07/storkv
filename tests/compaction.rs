@@ -10,6 +10,8 @@ mod fifo;
 mod folding;
 #[path = "compaction/leveled.rs"]
 mod leveled;
+#[path = "compaction/range.rs"]
+mod range;
 #[path = "compaction/retention.rs"]
 mod retention;
 #[path = "compaction/snapshots.rs"]

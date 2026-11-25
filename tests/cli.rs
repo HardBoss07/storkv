@@ -8,6 +8,8 @@ mod common;
 
 #[path = "cli/backup_cmds.rs"]
 mod backup_cmds;
+#[path = "cli/compact_cmds.rs"]
+mod compact_cmds;
 #[path = "cli/migrate_cmds.rs"]
 mod migrate_cmds;
 #[path = "cli/multi_uri.rs"]

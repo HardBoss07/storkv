@@ -13,6 +13,22 @@ async fn grpc_crud_scan_and_errors() {
 }
 
 #[tokio::test]
+async fn grpc_admin_compact_forwards_range_bounds() {
+    let transports = support::spawn_all("transports_grpc_compact_range").await;
+    let client = support::connect(&transports.grpc_uri).await;
+    let scope = support::make_scope(&client, "grpc_range").await;
+    client
+        .compact_range(&scope.name, Some(b"a"), Some(b"z"))
+        .await
+        .expect("valid range");
+    let error = client
+        .compact_range(&scope.name, Some(b"z"), Some(b"a"))
+        .await
+        .expect_err("inverted range must fail");
+    assert!(error.to_string().contains("start must be less than end"));
+}
+
+#[tokio::test]
 async fn grpc_merge_counter() {
     let transports = support::spawn_all("transports_grpc_merge").await;
     let client = support::connect(&transports.grpc_uri).await;

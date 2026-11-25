@@ -150,6 +150,16 @@ fn test_round_trip_all_requests() {
             dest_dir: "/tmp/backup".into(),
         },
         Request::Compact,
+        Request::CompactRange {
+            scope: "analytics".into(),
+            start: Some(bytes::Bytes::from_static(b"a")),
+            end: Some(bytes::Bytes::from_static(b"z")),
+        },
+        Request::CompactRange {
+            scope: "analytics".into(),
+            start: None,
+            end: None,
+        },
         Request::WatchSubscribe,
         Request::TelemetryQuery,
         Request::HealthCheck,
