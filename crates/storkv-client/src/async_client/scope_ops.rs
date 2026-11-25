@@ -236,4 +236,23 @@ impl AsyncClient {
     pub async fn compact(&self) -> ClientResult<()> {
         expect_empty(self.send_request(Request::Compact).await?)
     }
+
+    /// Compact only the SSTables that overlap `[start, end)` in one scope.
+    ///
+    /// `None` bounds are open. SSTables outside the range stay untouched.
+    pub async fn compact_range(
+        &self,
+        scope: &str,
+        start: Option<&[u8]>,
+        end: Option<&[u8]>,
+    ) -> ClientResult<()> {
+        expect_empty(
+            self.send_request(Request::CompactRange {
+                scope: scope.to_string(),
+                start: start.map(Bytes::copy_from_slice),
+                end: end.map(Bytes::copy_from_slice),
+            })
+            .await?,
+        )
+    }
 }

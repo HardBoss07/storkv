@@ -32,7 +32,22 @@ impl GrpcBackend {
                 Response::Empty
             }
             Request::Compact => {
-                self.admin.compact(Empty {}).await?;
+                self.admin.compact(grpc::CompactRequest::default()).await?;
+                Response::Empty
+            }
+            Request::CompactRange { scope, start, end } => {
+                self.admin
+                    .compact(grpc::CompactRequest {
+                        scope,
+                        start: start
+                            .as_ref()
+                            .map(|bytes| bytes.to_vec())
+                            .unwrap_or_default(),
+                        end: end.as_ref().map(|bytes| bytes.to_vec()).unwrap_or_default(),
+                        has_start: start.is_some(),
+                        has_end: end.is_some(),
+                    })
+                    .await?;
                 Response::Empty
             }
             Request::AdminStats => {

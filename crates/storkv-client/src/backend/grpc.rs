@@ -56,6 +56,7 @@ impl GrpcBackend {
             | Request::UnpinSnapshot { .. }
             | Request::Checkpoint { .. }
             | Request::Compact
+            | Request::CompactRange { .. }
             | Request::AdminStats
             | Request::TriggerBackup { .. }
             | Request::BackupStatus

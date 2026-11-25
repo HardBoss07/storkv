@@ -7,6 +7,7 @@
 #![warn(missing_docs)]
 
 mod backup;
+mod compact;
 mod doctor;
 mod health;
 mod migrate;

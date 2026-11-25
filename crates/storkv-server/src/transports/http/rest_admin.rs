@@ -1,14 +1,16 @@
 //! REST health, telemetry, and admin handlers.
 
+use std::collections::HashMap;
+
 use axum::body::Bytes;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response as HttpResponse;
 use serde_json::Value;
 use storkv_proto::Request;
 
 use super::HttpState;
-use super::json::{json_error, response_payload};
+use super::json::{decode_base64, json_error, response_payload};
 
 pub(super) async fn health(State(state): State<HttpState>, headers: HeaderMap) -> HttpResponse {
     response_payload(state.dispatch(Request::HealthCheck, &headers))
@@ -46,8 +48,36 @@ pub(super) async fn checkpoint(
     ))
 }
 
-pub(super) async fn compact(State(state): State<HttpState>, headers: HeaderMap) -> HttpResponse {
-    response_payload(state.dispatch(Request::Compact, &headers))
+pub(super) async fn compact(
+    State(state): State<HttpState>,
+    headers: HeaderMap,
+    Query(query): Query<HashMap<String, String>>,
+) -> HttpResponse {
+    let Some(scope) = query.get("scope").filter(|scope| !scope.is_empty()) else {
+        return response_payload(state.dispatch(Request::Compact, &headers));
+    };
+    response_payload(state.dispatch(
+        Request::CompactRange {
+            scope: scope.clone(),
+            start: range_bound(&query, "start"),
+            end: range_bound(&query, "end"),
+        },
+        &headers,
+    ))
+}
+
+/// Read `name` or `name_b64` from the query. Empty values mean no bound.
+fn range_bound(query: &HashMap<String, String>, name: &str) -> Option<Bytes> {
+    query
+        .get(&format!("{name}_b64"))
+        .and_then(|raw| decode_base64(raw))
+        .map(Bytes::from)
+        .or_else(|| {
+            query
+                .get(name)
+                .filter(|raw| !raw.is_empty())
+                .map(|raw| Bytes::from(raw.as_bytes().to_vec()))
+        })
 }
 
 pub(super) async fn trigger_backup(

@@ -32,9 +32,23 @@ impl StorkvAdmin for GrpcService {
 
     async fn compact(
         &self,
-        request: GrpcRequest<super::Empty>,
+        request: GrpcRequest<super::generated::CompactRequest>,
     ) -> Result<GrpcResponse<super::Empty>, Status> {
-        self.ok(request, Request::Compact)
+        let message = request.get_ref();
+        let payload = if message.scope.is_empty() {
+            Request::Compact
+        } else {
+            Request::CompactRange {
+                scope: message.scope.clone(),
+                start: message
+                    .has_start
+                    .then(|| bytes::Bytes::copy_from_slice(&message.start)),
+                end: message
+                    .has_end
+                    .then(|| bytes::Bytes::copy_from_slice(&message.end)),
+            }
+        };
+        self.ok(request, payload)
     }
 
     async fn create_snapshot(

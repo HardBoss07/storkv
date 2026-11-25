@@ -71,6 +71,11 @@ impl Server {
             Request::HealthCheck => Response::HealthOk,
             Request::TelemetryQuery => self.handle_telemetry_query(),
             Request::Compact => result_to_empty(self.db.compact()),
+            Request::CompactRange { scope, start, end } => result_to_empty(self.db.compact_range(
+                &scope,
+                start.as_deref(),
+                end.as_deref(),
+            )),
             Request::CreateScope { name, options } => self.handle_create_scope(&name, options),
             Request::DropScope { name } => self.handle_drop_scope(&name),
             Request::CreateSnapshot { name } => result_to_empty(self.db.create_snapshot(name)),

@@ -40,6 +40,20 @@ enum Commands {
         #[arg(long)]
         target_seq: Option<u64>,
     },
+    /// Run compaction, optionally only over a key range in one scope
+    Compact {
+        #[arg(long, default_value = "127.0.0.1:7878")]
+        sock: String,
+        /// Scope to compact. Omit to compact every scope.
+        #[arg(long)]
+        scope: Option<String>,
+        /// Inclusive start key as UTF-8 text.
+        #[arg(long)]
+        start: Option<String>,
+        /// Exclusive end key as UTF-8 text.
+        #[arg(long)]
+        end: Option<String>,
+    },
     /// Restore a backup tree into a fresh data directory (offline)
     Restore {
         #[arg(long, default_value = "./backups")]
@@ -163,6 +177,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 std::process::exit(1);
             }
+        }
+        Commands::Compact {
+            sock,
+            scope,
+            start,
+            end,
+        } => {
+            CliRunner::compact(
+                &sock,
+                scope.as_deref(),
+                start.as_deref().map(|start| start.as_bytes()),
+                end.as_deref().map(|end| end.as_bytes()),
+            )
+            .await?;
+            println!("Compaction finished");
         }
         Commands::Restore {
             backup_dir,
