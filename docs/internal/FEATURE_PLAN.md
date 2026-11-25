@@ -69,7 +69,7 @@ Do not introduce external crates for the following items; implement them using `
   - **Description:** Add `block_cache_bytes: usize` to `DbOptions` and implement a sharded LRU cache keyed by `(scope_id, sst_id, block_offset)` for decompressed 4 KiB SSTable Data Blocks and Index Blocks.
   - **Behavior:** Check the block cache before reading/decompressing blocks from disk. Support a `fill_cache: bool` read option (default `true`, set to `false` for background compaction and full-scope scans) to avoid cache pollution. Track hit and miss counts in engine statistics.
 
-- [ ] **Write Stalls & WAL/L0 Backpressure Watermarks**
+- [x] **Write Stalls & WAL/L0 Backpressure Watermarks**
   - **Target:** `crates/storkv-core/src/options.rs`, `crates/storkv-core/src/db/`
   - **Description:** Extend `DbOptions` with `max_total_wal_bytes: u64`, `l0_slowdown_writes_trigger: usize`, and `l0_stop_writes_trigger: usize`.
   - **Behavior:** Inject progressive write delays when L0 SSTable counts reach `l0_slowdown_writes_trigger`. When L0 files reach `l0_stop_writes_trigger` or total un-flushed WAL bytes exceed `max_total_wal_bytes`, stall foreground writers (or return `Error::WriteStalled` when non-blocking mode is requested) until background flushes and compactions drain the backlog.
