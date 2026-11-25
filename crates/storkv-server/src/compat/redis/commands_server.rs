@@ -23,10 +23,13 @@ impl RedisSession {
     }
 
     pub(super) fn hello(&mut self, args: &[Bytes]) -> Resp {
+        let mut proto = self.resp_version;
+        let mut auth = None;
+        let mut client_name = None;
         if let Some(version) = args.get(1) {
             match version.as_ref() {
-                b"2" => self.resp_version = RESP2_VERSION,
-                b"3" => self.resp_version = RESP3_VERSION,
+                b"2" => proto = RESP2_VERSION,
+                b"3" => proto = RESP3_VERSION,
                 other => {
                     return Resp::error(format!(
                         "NOPROTO unsupported protocol version {}",
@@ -34,6 +37,47 @@ impl RedisSession {
                     ));
                 }
             }
+            let mut index = 2;
+            while index < args.len() {
+                match super::helpers::upper(&args[index]).as_str() {
+                    "AUTH" => {
+                        let (Some(username), Some(password)) =
+                            (args.get(index + 1), args.get(index + 2))
+                        else {
+                            return Resp::error("ERR Syntax error in HELLO option 'AUTH'");
+                        };
+                        auth = Some((Some(username), password));
+                        index += 3;
+                    }
+                    "SETNAME" => {
+                        let Some(name) = args.get(index + 1) else {
+                            return Resp::error("ERR Syntax error in HELLO option 'SETNAME'");
+                        };
+                        client_name = Some(name);
+                        index += 2;
+                    }
+                    option => {
+                        return Resp::error(format!("ERR Syntax error in HELLO option '{option}'"));
+                    }
+                }
+            }
+        }
+        if let Some((username, password)) = auth
+            && let Err(response) = self.verify_credentials(username, password)
+        {
+            return response;
+        }
+        if let Some(name) = client_name
+            && let Err(response) = super::commands_client::validate_client_name(name)
+        {
+            return response;
+        }
+        if auth.is_some() {
+            self.authenticated = true;
+        }
+        self.resp_version = proto;
+        if let Some(name) = client_name {
+            self.client_name = Some(String::from_utf8_lossy(name).into_owned());
         }
         let role = if self.server.is_primary() {
             "primary"
@@ -47,7 +91,7 @@ impl RedisSession {
                 Resp::bulk("proto"),
                 Resp::Integer(i64::from(self.resp_version)),
             ),
-            (Resp::bulk("id"), Resp::Integer(1)),
+            (Resp::bulk("id"), Resp::Integer(self.client_id as i64)),
             (Resp::bulk("mode"), Resp::bulk("standalone")),
             (Resp::bulk("role"), Resp::bulk(role)),
             (Resp::bulk("modules"), Resp::array(Vec::new())),

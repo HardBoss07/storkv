@@ -13,6 +13,7 @@ mod codec;
 mod codec_decode;
 mod codec_encode;
 mod commands;
+mod commands_client;
 mod commands_keys;
 mod commands_server;
 mod commands_strings;

@@ -76,49 +76,6 @@ pub(crate) fn parse_set_options(args: &[Bytes]) -> Result<SetOptions, Resp> {
     Ok(options)
 }
 
-pub(crate) fn is_known_command(command: &str) -> bool {
-    matches!(
-        command,
-        "PING"
-            | "ECHO"
-            | "QUIT"
-            | "HELLO"
-            | "SELECT"
-            | "INFO"
-            | "DBSIZE"
-            | "FLUSHDB"
-            | "FLUSHALL"
-            | "GET"
-            | "SET"
-            | "SETEX"
-            | "PSETEX"
-            | "SETNX"
-            | "MGET"
-            | "MSET"
-            | "DEL"
-            | "UNLINK"
-            | "EXISTS"
-            | "INCR"
-            | "DECR"
-            | "INCRBY"
-            | "DECRBY"
-            | "APPEND"
-            | "STRLEN"
-            | "EXPIRE"
-            | "PEXPIRE"
-            | "PERSIST"
-            | "TTL"
-            | "PTTL"
-            | "KEYS"
-            | "SCAN"
-            | "MULTI"
-            | "EXEC"
-            | "DISCARD"
-            | "WATCH"
-            | "UNWATCH"
-    )
-}
-
 pub(crate) fn upper(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).to_ascii_uppercase()
 }

@@ -88,9 +88,8 @@ impl RedisSession {
         args: &[Bytes],
     ) -> Resp {
         match command {
-            "PING" | "ECHO" | "HELLO" | "SELECT" | "INFO" | "DBSIZE" => {
-                self.execute_now(command, args)
-            }
+            "PING" | "ECHO" | "HELLO" | "SELECT" | "INFO" | "DBSIZE" | "AUTH" | "CLIENT"
+            | "COMMAND" => self.execute_now(command, args),
             "UNWATCH" => {
                 self.watch = None;
                 Resp::simple("OK")

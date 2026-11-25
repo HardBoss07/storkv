@@ -25,19 +25,27 @@ pub(crate) struct RedisSession {
     pub(super) database: u32,
     pub(super) resp_version: u8,
     pub(super) multi_error: bool,
+    pub(super) authenticated: bool,
+    pub(super) client_id: u64,
+    pub(super) client_name: Option<String>,
     pub(crate) close: bool,
 }
 
-const _: () = assert!(std::mem::size_of::<RedisSession>() <= 96);
+const _: () = assert!(std::mem::size_of::<RedisSession>() <= 128);
 
 impl RedisSession {
     pub(crate) fn new(server: Arc<Server>) -> Self {
+        let authenticated = server.redis_password().is_none();
+        let client_id = server.next_redis_client_id();
         Self {
             server,
             database: 0,
             resp_version: RESP2_VERSION,
             multi: None,
             multi_error: false,
+            authenticated,
+            client_id,
+            client_name: None,
             watch: None,
             close: false,
         }
@@ -52,6 +60,9 @@ impl RedisSession {
             return Resp::error("ERR empty command");
         };
         let command = upper(command_bytes);
+        if !self.authenticated && !allows_before_auth(&command) {
+            return Resp::error("NOAUTH Authentication required.");
+        }
         if self.multi.is_some() {
             return self.queue_command(&command, args);
         }
@@ -90,6 +101,9 @@ impl RedisSession {
             return response;
         }
         let result = match command {
+            "AUTH" => self.auth(args),
+            "CLIENT" => self.client_command(args),
+            "COMMAND" => self.command_meta(args),
             "PING" => self.ping(args),
             "ECHO" => self.echo(args),
             "QUIT" => {
@@ -161,6 +175,11 @@ impl RedisSession {
         }
         self.server.ensure_primary().map_err(|_| readonly_error())
     }
+}
+
+/// Return `true` for commands that a connection may run before `AUTH`.
+fn allows_before_auth(command: &str) -> bool {
+    matches!(command, "AUTH" | "HELLO" | "PING")
 }
 
 fn is_write_command(command: &str) -> bool {
