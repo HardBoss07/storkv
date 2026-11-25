@@ -17,6 +17,7 @@ StorKV has no configuration file. You set every option with a command line flag 
 | `--ws-listen`            | none             | WebSocket listener                                |
 | `--grpc-listen`          | none             | gRPC listener                                     |
 | `--redis-listen`         | none             | Redis RESP listener                               |
+| `--redis-password`       | none             | Password for the Redis RESP listener              |
 | `--memcached-listen`     | none             | Memcached ASCII listener                          |
 | `--strict-admin`         | off              | Restrict admin-only requests                      |
 | `--admin-token`          | none             | Shared admin secret for auxiliary transports      |
@@ -125,6 +126,19 @@ Use `--http-admin` when the HTTP listener sits on a private network and every ca
 ```
 
 The same pattern applies to `--ws-admin` and `--grpc-admin`.
+
+## Protect the Redis listener
+
+Pass `--redis-password` or set `STORKV_REDIS_PASSWORD`. When `--redis-password` is absent, the Redis listener uses `--admin-token`. When neither is set, Redis connections start authenticated.
+
+```bash
+./target/release/storkvd \
+  --data-dir ./data/storkv \
+  --redis-listen 127.0.0.1:6379 \
+  --redis-password "$STORKV_REDIS_PASSWORD"
+```
+
+A Redis client must run `AUTH` before it uses other commands. `AUTH`, `HELLO`, and `PING` work before authentication. Read [Redis compatibility](../guides/compatibility-redis.md) for the handshake details.
 
 > [!WARNING]
 > `--admin-token`, `--admin-token-file`, and `STORKV_ADMIN_TOKEN` do not protect the native listener. The native protocol has no token field. Use `--admin-sock` or a private network for native admin access.

@@ -81,7 +81,7 @@ Do not introduce external crates for the following items; implement them using `
 
 ## Phase 3: Drop-In Protocol Compatibility Upgrades (`storkv-server`)
 
-- [ ] **Redis Connection Handshake, `AUTH`, and `CLIENT` Commands**
+- [x] **Redis Connection Handshake, `AUTH`, and `CLIENT` Commands**
   - **Target:** `crates/storkv-server/src/compat/redis/commands.rs`, `crates/storkv-server/src/compat/redis/mod.rs`
   - **Description:** Add per-connection authentication state and implement `AUTH [username] <password>`, `HELLO 3 AUTH <username> <password>`, `CLIENT SETNAME <name>`, `CLIENT GETNAME`, `CLIENT ID`, and `COMMAND` / `COMMAND COUNT`.
   - **Behavior:** Validate credentials in constant time using `subtle::ConstantTimeEq` against `--redis-password` (`STORKV_REDIS_PASSWORD`), falling back to `--admin-token` when configured. Reject unauthenticated commands with `-NOAUTH Authentication required.` when a password is active so standard Redis clients (`ioredis`, `redis-py`, `fred`, `lettuce`) and GUI tools connect without handshake errors.

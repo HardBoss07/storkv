@@ -18,6 +18,18 @@ redis-cli -p 6379 SET greeting hello
 redis-cli -p 6379 GET greeting
 ```
 
+## Authentication
+
+Set `--redis-password` or `STORKV_REDIS_PASSWORD`. When `--redis-password` is absent, the listener uses `--admin-token`. When no password is set, connections start authenticated.
+
+With a password, a connection must run `AUTH` before it uses other commands. `AUTH`, `HELLO`, and `PING` work before authentication. Any other command returns `NOAUTH Authentication required.`
+
+```bash
+redis-cli -p 6379 -a "$STORKV_REDIS_PASSWORD" PING
+```
+
+`AUTH` accepts `AUTH <password>` or `AUTH default <password>`. `HELLO` accepts `AUTH <username> <password>` and `SETNAME <name>`. The adapter compares the password in constant time and returns `WRONGPASS` on a mismatch. A failed `HELLO` AUTH keeps the protocol version and the authentication state.
+
 ## Scope mapping
 
 | Redis command | StorKV scope   |
@@ -39,6 +51,9 @@ Data written through Redis is visible to native clients in the same scope. A nat
 | `ECHO`     | Returns the argument as a bulk string                       |
 | `QUIT`     | Replies `OK` and closes the connection                      |
 | `HELLO`    | Accepts `2` or `3`; returns a map of server fields          |
+| `AUTH`     | Authenticates the connection with the configured password   |
+| `CLIENT`   | `ID`, `SETNAME <name>`, and `GETNAME`                       |
+| `COMMAND`  | Returns metadata for supported commands; `COUNT` returns the count |
 | `SELECT`   | Switches the database index and creates its scope           |
 | `INFO`     | Returns server, stats, and persistence text                 |
 | `DBSIZE`   | Returns the number of keys in the current scope             |
@@ -118,7 +133,7 @@ The adapter has these limits:
 | Value length          | 256 MiB                         |
 | Inline command line   | 64 KiB                          |
 | `MATCH`/`KEYS` pattern| 1,024 bytes                     |
-| Command set           | Strings, keys, and transactions |
+| Command set           | Strings, keys, transactions, and connection commands |
 
 The parser rejects an inline command line larger than 64 KiB. It also rejects a request that grows beyond the read buffer limit. The server sends a protocol error and closes the connection.
 
@@ -154,6 +169,8 @@ Adapter errors use Redis error replies:
 | Counter overflow     | `ERR increment or decrement would overflow`   |
 | Key too large        | `ERR key too large`                           |
 | Value too large      | `ERR value too large`                         |
+| Not authenticated    | `NOAUTH Authentication required.`             |
+| Bad password         | `WRONGPASS invalid username-password pair or user is disabled.` |
 | Write conflict       | `ERR write conflict, retry`                   |
 | Storage failure      | `ERR <storage error text>`                    |
 
