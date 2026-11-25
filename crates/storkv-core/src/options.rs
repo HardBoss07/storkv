@@ -3,6 +3,20 @@ use std::time::Duration;
 
 /// Default SSTable block cache budget in bytes (64 MiB).
 pub const DEFAULT_BLOCK_CACHE_BYTES: usize = 64 * 1024 * 1024;
+/// Default maximum un-flushed WAL bytes (256 MiB).
+pub const DEFAULT_MAX_TOTAL_WAL_BYTES: u64 = 256 * 1024 * 1024;
+/// Default L0 SSTable count that starts progressive write slowdown.
+pub const DEFAULT_L0_SLOWDOWN_WRITES_TRIGGER: usize = 8;
+/// Default L0 SSTable count that stops foreground writes.
+pub const DEFAULT_L0_STOP_WRITES_TRIGGER: usize = 12;
+
+/// Per-write behaviour options.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct WriteOptions {
+    /// Return [`crate::StorkvError::WriteStalled`] instead of blocking when a
+    /// stop watermark is exceeded.
+    pub non_blocking: bool,
+}
 
 /// Database-wide options shared by all scopes.
 #[derive(Debug, Clone)]
@@ -22,6 +36,14 @@ pub struct DbOptions {
     pub compaction_rate_limit_bytes_per_sec: Option<u64>,
     /// Total byte budget of the shared SSTable block cache.
     pub block_cache_bytes: usize,
+    /// Maximum total un-flushed WAL bytes. `0` disables the watermark.
+    pub max_total_wal_bytes: u64,
+    /// L0 SSTable count that starts progressive write slowdown.
+    ///
+    /// `0` disables the slowdown delay.
+    pub l0_slowdown_writes_trigger: usize,
+    /// L0 SSTable count that stops foreground writes. `0` disables the stop.
+    pub l0_stop_writes_trigger: usize,
 }
 
 impl Default for DbOptions {
@@ -34,6 +56,9 @@ impl Default for DbOptions {
             max_background_compactions: 2,
             compaction_rate_limit_bytes_per_sec: None,
             block_cache_bytes: DEFAULT_BLOCK_CACHE_BYTES,
+            max_total_wal_bytes: DEFAULT_MAX_TOTAL_WAL_BYTES,
+            l0_slowdown_writes_trigger: DEFAULT_L0_SLOWDOWN_WRITES_TRIGGER,
+            l0_stop_writes_trigger: DEFAULT_L0_STOP_WRITES_TRIGGER,
         }
     }
 }

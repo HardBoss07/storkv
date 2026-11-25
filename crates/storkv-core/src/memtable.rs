@@ -28,7 +28,9 @@ impl MemTable {
     }
 
     /// Insert an encoded internal key with its value and commit sequence.
-    pub fn insert(&self, encoded_internal_key: Bytes, value: Bytes, seq: u64) {
+    ///
+    /// Returns the approximate number of bytes that the entry added.
+    pub fn insert(&self, encoded_internal_key: Bytes, value: Bytes, seq: u64) -> usize {
         let entry_size = encoded_internal_key.len() + value.len() + MEMTABLE_ENTRY_OVERHEAD_BYTES;
         self.approx_bytes.fetch_add(entry_size, Ordering::Relaxed);
 
@@ -38,6 +40,7 @@ impl MemTable {
         }
 
         self.map.insert(encoded_internal_key, value);
+        entry_size
     }
 
     /// Return the approximate memory use in bytes.

@@ -69,6 +69,10 @@ pub enum StorkvError {
     #[error("Invalid operation: {0}")]
     InvalidOperation(String),
 
+    /// A foreground write stopped at an L0 or WAL backpressure watermark.
+    #[error("Write stalled: {0}")]
+    WriteStalled(String),
+
     /// A write time to live violates the scope policy.
     #[error("Invalid TTL: {0}")]
     InvalidTtl(String),

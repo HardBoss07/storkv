@@ -89,7 +89,7 @@ mod transaction;
 pub use db::{Db, DbInner, MAX_SCOPES, ScopeHandle};
 pub use error::{Result, StorkvError};
 pub use mvcc::{MergeOp, PutCondition, PutIfResult};
-pub use options::DbOptions;
+pub use options::{DbOptions, WriteOptions};
 pub use replication::ReplicationRegistry;
 pub use scan_options::ScanOptions;
 pub use scope::{CompactionStyle, Retention, ScopeOptions, StorageMode};
