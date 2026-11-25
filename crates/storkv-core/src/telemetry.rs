@@ -23,9 +23,13 @@ pub struct Telemetry {
     pub last_backup_seq: AtomicU64,
     /// Total WAL segments sent to the backup sink.
     pub wal_segments_shipped_total: AtomicU64,
+    /// Total SSTable block cache hits.
+    pub block_cache_hits_total: AtomicU64,
+    /// Total SSTable block cache misses.
+    pub block_cache_misses_total: AtomicU64,
 }
 
-const _: () = assert!(std::mem::size_of::<Telemetry>() == 10 * std::mem::size_of::<u64>());
+const _: () = assert!(std::mem::size_of::<Telemetry>() == 12 * std::mem::size_of::<u64>());
 
 impl Telemetry {
     /// Create a counter set with all values at zero.
@@ -74,6 +78,17 @@ impl Telemetry {
     /// Increment the shipped-WAL-segment counter.
     pub fn record_wal_segment_shipped(&self) {
         self.wal_segments_shipped_total
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Increment the block cache hit counter.
+    pub fn record_block_cache_hit(&self) {
+        self.block_cache_hits_total.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Increment the block cache miss counter.
+    pub fn record_block_cache_miss(&self) {
+        self.block_cache_misses_total
             .fetch_add(1, Ordering::Relaxed);
     }
 }

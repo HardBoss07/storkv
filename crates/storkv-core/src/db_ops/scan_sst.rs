@@ -31,10 +31,22 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
         let Ok(mut file) = scope.fs.open_file(&sst_path) else {
             return;
         };
-        let Ok(reader) = SstReader::open(&mut file) else {
+        let Ok(reader) = SstReader::open_cached(
+            &mut file,
+            &self.block_cache,
+            scope.scope_id,
+            file_num,
+            false,
+        ) else {
             return;
         };
-        let Ok(entries) = reader.read_all_entries(&mut file) else {
+        let Ok(entries) = reader.read_all_entries_cached(
+            &mut file,
+            &self.block_cache,
+            scope.scope_id,
+            file_num,
+            false,
+        ) else {
             return;
         };
         for (encoded_key, value) in entries {

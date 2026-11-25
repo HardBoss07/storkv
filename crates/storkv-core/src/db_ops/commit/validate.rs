@@ -147,11 +147,23 @@ fn sstable_has_newer_version<FS: FileSystem>(
 ) -> crate::Result<bool> {
     let sst_path = scope.scope_dir.join(format!("{:016x}.sst", file_num));
     let mut file = scope.fs.open_file(&sst_path)?;
-    let reader = SstReader::open(&mut file)?;
+    let reader = SstReader::open_cached(
+        &mut file,
+        &scope.block_cache,
+        scope.scope_id,
+        file_num,
+        true,
+    )?;
     if !reader.filter.may_contain(user_key) {
         return Ok(false);
     }
-    for (encoded_key, _) in reader.read_all_entries(&mut file)? {
+    for (encoded_key, _) in reader.read_all_entries_cached(
+        &mut file,
+        &scope.block_cache,
+        scope.scope_id,
+        file_num,
+        true,
+    )? {
         let Some(internal_key) = InternalKey::decode(encoded_key) else {
             continue;
         };

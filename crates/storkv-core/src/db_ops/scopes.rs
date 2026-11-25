@@ -51,6 +51,7 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
             options.clone(),
             scope_fs,
             &self.scopes_dir,
+            self.block_cache.clone(),
         )?);
         scopes.insert(scope_id, scope);
         names.insert(name.clone(), scope_id);

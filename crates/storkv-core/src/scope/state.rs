@@ -1,6 +1,7 @@
 use crate::error::Result;
 use crate::manifest::SstFileMeta;
 use crate::memtable::{FlushQueue, MemTable};
+use crate::sstable::BlockCache;
 use crate::vfs::FileSystem;
 use bytes::Bytes;
 use parking_lot::RwLock;
@@ -51,6 +52,8 @@ pub struct Scope<FS: FileSystem> {
     pub fs: Arc<FS>,
     /// Directory that holds the scope files.
     pub scope_dir: PathBuf,
+    /// Shared SSTable block cache of the owning database.
+    pub block_cache: Arc<BlockCache>,
 }
 
 impl<FS: FileSystem> Scope<FS> {
@@ -65,6 +68,7 @@ impl<FS: FileSystem> Scope<FS> {
         options: ScopeOptions,
         fs: Arc<FS>,
         scopes_dir: &Path,
+        block_cache: Arc<BlockCache>,
     ) -> Result<Self> {
         let scope_dir = scopes_dir.join(format!("{:08x}", scope_id));
         fs.create_dir_all(&scope_dir)?;
@@ -89,6 +93,7 @@ impl<FS: FileSystem> Scope<FS> {
             ttl_tracker: parking_lot::Mutex::new(BinaryHeap::new()),
             fs,
             scope_dir,
+            block_cache,
         })
     }
 

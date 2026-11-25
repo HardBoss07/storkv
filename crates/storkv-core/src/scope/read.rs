@@ -157,13 +157,25 @@ fn collect_file_versions<FS: FileSystem>(
     let Ok(mut file) = scope.fs.open_file(&sst_path) else {
         return false;
     };
-    let Ok(reader) = SstReader::open(&mut file) else {
+    let Ok(reader) = SstReader::open_cached(
+        &mut file,
+        &scope.block_cache,
+        scope.scope_id,
+        file_meta.file_num,
+        true,
+    ) else {
         return false;
     };
     if !reader.filter.may_contain(user_key) {
         return false;
     }
-    let Ok(entries) = reader.read_all_entries(&mut file) else {
+    let Ok(entries) = reader.read_all_entries_cached(
+        &mut file,
+        &scope.block_cache,
+        scope.scope_id,
+        file_meta.file_num,
+        true,
+    ) else {
         return false;
     };
 

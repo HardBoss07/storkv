@@ -3,6 +3,7 @@ use crate::manifest::{
     CompactionStyleMode, DurabilityMode, RetentionMode, ScopeMeta, SstFileMeta, StorageModeMode,
 };
 use crate::scope::{CompactionStyle, Retention, Scope, ScopeOptions, StorageMode};
+use crate::sstable::BlockCache;
 use crate::vfs::FileSystem;
 use crate::wal::{Durability, WalOp, WalRecovery};
 use bytes::Bytes;
@@ -23,6 +24,7 @@ pub(crate) fn load_scopes<FS: FileSystem + 'static>(
     manifest_scopes: &HashMap<u32, ScopeMeta>,
     manifest_sst_files: &BTreeMap<(u32, u8, u64), SstFileMeta>,
     manifest_range_tombstones: &BTreeMap<(u32, u64, Bytes), Bytes>,
+    block_cache: Arc<BlockCache>,
 ) -> crate::Result<LoadedScopes<FS>> {
     let mut scopes = HashMap::new();
     let mut scope_names = HashMap::new();
@@ -35,6 +37,7 @@ pub(crate) fn load_scopes<FS: FileSystem + 'static>(
             scope_options_from_meta(meta),
             scope_fs,
             scopes_dir,
+            block_cache.clone(),
         )?);
         if meta.dropped {
             scope.mark_dropped(meta.drop_seq);
@@ -58,6 +61,7 @@ pub(crate) fn load_scopes<FS: FileSystem + 'static>(
             ScopeOptions::default(),
             fs,
             scopes_dir,
+            block_cache,
         )?);
         scopes.insert(0, default_scope);
         scope_names.insert("default".to_string(), 0);
