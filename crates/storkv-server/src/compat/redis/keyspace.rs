@@ -66,6 +66,16 @@ impl<'a> Atomic<'a> {
             .delete(scope.scope_id, Bytes::copy_from_slice(key));
     }
 
+    pub(crate) fn scan_prefix(
+        &mut self,
+        scope: &ScopeHandle,
+        prefix: &[u8],
+    ) -> storkv_core::Result<Vec<(Bytes, Bytes)>> {
+        self.db
+            .inner()
+            .scan_prefix(scope.scope_id, prefix, self.read_seq)
+    }
+
     /// Absolute expiry of a live key, including buffered writes in this atomic.
     pub(crate) fn expires_at(
         &mut self,
