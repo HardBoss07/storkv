@@ -17,6 +17,10 @@ mod mixed_protocol;
 mod redis;
 #[path = "compat/redis_auth.rs"]
 mod redis_auth;
+#[path = "compat/redis_collections.rs"]
+mod redis_collections;
+#[path = "compat/redis_collections_keys.rs"]
+mod redis_collections_keys;
 #[path = "compat/redis_contention.rs"]
 mod redis_contention;
 #[path = "compat/redis_expiry.rs"]
