@@ -8,6 +8,7 @@ use storkv_core::{Db, DbOptions, StorkvError};
 use tokio::sync::broadcast;
 
 use crate::ReplicationRole;
+use crate::compat::etcd_http::LeaseRegistry;
 use crate::metrics::ServerStats;
 
 mod consistency;
@@ -31,6 +32,7 @@ pub struct Server {
     pub(crate) redis_password: Option<String>,
     pub(crate) next_redis_client_id: AtomicU64,
     pub(crate) db: Arc<Db>,
+    pub(crate) etcd_leases: LeaseRegistry,
     pub(crate) shutdown_sender: broadcast::Sender<()>,
     pub(crate) stats: Arc<ServerStats>,
 }
@@ -60,6 +62,7 @@ impl Server {
             redis_password: None,
             next_redis_client_id: AtomicU64::new(0),
             db,
+            etcd_leases: LeaseRegistry::default(),
             shutdown_sender,
             stats: Arc::new(ServerStats::default()),
         }
