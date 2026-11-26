@@ -1,5 +1,9 @@
 use std::path::PathBuf;
 
+mod file;
+
+pub use file::{ConfigError, FileConfig, validate_listen_address};
+
 /// Replication role of one server node.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ReplicationRole {

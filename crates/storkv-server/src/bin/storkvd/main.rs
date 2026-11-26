@@ -1,4 +1,7 @@
-use clap::Parser;
+mod args;
+
+use args::Args;
+use clap::{CommandFactory, FromArgMatches};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
@@ -7,93 +10,23 @@ use std::time::Duration;
 use storkv_core::backup::{
     BackupCompression, BackupConfig, BackupRetention, CommandPipeSinkConfig,
 };
-use storkv_server::{ReplicationRole, Server, TransportOptions, transports};
+use storkv_server::{
+    ConfigError, FileConfig, ReplicationRole, Server, TransportOptions, transports,
+    validate_listen_address,
+};
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 
-#[derive(Parser, Debug)]
-#[command(name = "storkvd", about = "StorKV daemon")]
-struct Args {
-    /// Ship sealed WAL segments continuously (point-in-time recovery).
-    #[arg(long)]
-    backup_ship_wal: bool,
-    /// Restrict admin-only requests to admin listeners or token holders.
-    #[arg(long)]
-    strict_admin: bool,
-    /// Treat every HTTP connection as admin (dedicated admin listener).
-    #[arg(long)]
-    http_admin: bool,
-    /// Treat every WebSocket connection as admin.
-    #[arg(long)]
-    ws_admin: bool,
-    /// Treat every gRPC connection as admin.
-    #[arg(long)]
-    grpc_admin: bool,
-    /// Seconds between automatic full backups.
-    #[arg(long, default_value_t = 3600)]
-    backup_interval_secs: u64,
-    /// Number of full generations to retain.
-    #[arg(long, default_value_t = 7)]
-    backup_retention: usize,
-    #[arg(long, default_value = "./data/storkv")]
-    data_dir: PathBuf,
-    #[arg(long, default_value = "127.0.0.1:7878")]
-    listen: String,
-    #[arg(long)]
-    admin_sock: Option<String>,
-    /// Enable autonomous continuous backup into this directory.
-    #[arg(long)]
-    backup_dir: Option<PathBuf>,
-    /// Stream backup archives into this program instead of writing locally.
-    #[arg(long)]
-    backup_pipe_cmd: Option<String>,
-    /// Repeatable argument for --backup-pipe-cmd.
-    #[arg(long = "backup-pipe-arg")]
-    backup_pipe_args: Vec<String>,
-    /// Archive compression for the pipe sink: none, zstd, lz4.
-    #[arg(long, default_value = "none")]
-    backup_compression: String,
-    /// Shared secret granting admin privileges on auxiliary transports.
-    #[arg(long, env = "STORKV_ADMIN_TOKEN")]
-    admin_token: Option<String>,
-    /// Read the admin token from this file. The file must contain one line.
-    #[arg(long, value_name = "PATH")]
-    admin_token_file: Option<PathBuf>,
-    /// Serve the HTTP/1.1 + HTTP/2 REST API on this address.
-    #[arg(long)]
-    http_listen: Option<String>,
-    /// Serve the WebSocket multiplexed API on this address.
-    #[arg(long)]
-    ws_listen: Option<String>,
-    /// Serve the gRPC API on this address.
-    #[arg(long)]
-    grpc_listen: Option<String>,
-    /// Serve the Redis RESP2/RESP3 API on this address.
-    #[arg(long)]
-    redis_listen: Option<String>,
-    /// Password for the Redis RESP listener. Falls back to --admin-token.
-    #[arg(long, env = "STORKV_REDIS_PASSWORD")]
-    redis_password: Option<String>,
-    /// Serve the Memcached ASCII API on this address.
-    #[arg(long)]
-    memcached_listen: Option<String>,
-    /// PEM server certificate that enables TLS on the native listener.
-    #[arg(long, requires = "tls_key")]
-    tls_cert: Option<PathBuf>,
-    /// PEM private key that enables TLS on the native listener.
-    #[arg(long, requires = "tls_cert")]
-    tls_key: Option<PathBuf>,
-    /// Replication role: standalone, primary, or replica.
-    #[arg(long, default_value = "standalone")]
-    role: String,
-    /// Primary URI that a replica streams WAL frames from.
-    #[arg(long)]
-    primary_uri: Option<String>,
-}
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let args = Args::parse();
+    let command = Args::command();
+    let initial = command.clone().get_matches();
+    let file = match initial.get_one::<PathBuf>("config") {
+        Some(path) => FileConfig::load(path)?,
+        None => FileConfig::default(),
+    };
+    let args = Args::from_arg_matches(&file.apply_to(command).get_matches())?;
+    validate_listen_addrs(&args)?;
     let admin_token = resolve_admin_token(&args)?;
     let redis_password = args.redis_password.clone().or_else(|| admin_token.clone());
     let role = ReplicationRole::parse(&args.role)
@@ -272,6 +205,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         task.abort();
     }
 
+    Ok(())
+}
+
+fn validate_listen_addrs(args: &Args) -> Result<(), ConfigError> {
+    let addresses = [
+        ("--listen", Some(args.listen.as_str())),
+        ("--admin-sock", args.admin_sock.as_deref()),
+        ("--http-listen", args.http_listen.as_deref()),
+        ("--ws-listen", args.ws_listen.as_deref()),
+        ("--grpc-listen", args.grpc_listen.as_deref()),
+        ("--redis-listen", args.redis_listen.as_deref()),
+        ("--memcached-listen", args.memcached_listen.as_deref()),
+    ];
+    for (name, value) in addresses {
+        if let Some(value) = value {
+            validate_listen_address(name, value)?;
+        }
+    }
     Ok(())
 }
 
