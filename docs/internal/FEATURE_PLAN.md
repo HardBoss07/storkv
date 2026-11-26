@@ -103,7 +103,7 @@ Do not introduce external crates for the following items; implement them using `
 
 ## Phase 4: Configuration, Deployment & Observability (`storkv-server` & `storkvctl`)
 
-- [ ] **4-Layer Configuration Loader (`storkv.toml` + `STORKV_*` Env + CLI)**
+- [x] **4-Layer Configuration Loader (`storkv.toml` + `STORKV_*` Env + CLI)**
   - **Target:** `crates/storkv-server/src/bin/storkvd.rs`, `crates/storkv-server/src/config.rs`
   - **Description:** Add `--config <path>` (`STORKV_CONFIG`) to `storkvd` and attach `env = "STORKV_*"` to all server CLI flags (`STORKV_DATA_DIR`, `STORKV_LISTEN`, `STORKV_HTTP_LISTEN`, `STORKV_GRPC_LISTEN`, `STORKV_REDIS_LISTEN`, `STORKV_ETCD_LISTEN`, `STORKV_ROLE`, `STORKV_PRIMARY_URI`, `STORKV_ADMIN_TOKEN`, `STORKV_REDIS_PASSWORD`).
   - **Behavior:** Deserialize `storkv.toml` using the pre-approved `toml` crate into a `FileConfig` struct (`#[serde(default)]`) and merge settings with deterministic precedence: CLI flags > environment variables > `storkv.toml` > built-in defaults. Fail fast at startup on unknown keys (`#[serde(deny_unknown_fields)]`) or invalid listen addresses.

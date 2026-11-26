@@ -1,0 +1,88 @@
+# StorKV daemon configuration template.
+#
+# Copy this file to a location of your choice, remove the leading "# " from the
+# settings that you need, and start the daemon with --config /path/to/file or
+# with the STORKV_CONFIG environment variable. storkvd does not search the
+# current working directory for storkv.toml.
+#
+# Each setting shows its built-in default, or a realistic example value when no
+# default exists. Command-line flags override environment variables, and both
+# override this file.
+
+# Directory that holds the database.
+# data_dir = "./data/storkv"
+
+# Native TCP listen address.
+# listen = "127.0.0.1:7878"
+
+# Native admin listen address. Accepts TCP or a Unix socket path.
+# admin_sock = "127.0.0.1:7879"
+
+# HTTP REST and binary RPC listen address.
+# http_listen = "127.0.0.1:8080"
+
+# WebSocket listen address.
+# ws_listen = "127.0.0.1:8081"
+
+# gRPC listen address.
+# grpc_listen = "127.0.0.1:9090"
+
+# Redis RESP listen address.
+# redis_listen = "127.0.0.1:6379"
+
+# Memcached ASCII listen address.
+# memcached_listen = "127.0.0.1:11211"
+
+# Replication role: standalone, primary, or replica.
+# role = "standalone"
+
+# Primary URI that a replica streams from.
+# primary_uri = "storkv://127.0.0.1:7878"
+
+# Shared admin secret for auxiliary transports.
+# admin_token = "change-me"
+
+# File that holds the admin secret. The file must contain one line.
+# admin_token_file = "/etc/storkv/admin.token"
+
+# Password for the Redis RESP listener. Falls back to the admin token.
+# redis_password = "change-me"
+
+# Restrict admin-only requests to admin listeners or token holders.
+# strict_admin = false
+
+# Treat every HTTP connection as admin on a dedicated admin listener.
+# http_admin = false
+
+# Treat every WebSocket connection as admin.
+# ws_admin = false
+
+# Treat every gRPC connection as admin.
+# grpc_admin = false
+
+# Enable autonomous continuous backup into this directory.
+# backup_dir = "./backups"
+
+# Stream backup archives into this child process.
+# backup_pipe_cmd = "/usr/local/bin/upload-backup"
+
+# One argument for the backup pipe command. Use an array of strings.
+# backup_pipe_args = ["--bucket", "prod-storkv"]
+
+# Archive compression for the pipe sink: none, zstd, or lz4.
+# backup_compression = "none"
+
+# Seconds between automatic full backups.
+# backup_interval_secs = 3600
+
+# Number of full backup generations to keep.
+# backup_retention = 7
+
+# Ship sealed WAL segments between full backups.
+# backup_ship_wal = false
+
+# PEM server certificate that enables TLS on the native listener.
+# tls_cert = "/etc/storkv/server.crt"
+
+# PEM private key that enables TLS on the native listener.
+# tls_key = "/etc/storkv/server.key"

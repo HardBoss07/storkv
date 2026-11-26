@@ -1,6 +1,6 @@
 # Configuration
 
-StorKV has no configuration file. You set every option with a command line flag or with a Rust value.
+You set every `storkvd` option with a command-line flag, an environment variable, a TOML file, or the built-in default. The embedded engine takes a Rust value.
 
 ## Daemon flags
 
@@ -8,6 +8,7 @@ StorKV has no configuration file. You set every option with a command line flag 
 
 | Flag                     | Default          | Purpose                                           |
 | :----------------------- | :--------------- | :------------------------------------------------ |
+| `--config`               | none             | Load settings from a TOML file                    |
 | `--data-dir`             | `./data/storkv`  | Directory that holds the database                 |
 | `--listen`               | `127.0.0.1:7878` | Native TCP listener                               |
 | `--tls-cert`             | none             | PEM certificate for the native TLS listener       |
@@ -36,6 +37,48 @@ StorKV has no configuration file. You set every option with a command line flag 
 | `--primary-uri`          | none             | Primary URI that a replica streams from           |
 
 Run `storkvd --help` to see the same list from the binary.
+
+## Configuration sources and precedence
+
+`storkvd` reads settings from four sources. From highest to lowest precedence:
+
+1. Command-line flags.
+2. `STORKV_*` environment variables.
+3. A `storkv.toml` file.
+4. Built-in defaults.
+
+Each flag has one environment variable. To build the name, upper-case the long flag name, replace every `-` with `_`, and add the `STORKV_` prefix. For example, `--http-listen` reads `STORKV_HTTP_LISTEN`, `--data-dir` reads `STORKV_DATA_DIR`, and `--config` reads `STORKV_CONFIG`. For the repeatable `--backup-pipe-arg` flag, set `STORKV_BACKUP_PIPE_ARGS` to a comma-separated list.
+
+Boolean flags accept `true`, `false`, `1`, and `0` in their environment variables. A value of `false` or `0` overrides a `true` value from the file. For example, `STORKV_STRICT_ADMIN=false` disables `strict_admin = true` in the file.
+
+`storkvd` loads a configuration file only when you pass `--config` or set `STORKV_CONFIG`. It does not search the current working directory for `storkv.toml`. When you set both, `--config` wins over `STORKV_CONFIG`.
+
+The repository root contains `storkv.example.toml`. It is a complete commented template for every supported key. Copy it, then remove the leading `# ` from the settings that you need.
+
+Pass a file with `--config` or `STORKV_CONFIG`:
+
+```toml
+data_dir = "/var/lib/storkv"
+listen = "0.0.0.0:7878"
+http_listen = "0.0.0.0:8080"
+role = "primary"
+strict_admin = true
+```
+
+```bash
+./target/release/storkvd --config /etc/storkv/storkv.toml
+```
+
+Use snake_case keys. The file accepts the same settings as the flags. A setting that the file does not contain keeps its environment value or built-in default.
+
+Startup stops with an error in these cases:
+
+- The file cannot be read.
+- The file has invalid TOML.
+- The file has an unknown key.
+- A final listen address is empty or cannot be parsed.
+
+The server validates the final values after the merge. A lower-precedence invalid value does not stop startup when a higher-precedence source replaces it.
 
 ## Start with a minimal set
 
