@@ -88,6 +88,45 @@ The server validates the final values after the merge. A lower-precedence invali
 
 This command starts only the native listener on `127.0.0.1:7878`. No admin listener and no compatibility listener start. The server creates the `default` scope on first open.
 
+## Provision scopes from the file
+
+Add one `[[scopes]]` table for each scope that the server must create at startup. The server creates or verifies every declared scope before it opens the listeners. An existing scope keeps all of its keys and receives the declared TTL guardrails. Startup fails when an entry is invalid or a name is declared more than once.
+
+On a daemon restart, the server keeps existing scope data. It also applies the declared `min_ttl_ms`, `max_ttl_ms`, `allow_permanent`, and `active_ttl_tracking` values again, so the guardrails stay enforced. The manifest does not store these guardrails. The configuration file is the source of truth for them.
+
+```toml
+[[scopes]]
+name = "sessions"
+durability = "strict_fsync"
+retention = "ttl"
+default_ttl_ms = 3600000
+min_ttl_ms = 1000
+max_ttl_ms = 86400000
+allow_permanent = false
+active_ttl_tracking = true
+storage_mode = "disk"
+prefix_bloom_len = 1024
+```
+
+| Key                    | Default        | Purpose                                      |
+| :--------------------- | :------------- | :------------------------------------------- |
+| `name`                 | none           | Unique scope name. Required.                 |
+| `durability`           | `strict_fsync` | `strict_fsync` or `buffered`.                |
+| `retention`            | `permanent`    | `permanent` or `ttl`.                        |
+| `default_ttl_ms`       | none           | Default lifetime for a `ttl` scope. Required for `ttl`. |
+| `min_ttl_ms`           | none           | Minimum allowed lifetime.                    |
+| `max_ttl_ms`           | none           | Maximum allowed lifetime.                    |
+| `allow_permanent`      | `true`         | Permit writes without an expiry.             |
+| `active_ttl_tracking`  | `false`        | Emit expiry events from a background tracker. |
+| `storage_mode`         | `disk`         | `disk`, `in_memory`, or `in_memory_persistent`. |
+| `prefix_bloom_len`     | none           | Prefix Bloom filter size in bytes.           |
+
+A `ttl` scope requires a positive `default_ttl_ms`. The default lifetime must stay between `min_ttl_ms` and `max_ttl_ms` when those limits are set. A `permanent` scope must not set `default_ttl_ms`.
+
+The `min_ttl_ms`, `max_ttl_ms`, and `prefix_bloom_len` values must be greater than zero.
+
+The default `retention` is `permanent`. If you combine `retention = "permanent"` with `allow_permanent = false`, then every write in that scope must set an explicit per-key TTL. The TTL must fall between `min_ttl_ms` and `max_ttl_ms` when those limits are set. A write without a TTL fails with a client error.
+
 ## Add a dedicated admin listener
 
 ```bash

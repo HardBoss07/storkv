@@ -86,3 +86,17 @@
 
 # PEM private key that enables TLS on the native listener.
 # tls_key = "/etc/storkv/server.key"
+
+# Scopes to create or verify before the server accepts client traffic.
+# Repeat [[scopes]] for each scope. The name is required.
+# [[scopes]]
+#   name = "sessions"
+#   durability = "strict_fsync"
+#   retention = "ttl"
+#   default_ttl_ms = 3600000
+#   min_ttl_ms = 1000
+#   max_ttl_ms = 86400000
+#   allow_permanent = false
+#   active_ttl_tracking = true
+#   storage_mode = "disk"
+#   prefix_bloom_len = 1024

@@ -108,7 +108,7 @@ Do not introduce external crates for the following items; implement them using `
   - **Description:** Add `--config <path>` (`STORKV_CONFIG`) to `storkvd` and attach `env = "STORKV_*"` to all server CLI flags (`STORKV_DATA_DIR`, `STORKV_LISTEN`, `STORKV_HTTP_LISTEN`, `STORKV_GRPC_LISTEN`, `STORKV_REDIS_LISTEN`, `STORKV_ETCD_LISTEN`, `STORKV_ROLE`, `STORKV_PRIMARY_URI`, `STORKV_ADMIN_TOKEN`, `STORKV_REDIS_PASSWORD`).
   - **Behavior:** Deserialize `storkv.toml` using the pre-approved `toml` crate into a `FileConfig` struct (`#[serde(default)]`) and merge settings with deterministic precedence: CLI flags > environment variables > `storkv.toml` > built-in defaults. Fail fast at startup on unknown keys (`#[serde(deny_unknown_fields)]`) or invalid listen addresses.
 
-- [ ] **Declarative `[[scopes]]` Provisioning in `storkv.toml`**
+- [x] **Declarative `[[scopes]]` Provisioning in `storkv.toml`**
   - **Target:** `crates/storkv-server/src/config.rs`, `crates/storkv-server/src/bin/storkvd.rs`
   - **Description:** Support a `[[scopes]]` array in `storkv.toml` mirroring `ScopeDefinition` (`name`, `durability`, `retention`, `default_ttl_ms`, `min_ttl_ms`, `max_ttl_ms`, `allow_permanent`, `active_ttl_tracking`, `storage_mode`, `prefix_bloom_len`).
   - **Behavior:** Provision or verify all declared scopes on `storkvd` startup before accepting client traffic, ensuring required scopes and TTL guardrails exist immediately in containerized deployments.
