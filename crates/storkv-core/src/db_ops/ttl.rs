@@ -27,7 +27,7 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
         let mut expired_total = 0;
 
         for scope in scopes {
-            if !scope.options.active_ttl_tracking || scope.is_dropped() {
+            if !scope.guardrails.read().active_ttl_tracking || scope.is_dropped() {
                 continue;
             }
             let mut due = Vec::new();

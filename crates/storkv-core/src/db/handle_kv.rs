@@ -73,7 +73,7 @@ impl Db {
             .scopes
             .read()
             .get(&scope.scope_id)
-            .map(|scope| scope.options.clone())
+            .map(|scope| scope.effective_options())
             .ok_or(crate::StorkvError::ScopeIdNotFound(scope.scope_id))
     }
 

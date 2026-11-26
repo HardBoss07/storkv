@@ -62,6 +62,33 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
         Ok(ScopeHandle { scope_id, name })
     }
 
+    /// Apply declared guardrails to an existing scope.
+    ///
+    /// The method replaces only `min_ttl`, `max_ttl`, `allow_permanent`, and
+    /// `active_ttl_tracking`. Existing keys and the scope structure stay
+    /// unchanged.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorkvError::ScopeNotFound`] when the name is unknown.
+    pub fn update_scope_guardrails(
+        &self,
+        name: &str,
+        options: &crate::ScopeOptions,
+    ) -> crate::Result<()> {
+        let scope_id = *self
+            .scope_names
+            .read()
+            .get(name)
+            .ok_or_else(|| StorkvError::ScopeNotFound(name.to_string()))?;
+        let scopes = self.scopes.read();
+        let scope = scopes
+            .get(&scope_id)
+            .ok_or_else(|| StorkvError::ScopeNotFound(name.to_string()))?;
+        scope.apply_guardrails(options);
+        Ok(())
+    }
+
     /// Drop a scope, record the drop in the WAL and manifest, and notify
     /// watchers.
     ///

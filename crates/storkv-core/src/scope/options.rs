@@ -80,6 +80,39 @@ impl Default for ScopeOptions {
     }
 }
 
+/// Guardrails that startup may replace from a declared configuration.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ScopeGuardrails {
+    /// Minimum allowed time to live.
+    pub(crate) min_ttl: Option<Duration>,
+    /// Maximum allowed time to live.
+    pub(crate) max_ttl: Option<Duration>,
+    /// Permit writes without an expiry.
+    pub(crate) allow_permanent: bool,
+    /// Actively track TTL deadlines and emit expiry events.
+    pub(crate) active_ttl_tracking: bool,
+}
+
+impl ScopeGuardrails {
+    /// Copy the guardrail fields from scope options.
+    pub(crate) fn from_options(options: &ScopeOptions) -> Self {
+        Self {
+            min_ttl: options.min_ttl,
+            max_ttl: options.max_ttl,
+            allow_permanent: options.allow_permanent,
+            active_ttl_tracking: options.active_ttl_tracking,
+        }
+    }
+
+    /// Write the guardrail fields into scope options.
+    pub(crate) fn apply_to(self, options: &mut ScopeOptions) {
+        options.min_ttl = self.min_ttl;
+        options.max_ttl = self.max_ttl;
+        options.allow_permanent = self.allow_permanent;
+        options.active_ttl_tracking = self.active_ttl_tracking;
+    }
+}
+
 impl ScopeOptions {
     /// Check that a write expiry obeys the scope limits.
     ///

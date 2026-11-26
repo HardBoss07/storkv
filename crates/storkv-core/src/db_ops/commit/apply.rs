@@ -152,7 +152,7 @@ fn apply_mutation<FS: FileSystem + 'static>(
                     .read()
                     .insert(internal_key.encode(), val.clone(), op_seq);
             db.record_unflushed_wal_bytes(scope, added);
-            if scope.options.active_ttl_tracking && expires_at_ms > 0 {
+            if scope.guardrails.read().active_ttl_tracking && expires_at_ms > 0 {
                 scope
                     .ttl_tracker
                     .lock()

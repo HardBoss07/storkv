@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use super::options::ScopeOptions;
+use super::options::{ScopeGuardrails, ScopeOptions};
 
 pub(super) const LEVEL_COUNT: u8 = 7;
 
@@ -23,6 +23,8 @@ pub struct Scope<FS: FileSystem> {
     pub name: String,
     /// Scope configuration.
     pub options: ScopeOptions,
+    /// Guardrails that a restart may replace with declared values.
+    pub(crate) guardrails: RwLock<ScopeGuardrails>,
     /// Memtable that receives new writes.
     pub active_memtable: RwLock<Arc<MemTable>>,
     /// Immutable memtables that wait for flush.
@@ -81,6 +83,7 @@ impl<FS: FileSystem> Scope<FS> {
         Ok(Self {
             scope_id,
             name,
+            guardrails: RwLock::new(ScopeGuardrails::from_options(&options)),
             options,
             active_memtable: RwLock::new(Arc::new(MemTable::new())),
             flush_queue: FlushQueue::new(),
@@ -100,6 +103,18 @@ impl<FS: FileSystem> Scope<FS> {
     /// Return true when the scope is dropped.
     pub fn is_dropped(&self) -> bool {
         *self.dropped.read()
+    }
+
+    /// Return the options with the current guardrails applied.
+    pub fn effective_options(&self) -> ScopeOptions {
+        let mut options = self.options.clone();
+        self.guardrails.read().apply_to(&mut options);
+        options
+    }
+
+    /// Replace the mutable guardrails with declared values.
+    pub fn apply_guardrails(&self, options: &ScopeOptions) {
+        *self.guardrails.write() = ScopeGuardrails::from_options(options);
     }
 
     /// Mark the scope as dropped at the given sequence number.

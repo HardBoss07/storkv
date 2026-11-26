@@ -16,6 +16,22 @@ impl Db {
         self.inner.create_scope(name.into(), options)
     }
 
+    /// Apply declared guardrails to an existing scope.
+    ///
+    /// The method replaces only the TTL bounds, the permanent-write policy, and
+    /// the active TTL tracking flag. Existing keys stay unchanged.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::StorkvError::ScopeNotFound`] when the name is unknown.
+    pub fn update_scope_guardrails(
+        &self,
+        name: &str,
+        options: &crate::ScopeOptions,
+    ) -> crate::Result<()> {
+        self.inner.update_scope_guardrails(name, options)
+    }
+
     /// Drop a scope and delete its data.
     ///
     /// # Errors
