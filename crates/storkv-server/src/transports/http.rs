@@ -86,5 +86,22 @@ pub fn router(server: Arc<Server>, options: TransportOptions) -> Router {
             "/v3/kv/deleterange",
             post(crate::compat::etcd_http::delete_range),
         )
+        .route("/v3/kv/txn", post(crate::compat::etcd_http::txn))
+        .route(
+            "/v3/lease/grant",
+            post(crate::compat::etcd_http::lease_grant),
+        )
+        .route(
+            "/v3/lease/keepalive",
+            post(crate::compat::etcd_http::lease_keepalive),
+        )
+        .route(
+            "/v3/lease/revoke",
+            post(crate::compat::etcd_http::lease_revoke),
+        )
+        .route(
+            "/v3/lease/timetolive",
+            post(crate::compat::etcd_http::lease_time_to_live),
+        )
         .with_state(state)
 }

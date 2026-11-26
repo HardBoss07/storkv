@@ -1,19 +1,32 @@
-//! etcd v3 HTTP/JSON gateway (`/v3/kv/*`) backed by a dedicated scope.
+//! etcd v3 HTTP/JSON gateway (`/v3/kv/*` and `/v3/lease/*`) backed by a
+//! dedicated scope.
 //!
 //! Keys and values are base64, responses carry etcd's `header` object, and
 //! `revision` is the engine's last visible sequence number.
 
 use axum::Json;
-use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response as HttpResponse};
 use bytes::Bytes;
 use serde_json::{Value, json};
-use storkv_core::ScopeHandle;
+use storkv_core::{ScopeHandle, TimestampMs};
 
 use crate::compat;
 use crate::transports::http::HttpState;
 use crate::transports::http::json::{decode_base64, encode_base64};
+
+mod kv;
+mod lease;
+mod lease_registry;
+mod txn;
+
+pub(crate) use kv::{delete_range, put, range};
+pub(crate) use lease::{
+    grant as lease_grant, keepalive as lease_keepalive, revoke as lease_revoke,
+    time_to_live as lease_time_to_live,
+};
+pub(crate) use lease_registry::LeaseRegistry;
+pub(crate) use txn::txn;
 
 /// etcd gRPC status code for an invalid argument.
 const CODE_INVALID_ARGUMENT: i32 = 3;
@@ -23,164 +36,6 @@ const CODE_FAILED_PRECONDITION: i32 = 9;
 const CODE_INTERNAL: i32 = 13;
 /// A one-byte range end of zero means "scan to the last key".
 const RANGE_END_TO_LAST_KEY: [u8; 1] = [0];
-
-pub(crate) async fn put(State(state): State<HttpState>, Json(body): Json<Value>) -> HttpResponse {
-    if let Err(response) = require_primary(&state) {
-        return *response;
-    }
-    let scope = match scope(&state) {
-        Ok(scope) => scope,
-        Err(response) => return *response,
-    };
-    let lease = body.get("lease").and_then(Value::as_u64).unwrap_or(0);
-    if lease != 0 {
-        return gateway_error(
-            StatusCode::BAD_REQUEST,
-            CODE_INVALID_ARGUMENT,
-            "leases are not supported",
-        );
-    }
-    let Some(key) = field(&body, "key") else {
-        return gateway_error(
-            StatusCode::BAD_REQUEST,
-            CODE_INVALID_ARGUMENT,
-            "key is required",
-        );
-    };
-    let value = field(&body, "value").unwrap_or_default();
-    if let Err(error) = crate::compat::redis::keyspace::put_absolute(
-        state.server.db(),
-        state.server.is_primary(),
-        &scope,
-        &key,
-        &value,
-        0,
-    ) {
-        return write_error(error);
-    }
-    revision(&state, scope.scope_id, json!({})).into_response()
-}
-
-pub(crate) async fn range(State(state): State<HttpState>, Json(body): Json<Value>) -> HttpResponse {
-    let scope = match scope(&state) {
-        Ok(scope) => scope,
-        Err(response) => return *response,
-    };
-    let Some(key) = field(&body, "key") else {
-        return gateway_error(
-            StatusCode::BAD_REQUEST,
-            CODE_INVALID_ARGUMENT,
-            "key is required",
-        );
-    };
-    let range_end = field(&body, "range_end").unwrap_or_default();
-    let limit = body
-        .get("limit")
-        .and_then(Value::as_u64)
-        .and_then(|limit| usize::try_from(limit).ok())
-        .unwrap_or(0);
-    let count_only = body
-        .get("count_only")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    let keys_only = body
-        .get("keys_only")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-
-    let pairs = match scan_range(
-        &state,
-        &scope,
-        &key,
-        &range_end,
-        if limit == 0 { None } else { Some(limit) },
-        keys_only,
-    ) {
-        Ok(pairs) => pairs,
-        Err(error) => {
-            return gateway_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                CODE_INTERNAL,
-                &error.to_string(),
-            );
-        }
-    };
-    let count = pairs.len();
-    let mut kvs = Vec::new();
-    if !count_only {
-        for (key, value) in pairs {
-            let meta = state.server.db().key_meta(&scope, &key).ok().flatten();
-            let version = meta.map(|meta| meta.seq).unwrap_or(0);
-            let mut entry = json!({
-                "key": encode_base64(&key),
-                "version": version.to_string(),
-                "create_revision": version.to_string(),
-                "mod_revision": version.to_string(),
-                "lease": "0",
-            });
-            if !keys_only {
-                if let Some(object) = entry.as_object_mut() {
-                    object.insert("value".into(), Value::String(encode_base64(&value)));
-                }
-            }
-            kvs.push(entry);
-        }
-    }
-    revision(
-        &state,
-        scope.scope_id,
-        json!({"kvs": kvs, "count": count.to_string(), "more": false}),
-    )
-    .into_response()
-}
-
-pub(crate) async fn delete_range(
-    State(state): State<HttpState>,
-    Json(body): Json<Value>,
-) -> HttpResponse {
-    if let Err(response) = require_primary(&state) {
-        return *response;
-    }
-    let scope = match scope(&state) {
-        Ok(scope) => scope,
-        Err(response) => return *response,
-    };
-    let Some(key) = field(&body, "key") else {
-        return gateway_error(
-            StatusCode::BAD_REQUEST,
-            CODE_INVALID_ARGUMENT,
-            "key is required",
-        );
-    };
-    let range_end = field(&body, "range_end").unwrap_or_default();
-    let pairs = match scan_range(&state, &scope, &key, &range_end, None, true) {
-        Ok(pairs) => pairs,
-        Err(error) => {
-            return gateway_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                CODE_INTERNAL,
-                &error.to_string(),
-            );
-        }
-    };
-    let deleted = pairs.len();
-    let db = state.server.db();
-    let mut transaction = db.begin_tx();
-    for (key, _) in &pairs {
-        if let Err(error) = transaction.delete(&scope, key) {
-            return write_error(error);
-        }
-    }
-    if let Err(error) = transaction.commit() {
-        return write_error(error);
-    }
-    revision(
-        &state,
-        scope.scope_id,
-        json!({"deleted": deleted.to_string()}),
-    )
-    .into_response()
-}
 
 fn require_primary(state: &HttpState) -> Result<(), Box<HttpResponse>> {
     state
@@ -196,6 +51,9 @@ fn write_error(error: storkv_core::StorkvError) -> HttpResponse {
             CODE_FAILED_PRECONDITION,
             "This node is a replica and cannot accept writes",
         ),
+        storkv_core::StorkvError::InvalidOperation(message) => {
+            gateway_error(StatusCode::BAD_REQUEST, CODE_INVALID_ARGUMENT, &message)
+        }
         other => gateway_error(
             StatusCode::INTERNAL_SERVER_ERROR,
             CODE_INTERNAL,
@@ -214,6 +72,7 @@ fn scope(state: &HttpState) -> Result<ScopeHandle, Box<HttpResponse>> {
     })
 }
 
+/// Read one key or one ordered key range with an optional limit.
 fn scan_range(
     state: &HttpState,
     scope: &ScopeHandle,
@@ -249,6 +108,21 @@ fn scan_range(
     )
 }
 
+/// Build one etcd key/value entry for a range response.
+fn entry_json(key: &[u8], value: Option<&[u8]>, version: u64, lease: u64) -> Value {
+    let mut entry = json!({
+        "key": encode_base64(key),
+        "version": version.to_string(),
+        "create_revision": version.to_string(),
+        "mod_revision": version.to_string(),
+        "lease": lease.to_string(),
+    });
+    if let (Some(value), Some(object)) = (value, entry.as_object_mut()) {
+        object.insert("value".into(), Value::String(encode_base64(value)));
+    }
+    entry
+}
+
 fn revision(state: &HttpState, _scope_id: u32, mut payload: Value) -> Json<Value> {
     let revision = state
         .server
@@ -272,6 +146,19 @@ fn field(body: &Value, name: &str) -> Option<Vec<u8>> {
     body.get(name)
         .and_then(Value::as_str)
         .and_then(decode_base64)
+}
+
+/// Read an integer field that a client sent as a JSON number or a decimal string.
+fn field_number(body: &Value, name: &str) -> Option<u64> {
+    match body.get(name)? {
+        Value::String(text) => text.parse().ok(),
+        Value::Number(number) => number.as_u64(),
+        _ => None,
+    }
+}
+
+fn now_ms() -> u64 {
+    TimestampMs::now().get()
 }
 
 fn gateway_error(status: StatusCode, code: i32, message: &str) -> HttpResponse {
