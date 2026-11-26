@@ -1,4 +1,5 @@
 mod args;
+mod startup;
 
 use args::Args;
 use clap::{CommandFactory, FromArgMatches};
@@ -10,10 +11,7 @@ use std::time::Duration;
 use storkv_core::backup::{
     BackupCompression, BackupConfig, BackupRetention, CommandPipeSinkConfig,
 };
-use storkv_server::{
-    ConfigError, FileConfig, ReplicationRole, Server, TransportOptions, transports,
-    validate_listen_address,
-};
+use storkv_server::{FileConfig, ReplicationRole, Server, TransportOptions, transports};
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 
@@ -26,8 +24,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None => FileConfig::default(),
     };
     let args = Args::from_arg_matches(&file.apply_to(command).get_matches())?;
-    validate_listen_addrs(&args)?;
-    let admin_token = resolve_admin_token(&args)?;
+    let scopes = file.scope_options()?;
+    startup::validate_listen_addrs(&args)?;
+    let admin_token = startup::resolve_admin_token(&args)?;
     let redis_password = args.redis_password.clone().or_else(|| admin_token.clone());
     let role = ReplicationRole::parse(&args.role)
         .map_err(|detail| std::io::Error::new(std::io::ErrorKind::InvalidInput, detail))?;
@@ -38,6 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .with_strict_admin(args.strict_admin)
             .with_redis_password(redis_password),
     );
+    startup::provision_scopes(&server, &scopes)?;
 
     let backup_handle = if let Some(backup_dir) = &args.backup_dir {
         let compression = BackupCompression::parse(&args.backup_compression)?;
@@ -206,45 +206,4 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
-}
-
-fn validate_listen_addrs(args: &Args) -> Result<(), ConfigError> {
-    let addresses = [
-        ("--listen", Some(args.listen.as_str())),
-        ("--admin-sock", args.admin_sock.as_deref()),
-        ("--http-listen", args.http_listen.as_deref()),
-        ("--ws-listen", args.ws_listen.as_deref()),
-        ("--grpc-listen", args.grpc_listen.as_deref()),
-        ("--redis-listen", args.redis_listen.as_deref()),
-        ("--memcached-listen", args.memcached_listen.as_deref()),
-    ];
-    for (name, value) in addresses {
-        if let Some(value) = value {
-            validate_listen_address(name, value)?;
-        }
-    }
-    Ok(())
-}
-
-fn resolve_admin_token(args: &Args) -> Result<Option<String>, Box<dyn std::error::Error>> {
-    let Some(path) = &args.admin_token_file else {
-        return Ok(args.admin_token.clone());
-    };
-    if args.admin_token.is_some() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "use --admin-token or --admin-token-file, not both",
-        )
-        .into());
-    }
-    let contents = std::fs::read_to_string(path)?;
-    let token = contents.trim();
-    if token.is_empty() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "the admin token file is empty",
-        )
-        .into());
-    }
-    Ok(Some(token.to_string()))
 }

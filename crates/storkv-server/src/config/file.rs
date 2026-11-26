@@ -4,6 +4,9 @@ use std::path::{Path, PathBuf};
 
 use clap::Command;
 use serde::Deserialize;
+use storkv_core::ScopeOptions;
+
+use super::scopes::{self, ScopeConfig};
 
 /// Daemon settings read from a `storkv.toml` file.
 ///
@@ -64,6 +67,8 @@ pub struct FileConfig {
     pub tls_cert: Option<PathBuf>,
     /// PEM private key that enables TLS on the native listener.
     pub tls_key: Option<PathBuf>,
+    /// Scopes to create or verify before the server accepts client traffic.
+    pub scopes: Vec<ScopeConfig>,
 }
 
 impl FileConfig {
@@ -89,6 +94,16 @@ impl FileConfig {
             source,
         })?;
         Self::parse(&contents)
+    }
+
+    /// Convert the declared `[[scopes]]` entries to engine options.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError::Scope`] when an entry is invalid or a name is
+    /// declared more than once.
+    pub fn scope_options(&self) -> Result<Vec<(String, ScopeOptions)>, ConfigError> {
+        scopes::collect(&self.scopes)
     }
 
     /// Install file values as command defaults.
@@ -183,6 +198,14 @@ pub enum ConfigError {
         name: &'static str,
         /// Rejected address.
         value: String,
+        /// Reason for the rejection.
+        detail: String,
+    },
+    /// A `[[scopes]]` entry is invalid.
+    #[error("invalid scope `{name}`: {detail}")]
+    Scope {
+        /// Scope name from the file.
+        name: String,
         /// Reason for the rejection.
         detail: String,
     },

@@ -23,7 +23,9 @@ mod server;
 pub mod tls;
 pub mod transports;
 
-pub use config::{ConfigError, FileConfig, ReplicationRole, ServerConfig, validate_listen_address};
+pub use config::{
+    ConfigError, FileConfig, ReplicationRole, ScopeConfig, ServerConfig, validate_listen_address,
+};
 pub use dispatch::core_error_to_wire;
 pub use listener::{AcceptedStream, ServerListener};
 pub use server::Server;

@@ -1,8 +1,10 @@
 use std::path::PathBuf;
 
 mod file;
+mod scopes;
 
 pub use file::{ConfigError, FileConfig, validate_listen_address};
+pub use scopes::ScopeConfig;
 
 /// Replication role of one server node.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
