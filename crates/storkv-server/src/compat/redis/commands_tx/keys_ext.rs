@@ -63,6 +63,11 @@ pub(super) fn tx_type(tx: &mut Transaction, scope: &ScopeHandle, args: &[Bytes])
     let Some(key) = args.get(1) else {
         return wrong_arity("type");
     };
+    match super::super::composite::read_kind(tx, scope, key) {
+        Ok(Some(kind)) => return Resp::simple(kind.name()),
+        Ok(None) => {}
+        Err(error) => return storage_error(error),
+    }
     match tx.get(scope, key) {
         Ok(Some(_)) => Resp::simple("string"),
         Ok(None) => Resp::simple("none"),

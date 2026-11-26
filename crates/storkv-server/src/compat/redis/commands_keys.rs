@@ -5,6 +5,7 @@ use bytes::Bytes;
 use super::RedisSession;
 use super::codec::Resp;
 use super::commands::MILLIS_PER_SECOND;
+use super::composite;
 use super::helpers::{
     cursor_from_key, decode_cursor, glob_match, parse_i64, parse_u64, storage_error, upper,
     validate_glob_pattern, wrong_arity,
@@ -145,8 +146,9 @@ impl RedisSession {
             Ok(pairs) => Resp::array(
                 pairs
                     .into_iter()
-                    .filter(|(key, _)| glob_match(pattern, key))
-                    .map(|(key, _)| Resp::bulk(key))
+                    .filter_map(|(key, _)| composite::logical_key(&key))
+                    .filter(|key| glob_match(pattern, key))
+                    .map(Resp::bulk)
                     .collect(),
             ),
             Err(error) => storage_error(error),
@@ -186,12 +188,15 @@ impl RedisSession {
         };
         let mut keys = Vec::new();
         let mut next_cursor = None;
-        for (key, _) in pairs {
+        for (raw, _) in pairs {
+            let Some(key) = composite::logical_key(&raw) else {
+                continue;
+            };
             let matches = pattern.is_none_or(|pattern| glob_match(pattern, &key));
             if matches && keys.len() < count {
                 keys.push(Resp::bulk(key));
             } else if matches {
-                next_cursor = Some(cursor_from_key(&key));
+                next_cursor = Some(cursor_from_key(&raw));
                 break;
             }
         }

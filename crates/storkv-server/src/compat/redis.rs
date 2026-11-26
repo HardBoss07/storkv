@@ -14,10 +14,12 @@ mod codec_decode;
 mod codec_encode;
 mod commands;
 mod commands_client;
+mod commands_collections;
 mod commands_keys;
 mod commands_server;
 mod commands_strings;
 mod commands_tx;
+mod composite;
 mod helpers;
 pub(crate) mod keyspace;
 

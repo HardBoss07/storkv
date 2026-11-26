@@ -7,6 +7,7 @@ use super::codec::Resp;
 use super::commands::{MILLIS_PER_SECOND, RedisSession, WatchState};
 use super::helpers::{storage_error, upper, wrong_arity};
 
+mod composites;
 mod counters;
 mod expiry;
 mod keys_ext;
@@ -14,6 +15,10 @@ mod scan;
 mod strings;
 mod strings_ext;
 
+use composites::{
+    tx_hdel, tx_hexists, tx_hget, tx_hgetall, tx_hincrby, tx_hkeys, tx_hlen, tx_hmget, tx_hset,
+    tx_hvals, tx_sadd, tx_scard, tx_sismember, tx_smembers, tx_srem,
+};
 use counters::{tx_counter, tx_counter_by};
 use expiry::{tx_expire, tx_persist, tx_ttl};
 use keys_ext::{tx_expire_at, tx_expiretime, tx_rename, tx_type};
@@ -130,6 +135,21 @@ impl RedisSession {
             "DECRBY" => tx_counter_by(self, tx, &scope, args, -1),
             "APPEND" => tx_append(self, tx, &scope, args),
             "STRLEN" => tx_strlen(tx, &scope, args),
+            "HSET" => tx_hset(tx, &scope, args),
+            "HGET" => tx_hget(tx, &scope, args),
+            "HMGET" => tx_hmget(tx, &scope, args),
+            "HGETALL" => tx_hgetall(tx, &scope, args),
+            "HDEL" => tx_hdel(tx, &scope, args),
+            "HINCRBY" => tx_hincrby(tx, &scope, args),
+            "HEXISTS" => tx_hexists(tx, &scope, args),
+            "HLEN" => tx_hlen(tx, &scope, args),
+            "HKEYS" => tx_hkeys(tx, &scope, args),
+            "HVALS" => tx_hvals(tx, &scope, args),
+            "SADD" => tx_sadd(tx, &scope, args),
+            "SREM" => tx_srem(tx, &scope, args),
+            "SMEMBERS" => tx_smembers(tx, &scope, args),
+            "SISMEMBER" => tx_sismember(tx, &scope, args),
+            "SCARD" => tx_scard(tx, &scope, args),
             "EXPIRE" => tx_expire(tx, &scope, args, MILLIS_PER_SECOND),
             "PEXPIRE" => tx_expire(tx, &scope, args, 1),
             "EXPIREAT" => tx_expire_at(tx, &scope, args, MILLIS_PER_SECOND),

@@ -137,6 +137,10 @@ impl RedisSession {
             "DECRBY" => self.counter_by(args, -1),
             "APPEND" => self.append(args),
             "STRLEN" => self.strlen(args),
+            "HSET" | "HGET" | "HMGET" | "HGETALL" | "HDEL" | "HINCRBY" | "HEXISTS" | "HLEN"
+            | "HKEYS" | "HVALS" | "SADD" | "SREM" | "SMEMBERS" | "SISMEMBER" | "SCARD" => self
+                .collection_command(command, args)
+                .unwrap_or_else(|| Resp::error(format!("ERR unknown command '{command}'"))),
             "EXPIRE" => self.expire(args, MILLIS_PER_SECOND),
             "PEXPIRE" => self.expire(args, 1),
             "EXPIREAT" => self.expire_at(args, MILLIS_PER_SECOND),
@@ -217,6 +221,11 @@ fn is_write_command(command: &str) -> bool {
             | "EXPIREAT"
             | "PEXPIREAT"
             | "PERSIST"
+            | "HSET"
+            | "HDEL"
+            | "HINCRBY"
+            | "SADD"
+            | "SREM"
             | "FLUSHDB"
             | "FLUSHALL"
             | "EXEC"
@@ -237,6 +246,11 @@ fn records_transport_request(command: &str) -> bool {
             | "EXISTS"
             | "SCAN"
             | "KEYS"
+            | "HSET"
+            | "HGET"
+            | "HGETALL"
+            | "SADD"
+            | "SMEMBERS"
             | "INFO"
             | "DBSIZE"
             | "TTL"

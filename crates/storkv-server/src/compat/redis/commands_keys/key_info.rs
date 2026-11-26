@@ -4,6 +4,7 @@ use bytes::Bytes;
 
 use super::super::RedisSession;
 use super::super::codec::Resp;
+use super::super::composite::{self, DbView};
 use super::super::helpers::{storage_error, wrong_arity};
 
 impl RedisSession {
@@ -18,6 +19,11 @@ impl RedisSession {
             Ok(scope) => scope,
             Err(response) => return response,
         };
+        match composite::read_kind(&mut DbView(self.db()), &scope, key) {
+            Ok(Some(kind)) => return Resp::simple(kind.name()),
+            Ok(None) => {}
+            Err(error) => return storage_error(error),
+        }
         match self.db().get(&scope, key) {
             Ok(Some(_)) => Resp::simple("string"),
             Ok(None) => Resp::simple("none"),

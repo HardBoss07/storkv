@@ -4,6 +4,7 @@ use bytes::Bytes;
 use storkv_core::{ScopeHandle, Transaction};
 
 use super::super::codec::Resp;
+use super::super::composite;
 use super::super::helpers::{
     cursor_from_key, decode_cursor, glob_match, parse_u64, storage_error, upper,
     validate_glob_pattern, wrong_arity,
@@ -20,8 +21,9 @@ pub(super) fn tx_keys(tx: &mut Transaction, scope: &ScopeHandle, args: &[Bytes])
         Ok(pairs) => Resp::array(
             pairs
                 .into_iter()
-                .filter(|(key, _)| glob_match(pattern, key))
-                .map(|(key, _)| Resp::bulk(key))
+                .filter_map(|(key, _)| composite::logical_key(&key))
+                .filter(|key| glob_match(pattern, key))
+                .map(Resp::bulk)
                 .collect(),
         ),
         Err(error) => storage_error(error),
@@ -46,12 +48,15 @@ pub(super) fn tx_scan(tx: &mut Transaction, scope: &ScopeHandle, args: &[Bytes])
     };
     let mut keys = Vec::new();
     let mut next_cursor = None;
-    for (key, _) in pairs {
+    for (raw, _) in pairs {
+        let Some(key) = composite::logical_key(&raw) else {
+            continue;
+        };
         let matches = pattern.is_none_or(|pattern| glob_match(pattern, &key));
         if matches && keys.len() < count {
             keys.push(Resp::bulk(key));
         } else if matches {
-            next_cursor = Some(cursor_from_key(&key));
+            next_cursor = Some(cursor_from_key(&raw));
             break;
         }
     }

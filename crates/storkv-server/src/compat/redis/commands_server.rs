@@ -139,7 +139,12 @@ impl RedisSession {
             Err(response) => return response,
         };
         match self.db().scan(&scope, None::<&[u8]>, None::<&[u8]>) {
-            Ok(pairs) => Resp::Integer(pairs.len() as i64),
+            Ok(pairs) => Resp::Integer(
+                pairs
+                    .iter()
+                    .filter(|(key, _)| super::composite::logical_key(key).is_some())
+                    .count() as i64,
+            ),
             Err(error) => storage_error(error),
         }
     }
