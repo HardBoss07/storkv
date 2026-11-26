@@ -2,9 +2,14 @@
 mod daemon;
 #[path = "config/helpers.rs"]
 mod helpers;
+#[path = "config/scopes.rs"]
+mod scopes;
 #[path = "config/startup.rs"]
 mod startup;
 
+use std::time::Duration;
+
+use storkv_core::{CompactionStyle, Retention};
 use storkv_server::{ConfigError, FileConfig, validate_listen_address};
 
 const EXAMPLE_CONFIG: &str = include_str!("../../storkv.example.toml");
@@ -130,6 +135,10 @@ fn validates_listen_addresses() {
 fn example_template_matches_config_schema() {
     let commented = FileConfig::parse(EXAMPLE_CONFIG).expect("parse commented template");
     assert!(commented.data_dir.is_none());
+    assert!(
+        EXAMPLE_CONFIG.contains("# [[scopes]]"),
+        "template must document scope provisioning"
+    );
 
     let settings = example_settings();
     let mut keys: Vec<&str> = settings.iter().map(|(key, _)| key.as_str()).collect();
@@ -154,6 +163,25 @@ fn example_template_matches_config_schema() {
         config.backup_pipe_args,
         Some(vec!["--bucket".to_owned(), "prod-storkv".to_owned()])
     );
+
+    let scopes = FileConfig::parse(&helpers::uncommented_scopes(EXAMPLE_CONFIG))
+        .expect("parse uncommented scope template");
+    let options = scopes.scope_options().expect("scope options");
+    assert_eq!(options.len(), 1);
+    let (name, scope) = &options[0];
+    assert_eq!(name, "sessions");
+    assert_eq!(
+        scope.retention,
+        Retention::Ttl {
+            default_ttl: Duration::from_millis(3_600_000),
+            compaction_style: CompactionStyle::Leveled
+        }
+    );
+    assert_eq!(scope.min_ttl, Some(Duration::from_millis(1000)));
+    assert_eq!(scope.max_ttl, Some(Duration::from_millis(86_400_000)));
+    assert!(!scope.allow_permanent);
+    assert!(scope.active_ttl_tracking);
+    assert_eq!(scope.prefix_bloom_len, Some(1024));
 }
 
 #[test]

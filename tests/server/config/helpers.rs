@@ -1,3 +1,4 @@
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
@@ -78,4 +79,59 @@ pub(super) fn free_local_address() -> String {
 pub(super) fn stop(mut child: Child) {
     let _ = child.kill();
     let _ = child.wait();
+}
+
+pub(super) fn uncommented_scopes(template: &str) -> String {
+    let mut block = String::new();
+    let mut in_scopes = false;
+    for line in template.lines() {
+        if line.trim() == "# [[scopes]]" {
+            in_scopes = true;
+        }
+        if in_scopes {
+            block.push_str(line.trim_start_matches('#').trim_start());
+            block.push('\n');
+        }
+    }
+    block
+}
+
+pub(super) fn http_request(
+    method: &str,
+    address: &str,
+    path: &str,
+    body: Option<&str>,
+) -> (u16, String) {
+    let mut stream = std::net::TcpStream::connect(address).expect("connect http listener");
+    let body = body.unwrap_or("");
+    let request = format!(
+        "{method} {path} HTTP/1.1\r\nHost: {address}\r\nContent-Length: {}\r\n\
+         Connection: close\r\n\r\n{body}",
+        body.len()
+    );
+    stream
+        .write_all(request.as_bytes())
+        .expect("write http request");
+    let mut response = String::new();
+    stream
+        .read_to_string(&mut response)
+        .expect("read http response");
+    let status = response
+        .split_whitespace()
+        .nth(1)
+        .and_then(|code| code.parse().ok())
+        .unwrap_or_else(|| panic!("unexpected HTTP response: {response}"));
+    let payload = response
+        .split_once("\r\n\r\n")
+        .map(|(_, payload)| payload.to_owned())
+        .unwrap_or_default();
+    (status, payload)
+}
+
+pub(super) fn http_put(address: &str, path: &str, value: &str) -> u16 {
+    http_request("PUT", address, path, Some(value)).0
+}
+
+pub(super) fn http_get(address: &str, path: &str) -> (u16, String) {
+    http_request("GET", address, path, None)
 }
