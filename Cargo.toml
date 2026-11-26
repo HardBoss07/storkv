@@ -39,7 +39,7 @@ axum = { version = "0.8", default-features = false, features = [
 ] }
 base64 = "0.23"
 bytes = "1"
-clap = { version = "4", features = ["derive", "env"] }
+clap = { version = "4", features = ["derive", "env", "string"] }
 crc32c = "0.6"
 crossbeam-channel = "0.5"
 crossbeam-skiplist = "0.1"
@@ -72,6 +72,7 @@ tokio-tungstenite = { version = "0.30", default-features = false, features = [
     "connect",
     "handshake",
 ] }
+toml = "0.8"
 tonic = { version = "0.14", features = ["transport", "codegen"] }
 tonic-build = "0.14"
 tonic-prost = "0.14"
