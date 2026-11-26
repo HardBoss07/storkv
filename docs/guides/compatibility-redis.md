@@ -1,6 +1,6 @@
 # Redis compatibility
 
-`--redis-listen` serves a RESP2 and RESP3 endpoint that maps Redis string commands onto StorKV scopes. Existing Redis clients can connect without a code change for the supported command set.
+`--redis-listen` serves a RESP2 and RESP3 endpoint that maps Redis string, hash, and set commands onto StorKV scopes. Existing Redis clients can connect without a code change for the supported command set.
 
 ## Start the listener
 
@@ -79,7 +79,7 @@ Data written through Redis is visible to native clients in the same scope. A nat
 | `DEL`, `UNLINK`     | Deletes one or more keys                              |
 | `EXISTS`            | Counts the keys that exist                            |
 | `RENAME`, `RENAMENX`| Renames a key and keeps its expiry                    |
-| `TYPE`              | Returns `string` for a live key and `none` otherwise  |
+| `TYPE`              | Returns `string`, `hash`, `set`, or `none`            |
 | `INCR`, `DECR`      | Adds or subtracts one from an integer value           |
 | `INCRBY`, `DECRBY`  | Adds or subtracts a caller-supplied delta             |
 | `APPEND`            | Appends bytes and returns the new length              |
@@ -99,6 +99,33 @@ Data written through Redis is visible to native clients in the same scope. A nat
 `GETEX` accepts one of `EX`, `PX`, `EXAT`, `PXAT`, or `PERSIST`. It returns a null reply and creates no key when the key is absent.
 
 `INCR` and `DECR` retry up to 16 times on a write conflict. The value must parse as a signed 64-bit integer.
+
+### Hashes and sets
+
+| Command              | Notes                                                       |
+| :------------------- | :---------------------------------------------------------- |
+| `HSET`               | Sets one or more field/value pairs and returns the new field count |
+| `HGET`               | Returns a field value or a null reply                       |
+| `HMGET`              | Returns one reply per requested field                       |
+| `HGETALL`            | Returns a flat array of field/value pairs                   |
+| `HDEL`               | Deletes one or more fields and returns the removed count    |
+| `HINCRBY`            | Adds a signed delta to an integer field and returns the new value |
+| `HEXISTS`, `HLEN`    | Tests one field or returns the field count                  |
+| `HKEYS`, `HVALS`     | Returns every field or every value                          |
+| `SADD`, `SREM`       | Adds or removes members and returns the changed count       |
+| `SMEMBERS`           | Returns every member                                        |
+| `SISMEMBER`, `SCARD` | Tests one member or returns the member count                |
+
+`HSET`, `HDEL`, `HINCRBY`, `SADD`, and `SREM` run in one OCC transaction. A concurrent writer cannot observe partial state. `HINCRBY` returns `ERR hash value is not an integer` for a non-integer field value and `ERR increment or decrement would overflow` on an `i64` overflow. An empty hash or set removes its metadata entry, so `TYPE` then returns `none`.
+
+The adapter stores hash fields and set members under reserved internal keys. The first internal key byte is `0x01`. A user key that starts with `0x01` is therefore reserved. `KEYS`, `SCAN`, and `DBSIZE` report only the logical key names and hide the internal field and member keys.
+
+```bash
+redis-cli -p 6379 HSET user:1 name Ada age 36
+redis-cli -p 6379 HGETALL user:1
+redis-cli -p 6379 SADD online user:1 user:2
+redis-cli -p 6379 SMEMBERS online
+```
 
 ### Transactions
 
@@ -148,7 +175,7 @@ The adapter has these limits:
 | Value length          | 256 MiB                         |
 | Inline command line   | 64 KiB                          |
 | `MATCH`/`KEYS` pattern| 1,024 bytes                     |
-| Command set           | Strings, keys, transactions, and connection commands |
+| Command set           | Strings, hashes, sets, keys, transactions, and connection commands |
 
 The parser rejects an inline command line larger than 64 KiB. It also rejects a request that grows beyond the read buffer limit. The server sends a protocol error and closes the connection.
 
@@ -160,13 +187,14 @@ A flush writes one range tombstone. It does not read or delete each key in turn.
 
 The adapter does not implement these Redis features:
 
-- Lists, hashes, sets, and sorted sets.
+- Lists and sorted sets.
 - Pub/Sub.
 - Lua scripts.
 - Streams.
 - Cluster mode.
 - Replication.
 - Persistence commands such as `BGSAVE` and `AOF`.
+- Generic key commands on hash and set keys. `DEL`, `EXISTS`, `EXPIRE`, `PEXPIRE`, `TTL`, `RENAME`, and `RENAMENX` do not resolve a composite key in this release.
 
 An unsupported command returns `ERR unknown command '<name>'`.
 
@@ -185,6 +213,7 @@ Adapter errors use Redis error replies:
 | Key too large        | `ERR key too large`                           |
 | Value too large      | `ERR value too large`                         |
 | Not authenticated    | `NOAUTH Authentication required.`             |
+| Wrong value type     | `WRONGTYPE Operation against a key holding the wrong kind of value` |
 | Bad password         | `WRONGPASS invalid username-password pair or user is disabled.` |
 | Write conflict       | `ERR write conflict, retry`                   |
 | Storage failure      | `ERR <storage error text>`                    |

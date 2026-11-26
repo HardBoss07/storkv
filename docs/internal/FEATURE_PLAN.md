@@ -91,7 +91,7 @@ Do not introduce external crates for the following items; implement them using `
   - **Description:** Implement `GETDEL`, `GETEX` (`EX`, `PX`, `EXAT`, `PXAT`, `PERSIST`), `MSETNX`, `RENAME`, `RENAMENX`, `TYPE`, `EXPIREAT`, `PEXPIREAT`, `EXPIRETIME`, and `PEXPIRETIME`, plus `EXAT` and `PXAT` flags in `parse_set_options`.
   - **Behavior:** Execute `GETDEL`, `GETEX`, `MSETNX`, `RENAME`, and `RENAMENX` atomically via `storkv-core` OCC transactions so concurrent writers cannot observe partial state.
 
-- [ ] **Redis Composite Data Structures (Hashes & Sets)**
+- [x] **Redis Composite Data Structures (Hashes & Sets)**
   - **Target:** `crates/storkv-server/src/compat/redis/`
   - **Description:** Implement Redis Hashes (`HSET`, `HGET`, `HMGET`, `HGETALL`, `HDEL`, `HINCRBY`, `HEXISTS`, `HLEN`, `HKEYS`, `HVALS`) and Sets (`SADD`, `SREM`, `SMEMBERS`, `SISMEMBER`, `SCARD`) layered cleanly over `storkv-core` primitives.
   - **Behavior:** Encode hash fields and set members under reserved internal key prefixes (e.g., `\x01h:<key>\x00<field>` and `\x01s:<key>\x00<member>`) alongside a metadata entry tracking type and cardinality. Execute multi-field updates atomically in OCC transactions and resolve `HGETALL`/`SMEMBERS` via `scan_prefix` without changing the SSTable/WAL on-disk format.
