@@ -96,7 +96,7 @@ Do not introduce external crates for the following items; implement them using `
   - **Description:** Implement Redis Hashes (`HSET`, `HGET`, `HMGET`, `HGETALL`, `HDEL`, `HINCRBY`, `HEXISTS`, `HLEN`, `HKEYS`, `HVALS`) and Sets (`SADD`, `SREM`, `SMEMBERS`, `SISMEMBER`, `SCARD`) layered cleanly over `storkv-core` primitives.
   - **Behavior:** Encode hash fields and set members under reserved internal key prefixes (e.g., `\x01h:<key>\x00<field>` and `\x01s:<key>\x00<member>`) alongside a metadata entry tracking type and cardinality. Execute multi-field updates atomically in OCC transactions and resolve `HGETALL`/`SMEMBERS` via `scan_prefix` without changing the SSTable/WAL on-disk format.
 
-- [ ] **etcd v3 Leases & Compare-and-Swap Transactions**
+- [x] **etcd v3 Leases & Compare-and-Swap Transactions**
   - **Target:** `crates/storkv-server/src/compat/etcd_http.rs`
   - **Description:** Implement `/v3/lease/grant`, `/v3/lease/keepalive`, `/v3/lease/revoke`, `/v3/lease/timetolive`, and `/v3/kv/txn`.
   - **Behavior:** Maintain active lease deadlines in memory and propagate each lease's expiration timestamp to attached keys' `expires_at_ms` on `/v3/kv/put` and `/v3/lease/keepalive`. Translate `/v3/kv/txn` `compare` predicates (`VERSION`, `CREATE`, `MOD`, `VALUE`) and `success`/`failure` operation lists into a single `storkv-core` OCC `Transaction` for distributed locking and leader election.

@@ -38,6 +38,11 @@ This page uses `http://127.0.0.1:8080` in every example.
 | POST   | `/v3/kv/put`                      | etcd gateway put          |
 | POST   | `/v3/kv/range`                    | etcd gateway range        |
 | POST   | `/v3/kv/deleterange`              | etcd gateway range delete |
+| POST   | `/v3/kv/txn`                      | etcd gateway transaction  |
+| POST   | `/v3/lease/grant`                 | etcd lease grant          |
+| POST   | `/v3/lease/keepalive`             | etcd lease keepalive      |
+| POST   | `/v3/lease/revoke`                | etcd lease revoke         |
+| POST   | `/v3/lease/timetolive`            | etcd lease time to live   |
 
 The route paths use axum syntax. `{scope}` and `{key}` are path segments. The service mounts no route at `/`.
 
@@ -550,15 +555,20 @@ Later events arrive as binary `STORKPRT` frames. Read [Watches and TTL](../conce
 
 ## etcd gateway
 
-The HTTP listener also mounts three etcd v3 JSON routes:
+The HTTP listener also mounts eight etcd v3 JSON routes:
 
 | Route                | etcd operation |
 | :------------------- | :------------- |
 | `/v3/kv/put`         | Put            |
 | `/v3/kv/range`       | Range read     |
 | `/v3/kv/deleterange` | Delete range   |
+| `/v3/kv/txn`         | Transaction    |
+| `/v3/lease/grant`    | Lease grant    |
+| `/v3/lease/keepalive`| Lease keepalive|
+| `/v3/lease/revoke`   | Lease revoke   |
+| `/v3/lease/timetolive`| Lease time to live |
 
-Every key maps to the `etcd` scope. Request and response fields use base64 for keys and values.
+Every key maps to the `etcd` scope. Request and response fields use base64 for keys and values. Lease identifiers are decimal strings. A transaction runs one compare list over the StorKV OCC read set and retries on a write conflict.
 
 ```bash
 curl -sS -X POST http://127.0.0.1:8080/v3/kv/put \

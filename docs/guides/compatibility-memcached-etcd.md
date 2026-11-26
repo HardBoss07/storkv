@@ -101,17 +101,24 @@ The adapter computes the item count with a full scan. It does not track hits, mi
 
 ### Route set
 
-The etcd gateway uses the HTTP listener. It has three routes:
+The etcd gateway uses the HTTP listener. It has eight routes:
 
-| Route                     | etcd method   |
-| :------------------------ | :------------ |
-| `POST /v3/kv/put`         | `Put`         |
-| `POST /v3/kv/range`       | `Range`       |
-| `POST /v3/kv/deleterange` | `DeleteRange` |
+| Route                       | etcd method     |
+| :-------------------------- | :-------------- |
+| `POST /v3/kv/put`           | `Put`           |
+| `POST /v3/kv/range`         | `Range`         |
+| `POST /v3/kv/deleterange`   | `DeleteRange`   |
+| `POST /v3/kv/txn`           | `Txn`           |
+| `POST /v3/lease/grant`      | `LeaseGrant`    |
+| `POST /v3/lease/keepalive`  | `LeaseKeepAlive`|
+| `POST /v3/lease/revoke`     | `LeaseRevoke`   |
+| `POST /v3/lease/timetolive` | `LeaseTimeToLive`|
 
 Every key lives in the `etcd` scope. The scope is created on first use with strict durability and permanent retention.
 
 Keys and values in requests and responses are standard base64 strings.
+
+Lease identifiers and other 64-bit integers are decimal strings in responses. Requests accept both JSON numbers and decimal strings.
 
 ### Put
 
@@ -134,7 +141,7 @@ Response:
 }
 ```
 
-A `lease` field other than 0 returns HTTP 400 with code 3. Leases are not supported.
+A `lease` field attaches the key to a live lease. The gateway stores the lease deadline as the key expiry. An unknown or expired lease returns HTTP 400 with code 3. A `lease` value of 0 detaches the key and removes the expiry.
 
 ### Range
 
@@ -178,7 +185,7 @@ Range options:
 | `count_only` | Returns only the count                                               |
 | `keys_only`  | Omits values from the entries                                        |
 
-`version`, `create_revision`, and `mod_revision` all carry the current sequence number of the key. The gateway does not store per-key revision history.
+`version`, `create_revision`, and `mod_revision` all carry the current sequence number of the key. The gateway does not store per-key revision history. The `lease` field carries the identifier of the owning lease, or `0` when no lease owns the key.
 
 ### DeleteRange
 
@@ -204,6 +211,53 @@ Response:
 
 The gateway deletes the matched keys in one transaction.
 
+### Txn
+
+`/v3/kv/txn` runs one compare list and one operation list in a single StorKV OCC transaction. The gateway retries the transaction on a write conflict.
+
+```bash
+curl -sS -X POST http://127.0.0.1:8080/v3/kv/txn \
+  -H 'content-type: application/json' \
+  -d '{
+    "compare": [{"target":"VERSION","result":"EQUAL","key":"bG9jaw==","version":"41"}],
+    "success": [{"request_put":{"key":"bG9jaw==","value":"b3duZXI="}}],
+    "failure": [{"request_range":{"key":"bG9jaw=="}}]
+  }'
+```
+
+Compare targets are `VERSION`, `CREATE`, `MOD`, and `VALUE`. Compare results are `EQUAL`, `GREATER`, and `LESS`. A range compare applies to every key in the range. A missing key compares as revision and version `0`. A `VALUE` compare on a missing key is false.
+
+The operation lists accept `request_put`, `request_range`, and `request_delete_range`. A `request_put` accepts `key`, `value`, and `lease`. Nested `request_txn` operations are not supported.
+
+The response has `succeeded` and one wrapped entry per applied operation:
+
+```json
+{
+  "succeeded": true,
+  "responses": [{ "response_put": {} }],
+  "header": { "revision": "42", "raft_term": "1" }
+}
+```
+
+### Leases
+
+`/v3/lease/grant` takes `TTL` in seconds and returns `ID` and `TTL`:
+
+```bash
+curl -sS -X POST http://127.0.0.1:8080/v3/lease/grant \
+  -H 'content-type: application/json' -d '{"TTL":60}'
+```
+
+The response is `{"header":..., "ID":"1", "TTL":"60"}`.
+
+`/v3/lease/keepalive` takes `ID`. It resets the lease deadline and refreshes the expiry of every attached key. It returns `ID` and `TTL`.
+
+`/v3/lease/revoke` takes `ID`. It deletes every attached key and removes the lease. It returns a header.
+
+`/v3/lease/timetolive` takes `ID` and an optional `keys` boolean. It returns `ID`, `TTL`, `grantedTTL`, and the attached keys when `keys` is true. An unknown or expired lease returns HTTP 404 with code 5.
+
+Leases live in server memory. A restart discards every lease. Attached keys keep their stored expiry, so they still expire at the granted time.
+
 ### Revisions and errors
 
 The `revision` field is the last visible sequence number of the whole database. All scopes share it.
@@ -214,17 +268,18 @@ An error response carries three fields:
 { "error": "key is required", "message": "key is required", "code": 3 }
 ```
 
-| HTTP status | Code | Cause                            |
-| :---------- | :--- | :------------------------------- |
-| 400         | 3    | Missing key or unsupported lease |
-| 500         | 13   | Storage failure                  |
+| HTTP status | Code | Cause                                   |
+| :---------- | :--- | :-------------------------------------- |
+| 400         | 3    | Missing key, unknown lease, or bad txn  |
+| 400         | 9    | The node is a replica                   |
+| 404         | 5    | Unknown or expired lease                |
+| 500         | 13   | Storage failure or txn conflict         |
 
 ### Unsupported etcd features
 
 The gateway does not support:
 
-- Leases and keepalives.
-- Transactions.
+- Nested transactions.
 - Watches.
 - Compaction.
 - Authentication.
