@@ -86,7 +86,7 @@ Do not introduce external crates for the following items; implement them using `
   - **Description:** Add per-connection authentication state and implement `AUTH [username] <password>`, `HELLO 3 AUTH <username> <password>`, `CLIENT SETNAME <name>`, `CLIENT GETNAME`, `CLIENT ID`, and `COMMAND` / `COMMAND COUNT`.
   - **Behavior:** Validate credentials in constant time using `subtle::ConstantTimeEq` against `--redis-password` (`STORKV_REDIS_PASSWORD`), falling back to `--admin-token` when configured. Reject unauthenticated commands with `-NOAUTH Authentication required.` when a password is active so standard Redis clients (`ioredis`, `redis-py`, `fred`, `lettuce`) and GUI tools connect without handshake errors.
 
-- [ ] **Redis Extended String & Expiry Commands**
+- [x] **Redis Extended String & Expiry Commands**
   - **Target:** `crates/storkv-server/src/compat/redis/commands_keys.rs`, `crates/storkv-server/src/compat/redis/commands_strings.rs`
   - **Description:** Implement `GETDEL`, `GETEX` (`EX`, `PX`, `EXAT`, `PXAT`, `PERSIST`), `MSETNX`, `RENAME`, `RENAMENX`, `TYPE`, `EXPIREAT`, `PEXPIREAT`, `EXPIRETIME`, and `PEXPIRETIME`, plus `EXAT` and `PXAT` flags in `parse_set_options`.
   - **Behavior:** Execute `GETDEL`, `GETEX`, `MSETNX`, `RENAME`, and `RENAMENX` atomically via `storkv-core` OCC transactions so concurrent writers cannot observe partial state.

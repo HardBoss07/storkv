@@ -69,23 +69,34 @@ Data written through Redis is visible to native clients in the same scope. A nat
 | Command             | Notes                                                 |
 | :------------------ | :---------------------------------------------------- |
 | `GET`               | Returns a bulk string or a null reply                 |
-| `SET`               | Supports `EX`, `PX`, `NX`, `XX`, `GET`, and `KEEPTTL` |
+| `GETDEL`            | Returns a value and deletes the key atomically        |
+| `GETEX`             | Returns a value and changes its expiry atomically     |
+| `SET`               | Supports `EX`, `PX`, `EXAT`, `PXAT`, `NX`, `XX`, `GET`, and `KEEPTTL` |
 | `SETEX`, `PSETEX`   | Sets a value and a positive TTL                       |
 | `SETNX`             | Sets only when the key is absent                      |
 | `MGET`, `MSET`      | Multi-key read and write on the current scope         |
+| `MSETNX`            | Writes all pairs only when every key is absent        |
 | `DEL`, `UNLINK`     | Deletes one or more keys                              |
 | `EXISTS`            | Counts the keys that exist                            |
+| `RENAME`, `RENAMENX`| Renames a key and keeps its expiry                    |
+| `TYPE`              | Returns `string` for a live key and `none` otherwise  |
 | `INCR`, `DECR`      | Adds or subtracts one from an integer value           |
 | `INCRBY`, `DECRBY`  | Adds or subtracts a caller-supplied delta             |
 | `APPEND`            | Appends bytes and returns the new length              |
 | `STRLEN`            | Returns the byte length of a value                    |
 | `EXPIRE`, `PEXPIRE` | Sets a TTL in seconds or milliseconds                 |
+| `EXPIREAT`, `PEXPIREAT` | Sets an absolute expiry with `NX`, `XX`, `GT`, or `LT` |
+| `EXPIRETIME`, `PEXPIRETIME` | Returns the absolute expiry in seconds or milliseconds |
 | `PERSIST`           | Removes the TTL from a key                            |
 | `TTL`, `PTTL`       | Returns the remaining time in seconds or milliseconds |
 | `KEYS`              | Returns keys that match a glob pattern                |
 | `SCAN`              | Returns a cursor and a page of keys                   |
 
-`SET` replaces the old value. Without `KEEPTTL`, the new value has no expiry.
+`SET` replaces the old value. Without `KEEPTTL`, the new value has no expiry. `EXAT` and `PXAT` set an absolute Unix expiry. An expiry flag cannot combine with another expiry flag or with `KEEPTTL`.
+
+`GETDEL`, `GETEX`, `MSETNX`, `RENAME`, and `RENAMENX` run in one OCC transaction. A concurrent writer cannot observe partial state.
+
+`GETEX` accepts one of `EX`, `PX`, `EXAT`, `PXAT`, or `PERSIST`. It returns a null reply and creates no key when the key is absent.
 
 `INCR` and `DECR` retry up to 16 times on a write conflict. The value must parse as a signed 64-bit integer.
 
@@ -112,9 +123,13 @@ A queued unknown command sets an error flag. `EXEC` then returns `EXECABORT` and
 
 - A positive `EXPIRE` or `PEXPIRE` value sets an absolute expiry time.
 - A zero or negative `EXPIRE` deletes the key and returns 1.
+- `EXPIREAT` and `PEXPIREAT` set an absolute Unix expiry. A target in the past deletes the key and returns 1.
+- `EXPIREAT` and `PEXPIREAT` accept `NX`, `XX`, `GT`, and `LT`. A key without an expiry counts as unlimited for `GT` and `LT`.
+- `EXPIRETIME` and `PEXPIRETIME` return -2 when the key is absent, -1 when the key has no expiry, and the absolute expiry otherwise.
 - `SETEX` and `PSETEX` reject a zero or negative TTL with `ERR invalid expire time`.
 - `TTL` returns -2 when the key is absent and -1 when the key has no expiry.
 - `PERSIST` returns 1 when it removed a TTL and 0 when the key is absent.
+- `RENAME` keeps the expiry of the source key. `RENAMENX` returns 0 when the target key exists.
 - `KEYS` and `SCAN` skip expired keys because the engine filters them at read time.
 
 ## Cursors and patterns
