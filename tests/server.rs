@@ -6,6 +6,8 @@ mod admin;
 mod backup;
 #[path = "server/concurrency.rs"]
 mod concurrency;
+#[path = "server/config.rs"]
+mod config;
 #[path = "server/lifecycle.rs"]
 mod lifecycle;
 #[path = "server/put_if.rs"]
