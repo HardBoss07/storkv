@@ -186,6 +186,26 @@ async fn replica_etcd_rejects_writes_and_serves_reads() {
     assert_eq!(reply["count"], "0");
 }
 
+#[tokio::test]
+async fn replica_rejects_lease_and_txn_writes() {
+    let server = spawn_with_role("compat_replica_etcd_txn", ReplicationRole::Replica).await;
+
+    let (status, reply) =
+        http_post(&server, "/v3/lease/grant", &json!({"TTL": 10}).to_string()).await;
+    assert_eq!(status, 400);
+    assert_eq!(reply["code"], 9);
+
+    let (status, reply) = http_post(
+        &server,
+        "/v3/kv/txn",
+        &json!({"success": [{"request_put": {"key": base64_key(b"x"), "value": "eQ=="}}]})
+            .to_string(),
+    )
+    .await;
+    assert_eq!(status, 400);
+    assert_eq!(reply["code"], 9);
+}
+
 fn base64_key(bytes: &[u8]) -> String {
     use base64::Engine;
     base64::engine::general_purpose::STANDARD.encode(bytes)

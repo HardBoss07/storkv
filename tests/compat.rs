@@ -7,6 +7,8 @@ mod support;
 mod adversarial;
 #[path = "compat/etcd.rs"]
 mod etcd;
+#[path = "compat/etcd_leases_txn.rs"]
+mod etcd_leases_txn;
 #[path = "compat/memcached.rs"]
 mod memcached;
 #[path = "compat/migrate.rs"]
