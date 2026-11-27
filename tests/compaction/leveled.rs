@@ -1,4 +1,5 @@
 use crate::common;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 use storkv_core::{Durability, Retention, ScopeOptions};
 
@@ -47,6 +48,13 @@ fn test_leveled_compaction_over_10k_keys() {
     assert_eq!(scope_arc.sst_levels.read().get(&0).map(Vec::len), Some(4));
 
     db.compact().unwrap();
+
+    assert!(
+        db.telemetry()
+            .compaction_bytes_written_total
+            .load(Ordering::Relaxed)
+            > 0
+    );
 
     {
         let levels = scope_arc.sst_levels.read();
