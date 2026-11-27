@@ -127,7 +127,10 @@ curl -sS http://127.0.0.1:8080/v1/health
 curl -sS http://127.0.0.1:8080/v1/ping
 curl -sS http://127.0.0.1:8080/v1/telemetry
 curl -sS http://127.0.0.1:8080/v1/admin/stats
+curl -sS http://127.0.0.1:8080/metrics
 ```
+
+The `/metrics` route returns the Prometheus text exposition format. Read [Observability](../operations/observability.md#prometheus-metrics) for the metric names.
 
 ```json
 { "status": "ok" }

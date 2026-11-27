@@ -113,7 +113,7 @@ Do not introduce external crates for the following items; implement them using `
   - **Description:** Support a `[[scopes]]` array in `storkv.toml` mirroring `ScopeDefinition` (`name`, `durability`, `retention`, `default_ttl_ms`, `min_ttl_ms`, `max_ttl_ms`, `allow_permanent`, `active_ttl_tracking`, `storage_mode`, `prefix_bloom_len`).
   - **Behavior:** Provision or verify all declared scopes on `storkvd` startup before accepting client traffic, ensuring required scopes and TTL guardrails exist immediately in containerized deployments.
 
-- [ ] **Prometheus `/metrics` Endpoint & Engine Telemetry**
+- [x] **Prometheus `/metrics` Endpoint & Engine Telemetry**
   - **Target:** `crates/storkv-server/src/http/`, `crates/storkv-core/src/db/`
   - **Description:** Expose a `/metrics` endpoint on the HTTP listener emitting Prometheus text-format metrics without external telemetry crates.
   - **Behavior:** Report per-operation request counts and latency buckets (`get`, `put`, `put_if`, `delete`, `scan`, `txn`), active watch subscribers, per-level SSTable counts and byte sizes (`L0`..`L6`), WAL pinned and total bytes, compaction bytes written, and block cache hit/miss totals.

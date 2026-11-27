@@ -8,6 +8,7 @@ StorKV reports live counters and storage statistics from the running process. `s
 | :----------------- | :--------------------------------------------- | :---------------------------------- |
 | Global counters    | `TelemetryQuery`                               | Native, HTTP, WebSocket text, gRPC  |
 | Rich statistics    | `AdminStats`                                   | Native, HTTP, WebSocket text, gRPC  |
+| Prometheus metrics | `GET /metrics`                                 | HTTP                                |
 | Backup state       | `BackupStatus`                                 | Native, gRPC                        |
 | Terminal dashboard | `TelemetryQuery`, `AdminStats`, `BackupStatus` | `storkv-top` over any supported URI |
 
@@ -19,6 +20,31 @@ curl -sS http://127.0.0.1:8080/v1/admin/stats | jq
 ```
 
 `AdminStats` is admin-only under `--strict-admin`. Read [Configuration](configuration.md#protect-auxiliary-transports) for the token rules.
+
+## Prometheus metrics
+
+`GET /metrics` returns the Prometheus text exposition format. The route uses the HTTP listener only. A Prometheus server can scrape it without an admin token.
+
+```bash
+curl -sS http://127.0.0.1:8080/metrics
+```
+
+| Metric                                  | Type      | Meaning                                            |
+| :-------------------------------------- | :-------- | :------------------------------------------------- |
+| `storkv_requests_total{op}`             | counter   | Requests handled for `get`, `put`, `put_if`, `delete`, `scan`, and `txn` |
+| `storkv_request_duration_seconds`       | histogram | Request latency for each operation, in seconds      |
+| `storkv_watch_subscribers`              | gauge     | Active watch subscribers                            |
+| `storkv_sst_files{level}`               | gauge     | SSTable file count for `L0` through `L6`            |
+| `storkv_sst_bytes{level}`               | gauge     | SSTable bytes for `L0` through `L6`                 |
+| `storkv_wal_pinned_bytes`               | gauge     | WAL bytes held by MemTables that are not flushed    |
+| `storkv_wal_total_bytes`                | gauge     | Total bytes of the WAL segment files                |
+| `storkv_compaction_bytes_written_total` | counter   | Bytes written by compaction                         |
+| `storkv_block_cache_hits_total`         | counter   | SSTable block cache hits                            |
+| `storkv_block_cache_misses_total`       | counter   | SSTable block cache misses                          |
+
+A `put` counter includes `Put`, `PutWithTtl`, and `Merge` requests. A `delete` counter includes point and range deletes. A `scan` counter includes range and prefix scans. A `txn` counter includes transaction commits.
+
+The latency histogram uses these upper bounds, in seconds: `0.0001`, `0.0005`, `0.001`, `0.005`, `0.01`, `0.05`, `0.1`, `0.5`, `1`, `5`, and `+Inf`. The endpoint reads only in-memory counters and the size of the WAL segment files. It never reads key data.
 
 The REST listener has no backup status route. Use `storkvctl backup-status`, a native client, or the gRPC `BackupStatus` method. The WebSocket text operations also omit backup status.
 
