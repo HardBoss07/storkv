@@ -1,6 +1,6 @@
 use std::collections::{HashMap, VecDeque};
-use std::sync::Mutex;
 
+use parking_lot::Mutex;
 use storkv_core::Db;
 use storkv_proto::{WireAdminStats, WireLevelStat, WireScopeStat, WireTransportStat};
 
@@ -44,24 +44,19 @@ const _: () = assert!(std::mem::size_of::<ServerStats>() <= 1024);
 
 impl ServerStats {
     pub(crate) fn record_read(&self, scope_id: u32) {
-        if let Ok(mut scopes) = self.scopes.lock() {
-            scopes.entry(scope_id).or_default().reads += 1;
-        }
+        self.scopes.lock().entry(scope_id).or_default().reads += 1;
     }
 
     pub(crate) fn record_write(&self, scope_id: u32) {
-        if let Ok(mut scopes) = self.scopes.lock() {
-            scopes.entry(scope_id).or_default().writes += 1;
-        }
+        self.scopes.lock().entry(scope_id).or_default().writes += 1;
     }
 
     pub(crate) fn record_latency(&self, micros: u64) {
-        if let Ok(mut samples) = self.latency_us.lock() {
-            if samples.len() >= MAX_LATENCY_SAMPLES {
-                samples.pop_front();
-            }
-            samples.push_back(micros);
+        let mut samples = self.latency_us.lock();
+        if samples.len() >= MAX_LATENCY_SAMPLES {
+            samples.pop_front();
         }
+        samples.push_back(micros);
     }
 
     pub(crate) fn record_operation(&self, kind: OpKind, micros: u64) {
@@ -69,37 +64,33 @@ impl ServerStats {
     }
 
     pub(crate) fn record_transport_connection(&self, kind: u8) {
-        if let Ok(mut transports) = self.transports.lock() {
-            let counters = transports.entry(kind).or_default();
-            counters.connections_total += 1;
-            counters.active_connections += 1;
-        }
+        let mut transports = self.transports.lock();
+        let counters = transports.entry(kind).or_default();
+        counters.connections_total += 1;
+        counters.active_connections += 1;
     }
 
     pub(crate) fn record_transport_disconnection(&self, kind: u8) {
-        if let Ok(mut transports) = self.transports.lock() {
-            let counters = transports.entry(kind).or_default();
-            counters.active_connections = counters.active_connections.saturating_sub(1);
-        }
+        let mut transports = self.transports.lock();
+        let counters = transports.entry(kind).or_default();
+        counters.active_connections = counters.active_connections.saturating_sub(1);
     }
 
     pub(crate) fn record_transport_request(&self, kind: u8) {
-        if let Ok(mut transports) = self.transports.lock() {
-            transports.entry(kind).or_default().requests_total += 1;
-        }
+        self.transports
+            .lock()
+            .entry(kind)
+            .or_default()
+            .requests_total += 1;
     }
 
     fn transport_snapshot(&self) -> Vec<WireTransportStat> {
         let mut counters: Vec<(u8, TransportCounters)> = self
             .transports
             .lock()
-            .map(|transports| {
-                transports
-                    .iter()
-                    .map(|(kind, value)| (*kind, *value))
-                    .collect()
-            })
-            .unwrap_or_default();
+            .iter()
+            .map(|(kind, value)| (*kind, *value))
+            .collect();
         counters.sort_by_key(|(kind, _)| *kind);
         counters
             .into_iter()
@@ -113,9 +104,7 @@ impl ServerStats {
     }
 
     fn p99_latency(&self) -> (u64, u64) {
-        let Ok(samples) = self.latency_us.lock() else {
-            return (0, 0);
-        };
+        let samples = self.latency_us.lock();
         if samples.is_empty() {
             return (0, 0);
         }
@@ -161,11 +150,7 @@ impl ServerStats {
 
     fn collect_scope_totals(&self, db: &Db) -> (Vec<WireLevelStat>, Vec<WireScopeStat>) {
         let mut level_counts = [(0u32, 0u64); LEVEL_COUNT];
-        let counters = self
-            .scopes
-            .lock()
-            .map(|scopes| scopes.clone())
-            .unwrap_or_default();
+        let counters = self.scopes.lock().clone();
         let scope_registry = db.inner().scopes.read();
         let mut ordered_scopes: Vec<_> = scope_registry.values().collect();
         ordered_scopes.sort_by_key(|scope| scope.scope_id);

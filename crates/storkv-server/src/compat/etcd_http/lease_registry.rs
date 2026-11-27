@@ -1,9 +1,9 @@
 //! In-memory lease table for the etcd gateway.
 
 use std::collections::HashMap;
-use std::sync::{Mutex, MutexGuard};
 
 use bytes::Bytes;
+use parking_lot::{Mutex, MutexGuard};
 
 use super::now_ms;
 
@@ -36,9 +36,7 @@ impl Default for LeaseRegistry {
 
 impl LeaseRegistry {
     fn lock(&self) -> MutexGuard<'_, RegistryInner> {
-        self.inner
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner())
+        self.inner.lock()
     }
 
     /// Create a lease and return its identifier.
