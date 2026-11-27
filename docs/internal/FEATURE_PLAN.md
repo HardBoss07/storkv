@@ -118,7 +118,7 @@ Do not introduce external crates for the following items; implement them using `
   - **Description:** Expose a `/metrics` endpoint on the HTTP listener emitting Prometheus text-format metrics without external telemetry crates.
   - **Behavior:** Report per-operation request counts and latency buckets (`get`, `put`, `put_if`, `delete`, `scan`, `txn`), active watch subscribers, per-level SSTable counts and byte sizes (`L0`..`L6`), WAL pinned and total bytes, compaction bytes written, and block cache hit/miss totals.
 
-- [ ] **Multi-Stage `Dockerfile`, `docker-compose.yml`, and CI Image Workflow**
+- [x] **Multi-Stage `Dockerfile`, `docker-compose.yml`, and CI Image Workflow**
   - **Target:** `Dockerfile`, `docker-compose.yml`, `storkv.example.toml`, `.github/workflows/docker.yml`
   - **Description:** Provide production container packaging and automated multi-arch image publishing.
   - **Behavior:**

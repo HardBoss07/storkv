@@ -307,6 +307,57 @@ The server default is set at startup with `Server::with_consistency`. `StorkvPoo
 
 Replication is asynchronous. It has no quorum, leader election, or automatic failover.
 
+## Run in a container
+
+The repository root contains a multi-stage `Dockerfile`, a `docker-compose.yml`, and the `storkv.example.toml` reference file. The image builds `storkvd` and `storkvctl` in release mode on `rust:1.100-slim-trixie` and runs on `gcr.io/distroless/cc-debian13:nonroot`.
+
+The runtime image has no shell. It runs as UID and GID `65532`, which the distroless `nonroot` user owns. The builder pre-creates `/var/lib/storkv`, `/var/lib/storkv/backups`, and `/etc/storkv` with that owner. The `HEALTHCHECK` runs `storkvctl health --sock 127.0.0.1:7878` in exec form, so it needs no shell.
+
+Build and run one container:
+
+```bash
+docker build -t storkv .
+docker run --rm -p 7878:7878 -v storkv-data:/var/lib/storkv storkv
+```
+
+The same image is published to the GitHub Container Registry for `linux/amd64` and `linux/arm64` when a `v*` tag is pushed:
+
+```bash
+docker pull ghcr.io/hardboss07/storkv:latest
+```
+
+Use `docker-compose.yml` for a persistent deployment. Copy the example file first, then set `STORKV_CONFIG` to the copied path:
+
+```bash
+cp storkv.example.toml storkv.toml
+STORKV_CONFIG=./storkv.toml \
+STORKV_ADMIN_TOKEN="$(openssl rand -hex 32)" \
+STORKV_REDIS_PASSWORD="$(openssl rand -hex 32)" \
+docker compose up -d
+```
+
+The compose file mounts the configuration read-only at `/etc/storkv/storkv.toml`, keeps `/var/lib/storkv` in the `storkv-data` named volume, and maps the native, HTTP, WebSocket, gRPC, Redis, and Memcached ports. It also demonstrates the `STORKV_*` overrides for the listen addresses, the replication role, the admin token, the Redis password, and backup settings. Every variable in the compose file is declared by `storkvd`. The daemon has no etcd listener flag, so the compose file sets no etcd variable. When `STORKV_CONFIG` is unset, the compose file mounts `storkv.example.toml`, so the environment values alone define the runtime.
+
+Start the primary and the replica together with the replica profile:
+
+```bash
+docker compose --profile replica up -d
+```
+
+The replica reads from `storkv://storkv:7878`, stores its data in `storkv-replica-data`, and publishes the native listener on host port `7978`.
+
+> [!WARNING]
+> The compose defaults `STORKV_ADMIN_TOKEN` and `STORKV_REDIS_PASSWORD` to `change-me-in-production`. Replace both values before you expose any listener.
+
+To refresh an existing deployment:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+The `.github/workflows/docker.yml` workflow checks that the image builds on pull requests and pushes the multi-arch image to GHCR on `v*` tags.
+
 ## Embedded options
 
 The embedded engine reads `DbOptions`:
