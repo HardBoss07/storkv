@@ -4,6 +4,12 @@ use std::sync::Mutex;
 use storkv_core::Db;
 use storkv_proto::{WireAdminStats, WireLevelStat, WireScopeStat, WireTransportStat};
 
+mod ops;
+mod prometheus;
+
+pub(crate) use ops::OpKind;
+pub(crate) use prometheus::render;
+
 /// Maximum number of latency samples to track per connection.
 const MAX_LATENCY_SAMPLES: usize = 2048;
 /// Number of compaction levels in the LSM tree.
@@ -31,9 +37,10 @@ pub(crate) struct ServerStats {
     scopes: Mutex<HashMap<u32, ScopeCounters>>,
     latency_us: Mutex<VecDeque<u64>>,
     transports: Mutex<HashMap<u8, TransportCounters>>,
+    operations: ops::OperationStats,
 }
 
-const _: () = assert!(std::mem::size_of::<ServerStats>() <= 256);
+const _: () = assert!(std::mem::size_of::<ServerStats>() <= 1024);
 
 impl ServerStats {
     pub(crate) fn record_read(&self, scope_id: u32) {
@@ -55,6 +62,10 @@ impl ServerStats {
             }
             samples.push_back(micros);
         }
+    }
+
+    pub(crate) fn record_operation(&self, kind: OpKind, micros: u64) {
+        self.operations.record(kind, micros);
     }
 
     pub(crate) fn record_transport_connection(&self, kind: u8) {
@@ -114,6 +125,10 @@ impl ServerStats {
         let rank = sorted_samples.len().saturating_sub(1);
         let p99_index = ((sorted_samples.len() * P99_PERCENT).div_ceil(PERCENT_TOTAL)).max(1) - 1;
         (sorted_samples[p99_index.min(rank)], sample_count)
+    }
+
+    pub(crate) fn operation_snapshot(&self) -> Vec<ops::OpSnapshot> {
+        self.operations.snapshot()
     }
 
     pub(crate) fn snapshot(&self, db: &Db) -> WireAdminStats {

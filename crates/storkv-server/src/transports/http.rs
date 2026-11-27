@@ -18,6 +18,7 @@ pub mod json;
 pub mod rest;
 mod rest_admin;
 mod rest_data;
+mod rest_metrics;
 mod rest_scopes;
 pub mod rpc;
 
@@ -58,6 +59,7 @@ pub fn router(server: Arc<Server>, options: TransportOptions) -> Router {
         .route("/v1/ping", get(rest::ping))
         .route("/v1/telemetry", get(rest::telemetry))
         .route("/v1/admin/stats", get(rest::admin_stats))
+        .route("/metrics", get(rest_metrics::metrics))
         .route("/v1/rpc", post(rpc::handle))
         .route("/v1/scopes", post(rest::create_scope))
         .route("/v1/scopes/{scope}", delete(rest::drop_scope))

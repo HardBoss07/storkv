@@ -3,6 +3,7 @@ use std::time::Instant;
 
 use storkv_proto::{Request, Response};
 
+use crate::metrics::OpKind;
 use crate::server::{ConnectionConsistency, Server};
 
 mod backup;
@@ -30,10 +31,14 @@ impl Server {
             return Response::Error(error);
         }
         let is_write = request.is_write();
+        let operation = OpKind::from_request(&request);
         let started = Instant::now();
         let response = self.route_request(request, consistency);
+        let elapsed_micros = started.elapsed().as_micros() as u64;
+        if let Some(kind) = operation {
+            self.stats.record_operation(kind, elapsed_micros);
+        }
         if is_write {
-            let elapsed_micros = started.elapsed().as_micros() as u64;
             self.stats.record_latency(elapsed_micros);
         }
         response

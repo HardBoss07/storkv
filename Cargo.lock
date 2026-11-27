@@ -2642,6 +2642,7 @@ dependencies = [
  "crossbeam-channel",
  "futures-util",
  "http",
+ "parking_lot",
  "prost",
  "protoc-bin-vendored",
  "rustls",
