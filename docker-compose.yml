@@ -1,0 +1,87 @@
+# StorKV container stack.
+#
+# Copy storkv.example.toml to storkv.toml and edit it before you start the
+# stack. Set STORKV_CONFIG to that path. The default bind mount uses the
+# commented template, so the STORKV_* environment values below take effect.
+#
+# Start only the primary:
+#   docker compose up -d
+#
+# Start the primary and the replica:
+#   docker compose --profile replica up -d
+
+name: storkv
+
+services:
+  storkv:
+    image: ${STORKV_IMAGE:-ghcr.io/hardboss07/storkv:latest}
+    build:
+      context: .
+    restart: unless-stopped
+    command: ["--config", "/etc/storkv/storkv.toml"]
+    ports:
+      - "7878:7878"   # Native
+      - "8080:8080"   # HTTP
+      - "8081:8081"   # WebSocket
+      - "9090:9090"   # gRPC
+      - "6379:6379"   # Redis RESP
+      - "11211:11211" # Memcached
+    environment:
+      STORKV_DATA_DIR: /var/lib/storkv
+      STORKV_LISTEN: 0.0.0.0:7878
+      STORKV_ADMIN_SOCK: 127.0.0.1:7879
+      STORKV_HTTP_LISTEN: 0.0.0.0:8080
+      STORKV_WS_LISTEN: 0.0.0.0:8081
+      STORKV_GRPC_LISTEN: 0.0.0.0:9090
+      STORKV_REDIS_LISTEN: 0.0.0.0:6379
+      STORKV_MEMCACHED_LISTEN: 0.0.0.0:11211
+      STORKV_ROLE: ${STORKV_ROLE:-primary}
+      STORKV_ADMIN_TOKEN: ${STORKV_ADMIN_TOKEN:-change-me-in-production}
+      STORKV_REDIS_PASSWORD: ${STORKV_REDIS_PASSWORD:-change-me-in-production}
+      STORKV_BACKUP_DIR: /var/lib/storkv/backups
+      STORKV_BACKUP_SHIP_WAL: "true"
+    volumes:
+      - storkv-data:/var/lib/storkv
+      - ${STORKV_CONFIG:-./storkv.example.toml}:/etc/storkv/storkv.toml:ro
+    healthcheck:
+      test: ["CMD", "storkvctl", "health", "--sock", "127.0.0.1:7878"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  storkv-replica:
+    profiles: ["replica"]
+    image: ${STORKV_IMAGE:-ghcr.io/hardboss07/storkv:latest}
+    build:
+      context: .
+    restart: unless-stopped
+    depends_on:
+      storkv:
+        condition: service_healthy
+    command: ["--config", "/etc/storkv/storkv.toml"]
+    ports:
+      - "7978:7878"
+      - "8180:8080"
+    environment:
+      STORKV_DATA_DIR: /var/lib/storkv
+      STORKV_LISTEN: 0.0.0.0:7878
+      STORKV_ADMIN_SOCK: 127.0.0.1:7879
+      STORKV_HTTP_LISTEN: 0.0.0.0:8080
+      STORKV_ROLE: replica
+      STORKV_PRIMARY_URI: storkv://storkv:7878
+      STORKV_ADMIN_TOKEN: ${STORKV_ADMIN_TOKEN:-change-me-in-production}
+      STORKV_REDIS_PASSWORD: ${STORKV_REDIS_PASSWORD:-change-me-in-production}
+    volumes:
+      - storkv-replica-data:/var/lib/storkv
+      - ${STORKV_CONFIG:-./storkv.example.toml}:/etc/storkv/storkv.toml:ro
+    healthcheck:
+      test: ["CMD", "storkvctl", "health", "--sock", "127.0.0.1:7878"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+volumes:
+  storkv-data:
+  storkv-replica-data:

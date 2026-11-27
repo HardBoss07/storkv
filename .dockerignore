@@ -1,0 +1,10 @@
+target/
+.git/
+.github/
+bindings/
+docs/
+scripts/
+dist/
+tmp/
+*.log
+diff.txt
