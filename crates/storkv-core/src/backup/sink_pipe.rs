@@ -1,5 +1,6 @@
 use std::path::Path;
-use std::sync::Mutex;
+
+use parking_lot::Mutex;
 
 use crate::error::{Result, StorkvError};
 
@@ -84,15 +85,11 @@ impl CommandPipeSink {
     }
 
     fn record_error(&self, error: &StorkvError) {
-        if let Ok(mut status) = self.status.lock() {
-            status.last_error = Some(error.to_string());
-        }
+        self.status.lock().last_error = Some(error.to_string());
     }
 
     fn clear_error(&self) {
-        if let Ok(mut status) = self.status.lock() {
-            status.last_error = None;
-        }
+        self.status.lock().last_error = None;
     }
 }
 
@@ -163,10 +160,7 @@ impl BackupSink for CommandPipeSink {
     }
 
     fn status(&self) -> SinkStatus {
-        self.status
-            .lock()
-            .map(|status| status.clone())
-            .unwrap_or_default()
+        self.status.lock().clone()
     }
 }
 
