@@ -166,6 +166,11 @@ impl WatchRegistry {
         Ok(receiver)
     }
 
+    /// Return the number of live subscribers.
+    pub fn subscriber_count(&self) -> usize {
+        self.subscribers.read().len()
+    }
+
     /// Send one event to every live subscriber.
     ///
     /// A subscriber that cannot accept the event is removed. Its receiver then

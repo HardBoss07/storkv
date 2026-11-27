@@ -221,32 +221,4 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
             scheduler.shutdown();
         }
     }
-
-    fn apply_compaction_edit(
-        &self,
-        scope: &Arc<Scope<FS>>,
-        edit: Option<VersionEdit>,
-    ) -> crate::Result<bool> {
-        let Some(edit) = edit else {
-            return Ok(false);
-        };
-        // Persist the edit first: the manifest must never point at a file that
-        // was already removed when the process restarts.
-        let obsolete: Vec<u64> = edit
-            .edits
-            .iter()
-            .filter_map(|record| match record {
-                EditRecord::DeleteSstFile { file_num, .. } => Some(*file_num),
-                _ => None,
-            })
-            .collect();
-        self.manifest_mgr.log_edit(edit)?;
-        for file_num in obsolete {
-            self.block_cache.invalidate_sst(scope.scope_id, file_num);
-            let path = scope.scope_dir.join(format!("{:016x}.sst", file_num));
-            scope.fs.remove_file(&path)?;
-        }
-        self.notify_write_stall();
-        Ok(true)
-    }
 }

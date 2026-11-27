@@ -5,6 +5,20 @@ use std::sync::atomic::Ordering;
 use super::{Db, ScopeHandle};
 
 impl Db {
+    /// Return the un-flushed WAL bytes and the total on-disk WAL bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O error when the WAL directory cannot be read.
+    pub fn wal_byte_stats(&self) -> crate::Result<(u64, u64)> {
+        self.inner.wal_byte_stats()
+    }
+
+    /// Return the number of live watch subscribers.
+    pub fn watch_subscriber_count(&self) -> usize {
+        self.inner.watch_registry.subscriber_count()
+    }
+
     /// Metadata (absolute expiry and sequence) of the visible version of a key.
     pub fn key_meta(
         &self,

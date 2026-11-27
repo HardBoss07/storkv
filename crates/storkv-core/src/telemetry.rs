@@ -11,6 +11,8 @@ pub struct Telemetry {
     pub write_conflicts_total: AtomicU64,
     /// Total compaction runs.
     pub compactions_total: AtomicU64,
+    /// Total bytes written by compaction.
+    pub compaction_bytes_written_total: AtomicU64,
     /// Total WAL sync operations.
     pub fsyncs_total: AtomicU64,
     /// Total successful backups.
@@ -29,7 +31,7 @@ pub struct Telemetry {
     pub block_cache_misses_total: AtomicU64,
 }
 
-const _: () = assert!(std::mem::size_of::<Telemetry>() == 12 * std::mem::size_of::<u64>());
+const _: () = assert!(std::mem::size_of::<Telemetry>() == 13 * std::mem::size_of::<u64>());
 
 impl Telemetry {
     /// Create a counter set with all values at zero.
@@ -55,6 +57,12 @@ impl Telemetry {
     /// Increment the compaction counter.
     pub fn record_compaction(&self) {
         self.compactions_total.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Add bytes written by compaction to the counter.
+    pub fn record_compaction_bytes_written(&self, bytes: u64) {
+        self.compaction_bytes_written_total
+            .fetch_add(bytes, Ordering::Relaxed);
     }
 
     /// Increment the fsync counter.
