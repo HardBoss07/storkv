@@ -1,3 +1,6 @@
+//! Conversions between engine errors and wire errors, plus empty-response
+//! helpers.
+
 use storkv_core::StorkvError;
 use storkv_proto::{Response, StorkvWireError};
 

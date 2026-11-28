@@ -1,3 +1,6 @@
+//! Startup helpers for `storkvd`: address validation, admin token resolution,
+//! and scope provisioning.
+
 use storkv_core::{ScopeOptions, StorkvError};
 use storkv_server::{ConfigError, Server, validate_listen_address};
 

@@ -1,3 +1,5 @@
+//! Explicit transaction request handlers built on one engine transaction.
+
 use bytes::Bytes;
 use storkv_proto::{Response, StorkvWireError, WireTxMutation};
 

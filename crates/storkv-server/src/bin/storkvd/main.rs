@@ -1,3 +1,6 @@
+//! `storkvd` daemon entry point: load configuration, start the server, and
+//! spawn every configured transport listener.
+
 mod args;
 mod startup;
 

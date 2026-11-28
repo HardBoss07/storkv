@@ -1,3 +1,9 @@
+//! Request routing for [`crate::Server::dispatch_request`].
+//!
+//! The router applies admin-only access, replica write rejection, and
+//! consistency checks before it calls one handler. The handlers live in the
+//! child modules.
+
 use std::path::Path;
 use std::time::Instant;
 

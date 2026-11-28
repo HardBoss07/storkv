@@ -1,3 +1,9 @@
+//! Per-server statistics: scope read and write counters, transport counters,
+//! write latency samples, and per-operation histograms.
+//!
+//! Every counter uses saturating or bounded arithmetic so that a long-running
+//! server keeps a fixed memory footprint.
+
 use std::collections::{HashMap, VecDeque};
 
 use parking_lot::Mutex;

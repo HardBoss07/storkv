@@ -130,7 +130,7 @@ impl Server {
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::NotPrimary`] when the node is a replica.
+    /// Returns `StorkvError::NotPrimary` when the node is a replica.
     pub(crate) fn ensure_primary(&self) -> Result<(), StorkvError> {
         if self.is_primary() {
             Ok(())

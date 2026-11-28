@@ -1,3 +1,8 @@
+//! Transport-agnostic listener and accepted-stream types.
+//!
+//! The native TCP, TLS, and Unix-domain socket accept loops share these
+//! types.
+
 use std::pin::Pin;
 use std::task::{Context, Poll};
 

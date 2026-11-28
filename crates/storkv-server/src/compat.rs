@@ -166,11 +166,19 @@ pub(crate) fn flush_redis_scopes(db: &Db) -> storkv_core::Result<()> {
 }
 
 /// Serve the Redis RESP listener until the server shuts down.
+///
+/// # Errors
+///
+/// Returns an I/O error when the accept loop fails.
 pub async fn serve_redis_tcp(server: Arc<Server>, listener: TcpListener) -> std::io::Result<()> {
     redis::serve(server, listener).await
 }
 
 /// Serve the Memcached ASCII listener until the server shuts down.
+///
+/// # Errors
+///
+/// Returns an I/O error when the accept loop fails.
 pub async fn serve_memcached_tcp(
     server: Arc<Server>,
     listener: TcpListener,

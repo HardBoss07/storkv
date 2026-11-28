@@ -4,11 +4,11 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use axum::extract::ws::WebSocket;
-use storkv_proto::{Message, Response};
+use storkv_proto::{Message, Response, WireChangeEvent};
 use tokio::sync::mpsc;
 
 use super::super::json_rpc;
-use super::{Outbound, WATCH_POLL_INTERVAL, Watcher, wire_change_event};
+use super::{Outbound, WATCH_POLL_INTERVAL, Watcher};
 use crate::server::Server;
 use crate::transports::http::json::code_for_wire_error;
 
@@ -66,4 +66,35 @@ pub(super) fn start_watcher(
         }
     });
     Ok(Watcher { stop, handle })
+}
+
+fn wire_change_event(event: storkv_core::watch::ChangeEvent) -> Option<WireChangeEvent> {
+    match event {
+        storkv_core::watch::ChangeEvent::Put {
+            scope_id,
+            key,
+            value,
+            seq,
+            expires_at_ms,
+        } => Some(WireChangeEvent::Put {
+            scope_id,
+            key,
+            value,
+            seq,
+            expires_at_ms,
+        }),
+        storkv_core::watch::ChangeEvent::Delete { scope_id, key, seq } => {
+            Some(WireChangeEvent::Delete { scope_id, key, seq })
+        }
+        storkv_core::watch::ChangeEvent::DropScope { scope_id, seq } => {
+            Some(WireChangeEvent::DropScope { scope_id, seq })
+        }
+        storkv_core::watch::ChangeEvent::InvalidateScope { scope_id, seq } => {
+            Some(WireChangeEvent::InvalidateScope { scope_id, seq })
+        }
+        storkv_core::watch::ChangeEvent::Expired { scope_id, key, seq } => {
+            Some(WireChangeEvent::Expired { scope_id, key, seq })
+        }
+        _ => None,
+    }
 }

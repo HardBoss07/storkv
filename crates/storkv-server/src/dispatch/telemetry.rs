@@ -1,3 +1,5 @@
+//! Telemetry snapshot request handler.
+
 use std::sync::atomic::Ordering;
 
 use storkv_proto::{Response, WireTelemetrySnapshot};

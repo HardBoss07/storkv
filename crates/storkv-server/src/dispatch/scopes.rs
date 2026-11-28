@@ -1,3 +1,5 @@
+//! Scope lifecycle request handlers.
+
 use storkv_core::{CompactionStyle, Durability, Retention, ScopeOptions, StorageMode};
 use storkv_proto::{
     Response, WireCompactionStyle, WireDurability, WireRetention, WireScopeHandle, WireScopeOptions,

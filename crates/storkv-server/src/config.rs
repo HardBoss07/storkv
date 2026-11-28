@@ -1,3 +1,9 @@
+//! Server configuration types: [`ServerConfig`], [`ReplicationRole`], and the
+//! `storkv.toml` file model.
+//!
+//! The child modules parse and validate every value before a [`crate::Server`]
+//! starts.
+
 use std::path::PathBuf;
 
 mod file;

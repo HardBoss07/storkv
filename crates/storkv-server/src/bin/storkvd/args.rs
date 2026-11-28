@@ -1,3 +1,5 @@
+//! Command-line arguments for the `storkvd` daemon.
+
 use std::path::PathBuf;
 
 use clap::Parser;

@@ -1,3 +1,8 @@
+//! Per-scope settings from the `[[scopes]]` table of `storkv.toml`.
+//!
+//! Each entry converts into [`storkv_core::ScopeOptions`] with validated
+//! bounds.
+
 use std::collections::BTreeSet;
 use std::time::Duration;
 

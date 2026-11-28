@@ -6,6 +6,10 @@ use bytes::Bytes;
 use storkv_core::{Db, ScopeHandle};
 
 use super::codec::{RESP2_VERSION, Resp};
+mod classify;
+
+use classify::{allows_before_auth, is_write_command, records_transport_request};
+
 use super::helpers::{is_known_command, readonly_error, storage_error, upper};
 use crate::compat;
 use crate::server::Server;
@@ -189,72 +193,4 @@ impl RedisSession {
         }
         self.server.ensure_primary().map_err(|_| readonly_error())
     }
-}
-
-/// Return `true` for commands that a connection may run before `AUTH`.
-fn allows_before_auth(command: &str) -> bool {
-    matches!(command, "AUTH" | "HELLO" | "PING")
-}
-
-fn is_write_command(command: &str) -> bool {
-    matches!(
-        command,
-        "SET"
-            | "SETEX"
-            | "PSETEX"
-            | "SETNX"
-            | "MSET"
-            | "MSETNX"
-            | "GETDEL"
-            | "GETEX"
-            | "RENAME"
-            | "RENAMENX"
-            | "DEL"
-            | "UNLINK"
-            | "INCR"
-            | "DECR"
-            | "INCRBY"
-            | "DECRBY"
-            | "APPEND"
-            | "EXPIRE"
-            | "PEXPIRE"
-            | "EXPIREAT"
-            | "PEXPIREAT"
-            | "PERSIST"
-            | "HSET"
-            | "HDEL"
-            | "HINCRBY"
-            | "SADD"
-            | "SREM"
-            | "FLUSHDB"
-            | "FLUSHALL"
-            | "EXEC"
-    )
-}
-
-fn records_transport_request(command: &str) -> bool {
-    matches!(
-        command,
-        "PING"
-            | "ECHO"
-            | "GET"
-            | "SET"
-            | "MGET"
-            | "MSET"
-            | "DEL"
-            | "UNLINK"
-            | "EXISTS"
-            | "SCAN"
-            | "KEYS"
-            | "HSET"
-            | "HGET"
-            | "HGETALL"
-            | "SADD"
-            | "SMEMBERS"
-            | "INFO"
-            | "DBSIZE"
-            | "TTL"
-            | "PTTL"
-            | "HELLO"
-    )
 }

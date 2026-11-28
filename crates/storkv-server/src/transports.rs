@@ -104,6 +104,10 @@ impl Drop for ConnectionGuard {
 }
 
 /// Bind and serve the HTTP REST/WebSocket application.
+///
+/// # Errors
+///
+/// Returns an I/O error when the serve loop fails.
 pub async fn serve_http_tcp(
     server: Arc<Server>,
     listener: TcpListener,
@@ -114,6 +118,10 @@ pub async fn serve_http_tcp(
 }
 
 /// Serve only the WebSocket upgrade endpoint on a dedicated listener.
+///
+/// # Errors
+///
+/// Returns an I/O error when the serve loop fails.
 pub async fn serve_ws_tcp(
     server: Arc<Server>,
     listener: TcpListener,
@@ -138,6 +146,10 @@ async fn serve_app(
 }
 
 /// Bind and serve the gRPC services on an already-bound TCP listener.
+///
+/// # Errors
+///
+/// Returns a transport error when the serve loop fails.
 pub async fn serve_grpc_tcp(
     server: Arc<Server>,
     listener: TcpListener,

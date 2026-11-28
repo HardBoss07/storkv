@@ -1,3 +1,5 @@
+//! Data-plane request handlers: keys, scans, merges, and metadata.
+
 use bytes::Bytes;
 use storkv_core::{MergeOp, ScopeHandle};
 use storkv_proto::{Response, StorkvWireError, WireMergeOp, WirePutCondition, WirePutIfResult};

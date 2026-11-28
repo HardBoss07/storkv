@@ -1,3 +1,8 @@
+//! Replica task that streams WAL frames and snapshots from a primary.
+//!
+//! The task reconnects forever and applies each frame in order. It never
+//! advances the applied sequence when the local engine rejects a frame.
+
 use std::sync::Arc;
 use std::time::Duration;
 

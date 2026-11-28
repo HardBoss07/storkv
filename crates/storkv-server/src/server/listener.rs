@@ -65,6 +65,10 @@ impl Server {
     /// A single accept loop/handler is shared by both transports; the
     /// `AcceptedStream` enum dispatches `AsyncRead`/`AsyncWrite` to the
     /// concrete stream type.
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O error when the accept loop fails.
     pub async fn run_listener(
         self: Arc<Self>,
         listener: ServerListener,

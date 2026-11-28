@@ -1,3 +1,5 @@
+//! Backup request handlers: trigger, status, verify, and list.
+
 use std::path::PathBuf;
 
 use storkv_core::backup::{self, BackupKind, BackupReport, BackupStatus, BackupVerifyReport};

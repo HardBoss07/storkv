@@ -5,7 +5,7 @@ use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
 use bytes::BytesMut;
-use storkv_proto::{Message, MessagePayload, Request, Response, WireChangeEvent};
+use storkv_proto::{Message, MessagePayload, Request, Response};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
@@ -222,36 +222,5 @@ impl Session {
         routing::send_outbound(socket, acknowledge(request_id))
             .await
             .is_ok()
-    }
-}
-
-pub(super) fn wire_change_event(event: storkv_core::watch::ChangeEvent) -> Option<WireChangeEvent> {
-    match event {
-        storkv_core::watch::ChangeEvent::Put {
-            scope_id,
-            key,
-            value,
-            seq,
-            expires_at_ms,
-        } => Some(WireChangeEvent::Put {
-            scope_id,
-            key,
-            value,
-            seq,
-            expires_at_ms,
-        }),
-        storkv_core::watch::ChangeEvent::Delete { scope_id, key, seq } => {
-            Some(WireChangeEvent::Delete { scope_id, key, seq })
-        }
-        storkv_core::watch::ChangeEvent::DropScope { scope_id, seq } => {
-            Some(WireChangeEvent::DropScope { scope_id, seq })
-        }
-        storkv_core::watch::ChangeEvent::InvalidateScope { scope_id, seq } => {
-            Some(WireChangeEvent::InvalidateScope { scope_id, seq })
-        }
-        storkv_core::watch::ChangeEvent::Expired { scope_id, key, seq } => {
-            Some(WireChangeEvent::Expired { scope_id, key, seq })
-        }
-        _ => None,
     }
 }
