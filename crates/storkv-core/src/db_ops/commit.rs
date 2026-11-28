@@ -19,7 +19,7 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::StorkvError::WriteConflict`] when a read key changed after the
+    /// Returns `crate::StorkvError::WriteConflict` when a read key changed after the
     /// transaction started, or an I/O error.
     pub fn commit_tx(&self, transaction: TransactionContext) -> crate::Result<()> {
         self.commit_tx_with_options(transaction, crate::WriteOptions::default())
@@ -30,9 +30,9 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::StorkvError::WriteConflict`] when a read key changed
+    /// Returns `crate::StorkvError::WriteConflict` when a read key changed
     /// after the transaction started,
-    /// [`crate::StorkvError::WriteStalled`] in non-blocking mode when a
+    /// `crate::StorkvError::WriteStalled` in non-blocking mode when a
     /// backpressure watermark is exceeded, or an I/O error.
     pub fn commit_tx_with_options(
         &self,

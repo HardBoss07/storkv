@@ -1,3 +1,4 @@
+//! Backup worker control state and wake signals.
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};

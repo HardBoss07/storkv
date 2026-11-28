@@ -1,3 +1,4 @@
+//! Scope creation, lookup, and drop operations.
 use crate::db::{DbInner, ScopeHandle};
 use crate::manifest::{
     CompactionStyleMode, DurabilityMode, EditRecord, RetentionMode, StorageModeMode, VersionEdit,
@@ -18,8 +19,8 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::ScopeAlreadyExists`] when the name is taken, or
-    /// [`StorkvError::InvalidOperation`] when the scope count is at the limit.
+    /// Returns `StorkvError::ScopeAlreadyExists` when the name is taken, or
+    /// `StorkvError::InvalidOperation` when the scope count is at the limit.
     pub fn create_scope(
         &self,
         name: String,
@@ -70,7 +71,7 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::ScopeNotFound`] when the name is unknown.
+    /// Returns `StorkvError::ScopeNotFound` when the name is unknown.
     pub fn update_scope_guardrails(
         &self,
         name: &str,
@@ -94,7 +95,7 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::ScopeNotFound`] when the name is unknown.
+    /// Returns `StorkvError::ScopeNotFound` when the name is unknown.
     pub fn drop_scope(&self, name: &str) -> crate::Result<()> {
         let _commit_guard = self.commit_lock.lock();
         let scope_id = remove_scope_name(self, name)?;

@@ -1,3 +1,4 @@
+//! Replication frame registry and subscriber state.
 use crate::error::StorkvError;
 use crate::wal::{WalBatchFrame, WalOp};
 use crossbeam_channel::{Receiver, Sender, TrySendError};
@@ -39,7 +40,7 @@ impl ReplicationRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::TooManySubscribers`] when the registry is full.
+    /// Returns `StorkvError::TooManySubscribers` when the registry is full.
     pub fn subscribe(&self) -> crate::Result<Receiver<WalBatchFrame>> {
         self.subscribe_replaying(Vec::new())
     }
@@ -51,9 +52,9 @@ impl ReplicationRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::ReplayBudgetExceeded`] when the replay is larger
+    /// Returns `StorkvError::ReplayBudgetExceeded` when the replay is larger
     /// than the queue or the replay budget. Returns
-    /// [`StorkvError::TooManySubscribers`] when the registry is full.
+    /// `StorkvError::TooManySubscribers` when the registry is full.
     pub fn subscribe_replaying(
         &self,
         replay: Vec<WalBatchFrame>,

@@ -1,3 +1,4 @@
+//! External process backup sink.
 use std::path::Path;
 
 use parking_lot::Mutex;
@@ -68,7 +69,7 @@ impl CommandPipeSink {
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::InvalidOperation`] when the program is empty.
+    /// Returns `StorkvError::InvalidOperation` when the program is empty.
     pub fn new(config: CommandPipeSinkConfig) -> Result<Self> {
         if config.program.trim().is_empty() {
             return Err(StorkvError::InvalidOperation(

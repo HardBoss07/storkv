@@ -1,3 +1,4 @@
+//! Manifest writer and version state manager.
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
@@ -34,7 +35,7 @@ impl<FS: FileSystem> ManifestManager<FS> {
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::Corruption`] on an invalid `CURRENT` file or
+    /// Returns `StorkvError::Corruption` on an invalid `CURRENT` file or
     /// manifest header, or an I/O error.
     pub fn open(fs: Arc<FS>, db_root: &Path) -> Result<Self> {
         let current_path = db_root.join(CURRENT_FILENAME);

@@ -1,3 +1,4 @@
+//! Range-limited compaction operation.
 use crate::compaction::Compactor;
 use crate::db::DbInner;
 use crate::types::{SequenceNumber, TimestampMs};
@@ -8,8 +9,8 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::StorkvError::InvalidOperation`] when `start >= end`.
-    /// Returns [`crate::StorkvError::ScopeNotFound`] when the scope is unknown.
+    /// Returns `crate::StorkvError::InvalidOperation` when `start >= end`.
+    /// Returns `crate::StorkvError::ScopeNotFound` when the scope is unknown.
     /// Returns an error when compaction or manifest logging fails.
     pub fn compact_range(
         &self,

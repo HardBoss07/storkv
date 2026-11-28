@@ -1,3 +1,4 @@
+//! Change event registry and subscriber streams.
 use crate::error::StorkvError;
 use bytes::Bytes;
 use crossbeam_channel::{Receiver, Sender, TrySendError};
@@ -125,7 +126,7 @@ impl WatchRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::TooManySubscribers`] when the registry is full.
+    /// Returns `StorkvError::TooManySubscribers` when the registry is full.
     pub fn subscribe(&self) -> crate::Result<Receiver<ChangeEvent>> {
         self.subscribe_replaying(Vec::new())
     }
@@ -137,9 +138,9 @@ impl WatchRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::ReplayBudgetExceeded`] when the replay is larger
+    /// Returns `StorkvError::ReplayBudgetExceeded` when the replay is larger
     /// than the queue or the replay budget. Returns
-    /// [`StorkvError::TooManySubscribers`] when the registry is full.
+    /// `StorkvError::TooManySubscribers` when the registry is full.
     pub fn subscribe_replaying(
         &self,
         replay: Vec<ChangeEvent>,

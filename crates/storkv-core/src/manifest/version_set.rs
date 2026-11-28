@@ -1,3 +1,4 @@
+//! Manifest version set state.
 use std::collections::{BTreeMap, HashMap};
 
 use bytes::Bytes;

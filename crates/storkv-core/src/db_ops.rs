@@ -1,3 +1,4 @@
+//! Database data, scan, maintenance, and replication operations.
 mod backpressure;
 mod commit;
 mod compaction_apply;

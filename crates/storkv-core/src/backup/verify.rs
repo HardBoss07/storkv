@@ -1,3 +1,4 @@
+//! Backup generation verification.
 use std::path::Path;
 
 use super::manifest::BackupManifest;
@@ -41,7 +42,7 @@ impl BackupVerifyReport {
 ///
 /// # Errors
 ///
-/// Returns [`crate::StorkvError::TargetSequenceUnavailable`] when `target_seq`
+/// Returns `crate::StorkvError::TargetSequenceUnavailable` when `target_seq`
 /// is outside the archived range, or a catalog read error.
 pub fn verify_backup(
     backup_root: &Path,

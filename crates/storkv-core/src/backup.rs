@@ -2,7 +2,7 @@
 //! point-in-time recovery.
 //!
 //! The engine is synchronous and runtime-agnostic: callers start a background
-//! thread with [`BackupConfig`] and drive status through `Db` methods.
+//! thread with [`BackupConfig`](crate::backup::BackupConfig) and drive status through `Db` methods.
 
 mod config;
 mod manifest;

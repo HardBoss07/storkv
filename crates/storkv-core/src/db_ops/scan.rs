@@ -1,3 +1,4 @@
+//! Range and prefix scan operations.
 use crate::ScanOptions;
 use crate::StorkvError;
 use crate::db::DbInner;
@@ -16,7 +17,7 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::ScopeIdNotFound`] when the scope is unknown.
+    /// Returns `StorkvError::ScopeIdNotFound` when the scope is unknown.
     pub fn scan(
         &self,
         scope_id: u32,
@@ -37,7 +38,7 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::ScopeIdNotFound`] when the scope is unknown.
+    /// Returns `StorkvError::ScopeIdNotFound` when the scope is unknown.
     pub fn scan_with(
         &self,
         scope_id: u32,
@@ -72,7 +73,7 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::ScopeIdNotFound`] when the scope is unknown.
+    /// Returns `StorkvError::ScopeIdNotFound` when the scope is unknown.
     pub fn scan_prefix(
         &self,
         scope_id: u32,
@@ -86,7 +87,7 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::ScopeIdNotFound`] when the scope is unknown.
+    /// Returns `StorkvError::ScopeIdNotFound` when the scope is unknown.
     pub fn scan_prefix_with(
         &self,
         scope_id: u32,

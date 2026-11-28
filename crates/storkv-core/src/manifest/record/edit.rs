@@ -1,3 +1,4 @@
+//! Manifest version edit types.
 use bytes::{Buf, BytesMut};
 
 use super::decode::decode_edit_record;
@@ -15,7 +16,7 @@ impl EditRecord {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::StorkvError::Corruption`] on a short or invalid record.
+    /// Returns `crate::StorkvError::Corruption` on a short or invalid record.
     pub fn decode(source: &mut impl Buf) -> Result<Self> {
         decode_edit_record(source)
     }

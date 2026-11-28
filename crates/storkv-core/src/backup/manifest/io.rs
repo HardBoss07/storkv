@@ -1,3 +1,8 @@
+//! Manifest and checksum file input and output.
+//!
+//! Every manifest write goes through a synced file. A checksum sidecar holds
+//! the CRC32C of the manifest bytes.
+
 use std::io::{Read, Write};
 use std::path::Path;
 
@@ -28,7 +33,7 @@ impl BackupManifest {
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::BackupCorruption`] on a read failure, a checksum
+    /// Returns `StorkvError::BackupCorruption` on a read failure, a checksum
     /// mismatch, invalid JSON, or an invalid manifest.
     pub fn read_from_dir(directory: &Path) -> Result<Self> {
         let manifest_path = directory.join(MANIFEST_FILENAME);
@@ -61,6 +66,11 @@ impl BackupManifest {
     }
 }
 
+/// Compute the CRC32C checksum of one file.
+///
+/// # Errors
+///
+/// Returns `StorkvError::Io` when the file cannot be opened or read.
 pub fn crc32c_file(path: &Path) -> Result<u32> {
     let mut file = std::fs::File::open(path)?;
     let mut buffer = vec![0u8; CRC_READ_CHUNK];
@@ -75,6 +85,12 @@ pub fn crc32c_file(path: &Path) -> Result<u32> {
     Ok(checksum)
 }
 
+/// Parse a hexadecimal CRC32C value with an optional `0x` prefix.
+///
+/// # Errors
+///
+/// Returns `StorkvError::BackupCorruption` when the text is not a
+/// hexadecimal `u32`.
 pub fn parse_crc32c(value: &str) -> Result<u32> {
     let trimmed = value.trim();
     let digits = trimmed
@@ -87,6 +103,12 @@ pub fn parse_crc32c(value: &str) -> Result<u32> {
     })
 }
 
+/// Write bytes to a new file and sync the file to disk.
+///
+/// # Errors
+///
+/// Returns `StorkvError::Io` when the file cannot be created, written, or
+/// synced.
 pub fn write_synced(path: &Path, bytes: &[u8]) -> Result<()> {
     let mut file = std::fs::File::create(path)?;
     file.write_all(bytes)?;

@@ -1,3 +1,4 @@
+//! Scope state, levels, and memtable access.
 use crate::error::Result;
 use crate::manifest::SstFileMeta;
 use crate::memtable::{FlushQueue, MemTable};

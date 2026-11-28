@@ -7,7 +7,7 @@ impl Db {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::StorkvError::ScopeAlreadyExists`] when the name is taken.
+    /// Returns `crate::StorkvError::ScopeAlreadyExists` when the name is taken.
     pub fn create_scope<S: Into<String>>(
         &self,
         name: S,
@@ -23,7 +23,7 @@ impl Db {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::StorkvError::ScopeNotFound`] when the name is unknown.
+    /// Returns `crate::StorkvError::ScopeNotFound` when the name is unknown.
     pub fn update_scope_guardrails(
         &self,
         name: &str,
@@ -36,7 +36,7 @@ impl Db {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::StorkvError::ScopeNotFound`] when the name is unknown.
+    /// Returns `crate::StorkvError::ScopeNotFound` when the name is unknown.
     pub fn drop_scope<S: AsRef<str>>(&self, name: S) -> crate::Result<()> {
         self.inner.drop_scope(name.as_ref())
     }
@@ -84,8 +84,8 @@ impl Db {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::StorkvError::InvalidOperation`] when `start >= end`.
-    /// Returns [`crate::StorkvError::ScopeNotFound`] when the scope is unknown.
+    /// Returns `crate::StorkvError::InvalidOperation` when `start >= end`.
+    /// Returns `crate::StorkvError::ScopeNotFound` when the scope is unknown.
     /// Returns an error when compaction or manifest logging fails.
     pub fn compact_range(
         &self,

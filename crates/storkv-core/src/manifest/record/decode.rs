@@ -1,3 +1,4 @@
+//! Manifest record decoding.
 use bytes::{Buf, Bytes};
 
 use super::types::{

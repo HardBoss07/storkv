@@ -1,3 +1,4 @@
+//! Watch subscription operations.
 use crate::db::DbInner;
 use crate::error::StorkvError;
 use crate::vfs::FileSystem;
@@ -15,8 +16,8 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::WatchCursorExpired`] when `from_seq` predates the
-    /// oldest retained WAL event, [`StorkvError::ReplayBudgetExceeded`] when the
+    /// Returns `StorkvError::WatchCursorExpired` when `from_seq` predates the
+    /// oldest retained WAL event, `StorkvError::ReplayBudgetExceeded` when the
     /// replay is too large, or an I/O error.
     pub fn watch_from(&self, from_seq: u64) -> crate::Result<Receiver<ChangeEvent>> {
         self.watch_filtered(from_seq, None)
@@ -26,8 +27,8 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::WatchCursorExpired`] when `from_seq` predates the
-    /// oldest retained WAL event, [`StorkvError::ReplayBudgetExceeded`] when the
+    /// Returns `StorkvError::WatchCursorExpired` when `from_seq` predates the
+    /// oldest retained WAL event, `StorkvError::ReplayBudgetExceeded` when the
     /// replay is too large, or an I/O error.
     pub fn watch_scope_from(
         &self,

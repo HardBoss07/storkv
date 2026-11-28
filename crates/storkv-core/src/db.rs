@@ -1,3 +1,4 @@
+//! Database handle and scope handle exports.
 mod handle;
 mod inner;
 mod open;

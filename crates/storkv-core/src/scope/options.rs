@@ -1,3 +1,4 @@
+//! Scope options and TTL guardrails.
 use crate::wal::Durability;
 use std::time::Duration;
 
@@ -120,7 +121,7 @@ impl ScopeOptions {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::StorkvError::InvalidTtl`] when the scope forbids
+    /// Returns `crate::StorkvError::InvalidTtl` when the scope forbids
     /// permanent writes or the lifetime is outside the configured limits.
     pub fn validate_expiry(&self, expires_at_ms: u64, now_ms: u64) -> crate::Result<()> {
         if expires_at_ms == 0 {

@@ -1,3 +1,4 @@
+//! Point read operations.
 use crate::StorkvError;
 use crate::db::DbInner;
 use crate::format::ValueType;
@@ -11,7 +12,7 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::ScopeIdNotFound`] when the scope is unknown.
+    /// Returns `StorkvError::ScopeIdNotFound` when the scope is unknown.
     pub fn get(&self, scope_id: u32, key: &[u8]) -> crate::Result<Option<Bytes>> {
         let read_seq = self.last_visible_seq.load(Ordering::Acquire);
         self.get_at(scope_id, key, SequenceNumber::new(read_seq))
@@ -21,7 +22,7 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::ScopeIdNotFound`] when the scope is unknown, or a
+    /// Returns `StorkvError::ScopeIdNotFound` when the scope is unknown, or a
     /// storage read error.
     pub fn key_meta_at(
         &self,
@@ -42,7 +43,7 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::ScopeIdNotFound`] when the scope is unknown, or a
+    /// Returns `StorkvError::ScopeIdNotFound` when the scope is unknown, or a
     /// storage read error.
     pub fn get_at(
         &self,

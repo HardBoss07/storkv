@@ -1,3 +1,4 @@
+//! Autonomous backup worker scheduling.
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::thread::JoinHandle;
@@ -93,6 +94,11 @@ impl AutoBackupHandle {
         self.controller.status()
     }
 
+    ///
+    /// # Errors
+    ///
+    /// Returns `StorkvError::AutoBackupNotRunning` when the worker is stopped.
+    /// Returns `StorkvError::Io` or `StorkvError::BackupSink` when the backup fails.
     /// Run a full backup synchronously on the calling thread.
     pub fn trigger_now(&self) -> Result<BackupReport> {
         self.controller.run_full_backup()
@@ -105,6 +111,10 @@ impl AutoBackupHandle {
         condvar.notify_all();
     }
 
+    ///
+    /// # Errors
+    ///
+    /// Never returns an error. The method stops the worker and waits for its thread.
     /// Stop the worker and wait for it to exit.
     pub fn shutdown(&self) -> Result<()> {
         self.stop();

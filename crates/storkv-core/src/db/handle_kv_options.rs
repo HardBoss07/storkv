@@ -56,8 +56,8 @@ impl Db {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::StorkvError::InvalidTtl`] when the scope policy rejects
-    /// the expiry, [`crate::StorkvError::WriteStalled`] in non-blocking mode
+    /// Returns `crate::StorkvError::InvalidTtl` when the scope policy rejects
+    /// the expiry, `crate::StorkvError::WriteStalled` in non-blocking mode
     /// when a stop watermark is exceeded, or an error when the write fails.
     pub fn put_if_with_options<K: AsRef<[u8]>, V: AsRef<[u8]>>(
         &self,

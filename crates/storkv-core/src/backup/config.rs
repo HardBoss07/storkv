@@ -1,3 +1,4 @@
+//! Backup configuration and retention policy.
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -64,7 +65,7 @@ impl BackupCompression {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::StorkvError::InvalidOperation`] for an unknown name.
+    /// Returns `crate::StorkvError::InvalidOperation` for an unknown name.
     pub fn parse(value: &str) -> crate::Result<Self> {
         match value.to_ascii_lowercase().as_str() {
             "none" => Ok(BackupCompression::None),

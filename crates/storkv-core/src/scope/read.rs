@@ -1,3 +1,4 @@
+//! Scope point read and metadata lookup paths.
 use crate::error::Result;
 use crate::format::{InternalKey, ValueType};
 use crate::manifest::SstFileMeta;

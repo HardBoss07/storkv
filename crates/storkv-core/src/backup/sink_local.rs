@@ -1,3 +1,4 @@
+//! Local filesystem backup sink.
 use std::path::{Path, PathBuf};
 
 use parking_lot::Mutex;

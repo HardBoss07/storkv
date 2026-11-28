@@ -1,3 +1,4 @@
+//! Consistent checkpoint image creation.
 use crate::db::DbInner;
 use crate::vfs::FileSystem;
 use std::path::Path;

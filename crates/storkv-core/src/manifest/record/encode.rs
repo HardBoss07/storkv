@@ -1,3 +1,4 @@
+//! Manifest record encoding.
 use bytes::{BufMut, BytesMut};
 
 use super::types::{

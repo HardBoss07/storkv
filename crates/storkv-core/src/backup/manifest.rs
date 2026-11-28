@@ -1,3 +1,4 @@
+//! Backup manifest types and validation.
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Result, StorkvError};
@@ -142,7 +143,7 @@ impl BackupManifest {
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::BackupCorruption`] when a field is invalid.
+    /// Returns `StorkvError::BackupCorruption` when a field is invalid.
     pub fn validate(&self) -> Result<()> {
         if self.format != BACKUP_FORMAT {
             return Err(StorkvError::BackupCorruption {

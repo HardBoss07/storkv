@@ -1,3 +1,4 @@
+//! Backup catalog loading and retention planning.
 use std::collections::BTreeSet;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -9,6 +10,11 @@ use super::manifest::{BackupKind, BackupManifest};
 use super::sink::RetentionPlan;
 use super::wal_index;
 
+///
+/// # Errors
+///
+/// Returns `StorkvError::Io` when the generations directory cannot be read.
+/// Returns `StorkvError::BackupCorruption` when a manifest fails validation.
 /// Load and schema-validate every full-generation manifest under `generations/`.
 pub fn load_catalog(backup_root: &Path) -> Result<Vec<BackupManifest>> {
     let generations_dir = backup_root.join("generations");
@@ -35,6 +41,11 @@ pub fn load_catalog(backup_root: &Path) -> Result<Vec<BackupManifest>> {
     Ok(manifests)
 }
 
+///
+/// # Errors
+///
+/// Returns the errors of [`load_catalog`].
+/// Returns `StorkvError::Io` when WAL segments cannot be inspected.
 /// Produce a conservative prune plan.
 ///
 /// A WAL segment is only removable when it is fully covered by the oldest

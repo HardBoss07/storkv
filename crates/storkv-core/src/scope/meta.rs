@@ -1,3 +1,4 @@
+//! Scope key metadata lookup.
 use crate::error::Result;
 use crate::format::{InternalKey, ValueType};
 use crate::memtable::MemTable;
@@ -21,6 +22,11 @@ pub struct KeyMeta {
 const _: () = assert!(std::mem::size_of::<KeyMeta>() == 16);
 
 impl<FS: FileSystem> Scope<FS> {
+    ///
+    /// # Errors
+    ///
+    /// Returns `StorkvError::Corruption` when a table block fails validation.
+    /// Returns `StorkvError::Io` when a table cannot be read.
     /// Look up the newest visible, non-expired version of `user_key` and return
     /// its expiry and sequence without materialising the value chain.
     pub fn key_meta(

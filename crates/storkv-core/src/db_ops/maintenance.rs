@@ -1,3 +1,4 @@
+//! Snapshot and compaction maintenance operations.
 use crate::compaction::{CompactionScheduler, Compactor, RateLimiter};
 use crate::db::DbInner;
 use crate::manifest::{EditRecord, VersionEdit};
@@ -12,6 +13,10 @@ mod compact_range;
 type CompactResult<FS> = crate::Result<(Arc<Scope<FS>>, Option<VersionEdit>)>;
 
 impl<FS: FileSystem + 'static> DbInner<FS> {
+    ///
+    /// # Errors
+    ///
+    /// Returns `StorkvError::Io` when the manifest cannot record the snapshot.
     /// Pin a snapshot at the current sequence number.
     pub fn create_snapshot(&self, name: String) -> crate::Result<()> {
         let seq = self.last_visible_seq.load(Ordering::Acquire);
@@ -24,6 +29,10 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
         self.manifest_mgr.log_edit(edit)
     }
 
+    ///
+    /// # Errors
+    ///
+    /// Returns `StorkvError::Io` when the manifest cannot record the update.
     /// Release a pinned snapshot.
     pub fn unpin_snapshot(&self, name: &str) -> crate::Result<()> {
         let mut edit = VersionEdit::new();

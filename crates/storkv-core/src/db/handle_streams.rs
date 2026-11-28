@@ -9,7 +9,7 @@ impl Db {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::StorkvError::TooManySubscribers`] when the watch
+    /// Returns `crate::StorkvError::TooManySubscribers` when the watch
     /// registry is full.
     pub fn watch(&self) -> crate::Result<crossbeam_channel::Receiver<ChangeEvent>> {
         self.inner.watch_registry.subscribe()
@@ -23,7 +23,7 @@ impl Db {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::StorkvError::WatchCursorExpired`] when the retained
+    /// Returns `crate::StorkvError::WatchCursorExpired` when the retained
     /// log no longer covers `from_seq`.
     pub fn watch_from(
         &self,
@@ -36,7 +36,7 @@ impl Db {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::StorkvError::WatchCursorExpired`] when the retained
+    /// Returns `crate::StorkvError::WatchCursorExpired` when the retained
     /// WAL history no longer covers `from_seq`.
     pub fn watch_scope_from(
         &self,
@@ -53,7 +53,7 @@ impl Db {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::StorkvError::WatchCursorExpired`] when the retained WAL
+    /// Returns `crate::StorkvError::WatchCursorExpired` when the retained WAL
     /// no longer covers `from_seq`, or an I/O error.
     pub fn replication_frames_from(
         &self,

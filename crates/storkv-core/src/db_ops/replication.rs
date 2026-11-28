@@ -1,3 +1,9 @@
+//! Replication cursor and snapshot operations.
+
+mod apply;
+
+use apply::frame_last_seq;
+
 use crate::db::DbInner;
 use crate::error::StorkvError;
 use crate::replication::{
@@ -5,7 +11,6 @@ use crate::replication::{
 };
 use crate::vfs::FileSystem;
 use crate::wal::{Durability, WalBatchFrame, WalOp, WalRecovery};
-use crate::watch::ChangeEvent;
 use crossbeam_channel::Receiver;
 use std::sync::atomic::Ordering;
 
@@ -18,8 +23,8 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::WatchCursorExpired`] when the retained WAL does
-    /// not cover `from_seq`, [`StorkvError::ReplayBudgetExceeded`] when the
+    /// Returns `StorkvError::WatchCursorExpired` when the retained WAL does
+    /// not cover `from_seq`, `StorkvError::ReplayBudgetExceeded` when the
     /// replay is too large, or an I/O error.
     pub fn replication_frames_from(&self, from_seq: u64) -> crate::Result<Receiver<WalBatchFrame>> {
         let _guard = self.commit_lock.lock();
@@ -224,62 +229,5 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
             }
         }
         Ok((oldest, replay))
-    }
-
-    fn apply_frame_ops(&self, frame: &WalBatchFrame, previous_seq: u64) {
-        let scopes = self.scopes.read();
-        for (index, op) in frame.ops.iter().enumerate() {
-            let op_seq = frame.batch_seq + index as u64;
-            if op_seq <= previous_seq {
-                continue;
-            }
-            crate::recovery::apply_wal_op(&scopes, op.clone(), op_seq);
-        }
-        drop(scopes);
-        for (index, op) in frame.ops.iter().enumerate() {
-            let op_seq = frame.batch_seq + index as u64;
-            if op_seq > previous_seq
-                && let Some(event) = watch_event_for_op(op, op_seq)
-            {
-                self.watch_registry.broadcast(event);
-            }
-        }
-    }
-}
-
-fn frame_last_seq(frame: &WalBatchFrame) -> Option<u64> {
-    let count = frame.ops.len() as u64;
-    (count > 0).then(|| frame.batch_seq.saturating_add(count - 1))
-}
-
-fn watch_event_for_op(op: &WalOp, seq: u64) -> Option<ChangeEvent> {
-    match op {
-        WalOp::Put {
-            scope_id,
-            key,
-            val,
-            expires_at_ms,
-        } => Some(ChangeEvent::Put {
-            scope_id: *scope_id,
-            key: key.clone(),
-            value: val.clone(),
-            seq,
-            expires_at_ms: *expires_at_ms,
-        }),
-        WalOp::Delete { scope_id, key } => Some(ChangeEvent::Delete {
-            scope_id: *scope_id,
-            key: key.clone(),
-            seq,
-        }),
-        WalOp::DropScope { scope_id } => Some(ChangeEvent::DropScope {
-            scope_id: *scope_id,
-            seq,
-        }),
-        WalOp::Merge { scope_id, .. } | WalOp::DeleteRange { scope_id, .. } => {
-            Some(ChangeEvent::InvalidateScope {
-                scope_id: *scope_id,
-                seq,
-            })
-        }
     }
 }

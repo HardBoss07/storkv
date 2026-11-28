@@ -1,3 +1,4 @@
+//! Immutable sorted table reader, writer, and cache exports.
 mod block;
 mod block_cache;
 mod bloom;

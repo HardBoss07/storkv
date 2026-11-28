@@ -19,6 +19,11 @@ impl Db {
         self.inner.watch_registry.subscriber_count()
     }
 
+    ///
+    /// # Errors
+    ///
+    /// Returns `StorkvError::ScopeIdNotFound` when the scope is missing.
+    /// Returns `StorkvError::Corruption` or `StorkvError::Io` when the lookup fails.
     /// Metadata (absolute expiry and sequence) of the visible version of a key.
     pub fn key_meta(
         &self,
@@ -40,6 +45,10 @@ impl Db {
         )
     }
 
+    ///
+    /// # Errors
+    ///
+    /// Returns the errors of [`Db::key_meta`].
     /// Remaining TTL in milliseconds.
     ///
     /// `None` means the key does not exist. `Some(0)` means the key is

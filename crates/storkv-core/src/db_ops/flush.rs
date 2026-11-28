@@ -1,3 +1,4 @@
+//! MemTable flush operations.
 use crate::db::DbInner;
 use crate::format::{InternalKey, ValueType};
 use crate::manifest::{EditRecord, SstFileMeta, VersionEdit};

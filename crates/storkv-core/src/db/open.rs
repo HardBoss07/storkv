@@ -1,3 +1,4 @@
+//! Database open, recovery, and directory lock setup.
 use crate::db::DbInner;
 use crate::manifest::{EditRecord, ManifestManager, VersionEdit};
 use crate::mvcc::DefaultMergeOperator;

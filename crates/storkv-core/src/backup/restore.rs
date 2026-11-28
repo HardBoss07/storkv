@@ -1,3 +1,4 @@
+//! Backup restore planning and replay.
 use std::path::Path;
 
 use crate::error::{Result, StorkvError};
@@ -30,9 +31,9 @@ pub struct RestoreReport {
 ///
 /// # Errors
 ///
-/// Returns [`StorkvError::TargetSequenceUnavailable`] when the target is out of
-/// range, [`StorkvError::BackupCorruption`] on a failed verification, or
-/// [`StorkvError::RestoreTargetNotEmpty`] when the target directory is not empty.
+/// Returns `StorkvError::TargetSequenceUnavailable` when the target is out of
+/// range, `StorkvError::BackupCorruption` on a failed verification, or
+/// `StorkvError::RestoreTargetNotEmpty` when the target directory is not empty.
 pub fn restore_from_backup(
     backup_root: &Path,
     target_data_dir: &Path,
@@ -118,6 +119,10 @@ pub fn restore_from_backup(
     })
 }
 
+///
+/// # Errors
+///
+/// Returns the errors of [`restore_from_backup`].
 /// Helper for callers that want to restore using a previously-built config root.
 pub fn restore_from_config(
     config: &BackupConfig,

@@ -1,3 +1,4 @@
+//! Manifest record value types.
 use bytes::Bytes;
 
 /// Magic bytes at the start of every manifest edit file.

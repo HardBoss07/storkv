@@ -1,3 +1,4 @@
+//! Crate error and result types.
 use std::path::PathBuf;
 use thiserror::Error;
 

@@ -1,3 +1,4 @@
+//! Backup manifest path helpers.
 use std::path::{Path, PathBuf};
 
 use crate::error::{Result, StorkvError};
@@ -17,7 +18,7 @@ pub fn manifest_path_string(relative_path: &Path) -> String {
 ///
 /// # Errors
 ///
-/// Returns [`StorkvError::BackupCorruption`] when the path can escape the
+/// Returns `StorkvError::BackupCorruption` when the path can escape the
 /// backup generation directory.
 pub fn manifest_relative_path(value: &str) -> Result<PathBuf> {
     if value.is_empty() || value.starts_with('/') || value.starts_with('\\') || value.contains(':')
@@ -44,7 +45,7 @@ pub fn manifest_relative_path(value: &str) -> Result<PathBuf> {
 ///
 /// # Errors
 ///
-/// Returns [`StorkvError::BackupCorruption`] when the identifier is unsafe.
+/// Returns `StorkvError::BackupCorruption` when the identifier is unsafe.
 pub fn generation_directory(root: &Path, generation_id: &str) -> Result<PathBuf> {
     validate_generation_id(generation_id)?;
     Ok(root.join("generations").join(generation_id))
@@ -54,7 +55,7 @@ pub fn generation_directory(root: &Path, generation_id: &str) -> Result<PathBuf>
 ///
 /// # Errors
 ///
-/// Returns [`StorkvError::BackupCorruption`] when the identifier is unsafe.
+/// Returns `StorkvError::BackupCorruption` when the identifier is unsafe.
 pub fn staging_directory(root: &Path, generation_id: &str) -> Result<PathBuf> {
     validate_generation_id(generation_id)?;
     Ok(root.join(".tmp").join(generation_id))
@@ -64,7 +65,7 @@ pub fn staging_directory(root: &Path, generation_id: &str) -> Result<PathBuf> {
 ///
 /// # Errors
 ///
-/// Returns [`StorkvError::BackupCorruption`] when the identifier is empty or
+/// Returns `StorkvError::BackupCorruption` when the identifier is empty or
 /// contains a separator, a drive prefix, or a parent segment.
 pub(super) fn validate_generation_id(generation_id: &str) -> Result<()> {
     let unsafe_characters = generation_id

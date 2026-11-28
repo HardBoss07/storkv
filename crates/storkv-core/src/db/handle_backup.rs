@@ -19,6 +19,11 @@ impl Db {
         self.inner.checkpoint(dest_dir.as_ref())
     }
 
+    ///
+    /// # Errors
+    ///
+    /// Returns `StorkvError::AutoBackupAlreadyRunning` when a worker already runs.
+    /// Returns `StorkvError::Io` when the backup directory cannot be prepared.
     /// Start the autonomous continuous backup worker.
     ///
     /// Only one worker may run per database. The returned handle shares the
@@ -37,7 +42,7 @@ impl Db {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::StorkvError::AutoBackupNotRunning`] when no worker runs.
+    /// Returns `crate::StorkvError::AutoBackupNotRunning` when no worker runs.
     pub fn stop_auto_backup(&self) -> crate::Result<()> {
         let handle = self
             .auto_backup
@@ -55,6 +60,11 @@ impl Db {
             .map(|handle| handle.status())
     }
 
+    ///
+    /// # Errors
+    ///
+    /// Returns `StorkvError::AutoBackupNotRunning` when no worker runs.
+    /// Returns `StorkvError::Io` or `StorkvError::BackupSink` when the backup fails.
     /// Run a full backup immediately. `wait == false` wakes the worker and
     /// returns an empty report; `wait == true` blocks until the generation is
     /// published.

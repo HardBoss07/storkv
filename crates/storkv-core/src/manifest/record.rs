@@ -1,3 +1,4 @@
+//! Manifest record types and codec.
 mod decode;
 mod edit;
 mod encode;

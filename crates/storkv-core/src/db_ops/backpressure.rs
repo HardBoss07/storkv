@@ -58,9 +58,9 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::StorkvError::WriteStalled`] in non-blocking mode when a
+    /// Returns `crate::StorkvError::WriteStalled` in non-blocking mode when a
     /// stop watermark is exceeded. Returns
-    /// [`crate::StorkvError::InvalidOperation`] after the database shuts down.
+    /// `crate::StorkvError::InvalidOperation` after the database shuts down.
     pub(crate) fn wait_for_write_capacity(
         &self,
         scope_ids: &[u32],

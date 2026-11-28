@@ -1,3 +1,4 @@
+//! Database-wide options, limits, and defaults.
 use crate::scope::{DEFAULT_MAX_WAL_PIN_AGE, DEFAULT_MAX_WAL_PIN_BYTES};
 use std::time::Duration;
 
@@ -13,7 +14,7 @@ pub const DEFAULT_L0_STOP_WRITES_TRIGGER: usize = 12;
 /// Per-write behaviour options.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct WriteOptions {
-    /// Return [`crate::StorkvError::WriteStalled`] instead of blocking when a
+    /// Return `crate::StorkvError::WriteStalled` instead of blocking when a
     /// stop watermark is exceeded.
     pub non_blocking: bool,
 }

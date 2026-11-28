@@ -55,7 +55,7 @@ impl Db {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::StorkvError::InvalidTtl`] when the scope policy rejects
+    /// Returns `crate::StorkvError::InvalidTtl` when the scope policy rejects
     /// the expiry, or an error when the write fails.
     pub fn put_if<K: AsRef<[u8]>, V: AsRef<[u8]>>(
         &self,

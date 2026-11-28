@@ -1,3 +1,4 @@
+//! Runtime counters and latency samples.
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Lock-free runtime counters for one database.

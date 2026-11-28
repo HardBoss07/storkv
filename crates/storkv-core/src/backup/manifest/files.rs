@@ -1,3 +1,4 @@
+//! Backup manifest file entry collection.
 use std::path::Path;
 
 use crate::error::{Result, StorkvError};
@@ -7,6 +8,11 @@ use super::paths::manifest_path_string;
 use super::{BackupFileEntry, BackupFileKind, MANIFEST_CRC_SUFFIX, MANIFEST_FILENAME};
 use crate::backup::wal_index;
 
+///
+/// # Errors
+///
+/// Returns `StorkvError::Io` when a directory or file cannot be read.
+/// Returns `StorkvError::BackupCorruption` when a file metadata query fails.
 /// Build file entries for every file currently present in a staged generation.
 pub fn collect_file_entries(staged_dir: &Path) -> Result<Vec<BackupFileEntry>> {
     let mut entries = Vec::new();

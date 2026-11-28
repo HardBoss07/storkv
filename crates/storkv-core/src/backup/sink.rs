@@ -1,3 +1,4 @@
+//! Backup sink trait and retention plan types.
 use std::path::Path;
 
 use super::manifest::BackupManifest;

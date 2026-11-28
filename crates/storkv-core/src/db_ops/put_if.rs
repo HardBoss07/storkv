@@ -17,7 +17,7 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::StorkvError::ScopeIdNotFound`] when the scope is
+    /// Returns `crate::StorkvError::ScopeIdNotFound` when the scope is
     /// unknown, or a storage or WAL error.
     pub fn put_if(
         &self,
@@ -39,8 +39,8 @@ impl<FS: FileSystem + 'static> DbInner<FS> {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::StorkvError::ScopeIdNotFound`] when the scope is
-    /// unknown, [`crate::StorkvError::WriteStalled`] in non-blocking mode when
+    /// Returns `crate::StorkvError::ScopeIdNotFound` when the scope is
+    /// unknown, `crate::StorkvError::WriteStalled` in non-blocking mode when
     /// a backpressure watermark is exceeded, or a storage or WAL error.
     pub fn put_if_with_options(
         &self,

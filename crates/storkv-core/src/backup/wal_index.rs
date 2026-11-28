@@ -1,3 +1,4 @@
+//! WAL segment inspection for backup shipping.
 use std::path::{Path, PathBuf};
 
 use crate::error::{Result, StorkvError};
@@ -27,6 +28,11 @@ pub struct WalSegmentInfo {
     pub path: PathBuf,
 }
 
+///
+/// # Errors
+///
+/// Returns `StorkvError::Io` when the file cannot be read.
+/// Returns `StorkvError::Corruption` when the header, file name, or a frame is invalid.
 /// Read a sealed or active WAL segment and derive its sequence span.
 ///
 /// This never mutates the segment and does not verify the sealed flag; callers
@@ -73,6 +79,11 @@ pub fn inspect_segment(path: &Path) -> Result<WalSegmentInfo> {
     })
 }
 
+///
+/// # Errors
+///
+/// Returns `StorkvError::Io` when the directory cannot be read.
+/// Returns the errors of [`inspect_segment`] for each malformed segment.
 /// Enumerate `*.wal` files in a directory in ascending segment-number order.
 pub fn list_segments(wal_dir: &Path) -> Result<Vec<WalSegmentInfo>> {
     if !wal_dir.exists() {

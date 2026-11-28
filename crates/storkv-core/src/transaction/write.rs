@@ -17,7 +17,7 @@ impl<FS: FileSystem + 'static> Transaction<FS> {
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::KeyTooLarge`] or [`StorkvError::ValueTooLarge`]
+    /// Returns `StorkvError::KeyTooLarge` or `StorkvError::ValueTooLarge`
     /// when a field exceeds the format limit.
     pub fn put<K: AsRef<[u8]>, V: AsRef<[u8]>>(
         &mut self,
@@ -55,6 +55,11 @@ impl<FS: FileSystem + 'static> Transaction<FS> {
         self.put_with_expires_at(scope, key, val, expires_at_ms)
     }
 
+    ///
+    /// # Errors
+    ///
+    /// Returns `StorkvError::KeyTooLarge` when the key exceeds the limit.
+    /// Returns `StorkvError::ValueTooLarge` when the value exceeds the limit.
     /// Buffer a write with an absolute expiry timestamp (`0` = no expiry).
     pub fn put_with_expires_at<K: AsRef<[u8]>, V: AsRef<[u8]>>(
         &mut self,
@@ -85,7 +90,7 @@ impl<FS: FileSystem + 'static> Transaction<FS> {
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::KeyTooLarge`] when the key exceeds the format limit.
+    /// Returns `StorkvError::KeyTooLarge` when the key exceeds the format limit.
     pub fn delete<K: AsRef<[u8]>>(
         &mut self,
         scope: &crate::ScopeHandle,
@@ -102,7 +107,7 @@ impl<FS: FileSystem + 'static> Transaction<FS> {
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::KeyTooLarge`] when a bound exceeds the format limit.
+    /// Returns `StorkvError::KeyTooLarge` when a bound exceeds the format limit.
     pub fn delete_range<K: AsRef<[u8]>>(
         &mut self,
         scope: &crate::ScopeHandle,
@@ -145,7 +150,7 @@ impl<FS: FileSystem + 'static> Transaction<FS> {
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::WriteConflict`] when a key in the read set changed
+    /// Returns `StorkvError::WriteConflict` when a key in the read set changed
     /// after the transaction started.
     pub fn commit(self) -> crate::Result<()> {
         self.commit_with_options(crate::WriteOptions::default())
@@ -155,9 +160,9 @@ impl<FS: FileSystem + 'static> Transaction<FS> {
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::WriteConflict`] when a key in the read set changed
+    /// Returns `StorkvError::WriteConflict` when a key in the read set changed
     /// after the transaction started, or
-    /// [`StorkvError::WriteStalled`] in non-blocking mode when a backpressure
+    /// `StorkvError::WriteStalled` in non-blocking mode when a backpressure
     /// watermark is exceeded.
     pub fn commit_with_options(mut self, options: crate::WriteOptions) -> crate::Result<()> {
         let read_seq = self.ctx.read_seq;

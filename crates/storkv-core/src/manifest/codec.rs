@@ -1,3 +1,4 @@
+//! Manifest binary codec.
 use bytes::{Buf, BufMut, BytesMut};
 
 use crate::error::{Result, StorkvError};
@@ -49,7 +50,7 @@ impl VersionEdit {
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::Corruption`] on a short frame, checksum mismatch,
+    /// Returns `StorkvError::Corruption` on a short frame, checksum mismatch,
     /// or invalid record.
     pub fn decode(source: &[u8]) -> Result<(Self, usize)> {
         let (checksum, payload_length) = decode_frame_header(source)?;

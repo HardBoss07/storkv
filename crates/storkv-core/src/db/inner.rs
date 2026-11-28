@@ -1,3 +1,4 @@
+//! Shared database inner state and scope registry.
 use crate::compaction::CompactionScheduler;
 use crate::manifest::ManifestManager;
 use crate::mvcc::MergeOperator;

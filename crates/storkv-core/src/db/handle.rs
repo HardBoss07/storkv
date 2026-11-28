@@ -1,3 +1,4 @@
+//! Database and scope handle types.
 use crate::backup::AutoBackupHandle;
 use crate::db::DbInner;
 use crate::options::DbOptions;
@@ -59,7 +60,7 @@ impl Db {
     /// Open or create a database at `path`.
     ///
     /// The call takes an exclusive lock on `<path>/LOCK`. A second process that
-    /// opens the same directory receives [`crate::StorkvError::DatabaseLocked`].
+    /// opens the same directory receives `crate::StorkvError::DatabaseLocked`.
     ///
     /// # Errors
     ///
