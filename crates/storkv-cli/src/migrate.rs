@@ -34,6 +34,12 @@ pub enum MigrateTarget<'a> {
 }
 
 impl CliRunner {
+    ///
+    /// # Errors
+    ///
+    /// Returns a client error when the daemon cannot be reached or a scope is missing.
+    /// Returns a serialization error when a record cannot be encoded.
+    /// Returns an I/O error when the output file cannot be written.
     /// Export every key in `scope` to JSONL and return the record count.
     pub async fn migrate_export(
         socket: &str,
@@ -58,6 +64,11 @@ impl CliRunner {
         Ok(pairs.len())
     }
 
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O or serialization error when the input cannot be read or decoded.
+    /// Returns a client or core error when a write fails.
     /// Import JSONL into a data directory or a running daemon.
     pub async fn migrate_import(
         target: MigrateTarget<'_>,
@@ -68,6 +79,11 @@ impl CliRunner {
         apply_records(target, scope_name, &records).await
     }
 
+    ///
+    /// # Errors
+    ///
+    /// Returns a protocol error when the Redis server replies with invalid data.
+    /// Returns a client or core error when a write fails.
     /// Copy every key from a Redis-compatible server into StorKV.
     pub async fn migrate_from_redis(
         redis_url: &str,

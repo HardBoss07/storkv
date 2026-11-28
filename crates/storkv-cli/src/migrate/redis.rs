@@ -1,3 +1,4 @@
+//! Redis source reader for migration.
 use std::error::Error;
 use std::future::Future;
 use std::pin::Pin;

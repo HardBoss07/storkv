@@ -1,3 +1,4 @@
+//! Import records into a daemon or a data directory.
 use std::error::Error;
 use std::time::Duration;
 

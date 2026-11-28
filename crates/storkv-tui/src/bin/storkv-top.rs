@@ -1,3 +1,5 @@
+//! storkv-top: live terminal diagnostics dashboard for StorKV.
+
 use clap::Parser;
 use crossterm::{
     event::{self, Event, KeyCode},
@@ -9,7 +11,7 @@ use std::io;
 use std::time::Duration;
 use storkv_tui::{AdminPoll, BackupPoll, TelemetryPoll, fetch_dashboard, render_dashboard_full};
 
-/// storkv-top — live terminal diagnostics dashboard for StorKV.
+/// storkv-top: live terminal diagnostics dashboard for StorKV.
 #[derive(Parser, Debug)]
 #[command(
     name = "storkv-top",

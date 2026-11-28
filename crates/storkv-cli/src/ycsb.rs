@@ -1,3 +1,4 @@
+//! YCSB benchmark subcommand.
 use std::time::Instant;
 
 use storkv_client::{AsyncClient, ClientError, ScopeHandle};

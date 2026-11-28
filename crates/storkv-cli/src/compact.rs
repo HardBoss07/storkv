@@ -1,3 +1,4 @@
+//! Compaction subcommand.
 use storkv_client::{AsyncClient, ClientError};
 
 use crate::CliRunner;

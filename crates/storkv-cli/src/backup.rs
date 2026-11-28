@@ -1,3 +1,4 @@
+//! Checkpoint backup subcommand.
 use storkv_client::{AsyncClient, ClientError};
 use storkv_proto::{WireBackupStatus, WireBackupVerifyReport};
 

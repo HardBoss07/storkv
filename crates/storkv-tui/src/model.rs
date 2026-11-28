@@ -1,3 +1,5 @@
+//! Polled telemetry, admin, and backup models for the dashboard.
+
 use storkv_proto::{WireAdminStats, WireBackupStatus, WireTelemetrySnapshot};
 
 /// A snapshot of telemetry data polled from the server.
