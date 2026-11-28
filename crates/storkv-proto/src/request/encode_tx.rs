@@ -1,3 +1,7 @@
+//! Transaction read-set and write-set serialization.
+//!
+//! The encoder writes an explicit count before each set.
+
 use bytes::{BufMut, Bytes, BytesMut};
 
 use super::types::WireTxMutation;

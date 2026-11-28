@@ -1,8 +1,22 @@
+//! Frame envelope, length prefix, and message codec.
+//!
+//! A frame is a u32 big-endian length prefix, the 8-byte magic, a u16
+//! big-endian version, a u64 little-endian request identifier, a payload tag,
+//! and the payload. The length prefix counts the bytes after itself and must
+//! not exceed [`MAX_FRAME_SIZE`].
+
+mod primitives;
+
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
 use crate::error::StorkvWireError;
 use crate::request::{Request, decode_request, encode_request};
 use crate::response::{Response, decode_response, encode_response};
+
+pub(crate) use primitives::{
+    get_bytes, get_i64_le, get_opt_bytes, get_str, get_u8, get_u32_le, get_u64_le, put_bytes,
+    put_opt_bytes, put_str,
+};
 
 /// Protocol magic bytes: "STORKPRT"
 pub const PROTOCOL_MAGIC: &[u8; 8] = b"STORKPRT";
@@ -79,6 +93,12 @@ impl Message {
     /// Returns Ok(Some(msg)) if a complete frame was read and consumed,
     /// Returns Ok(None) if more data is needed,
     /// Returns Err if frame is malformed or invalid.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorkvWireError::Protocol`] when the frame length exceeds
+    /// [`MAX_FRAME_SIZE`], when the magic or version is invalid, when the
+    /// payload tag is unknown, or when the payload is truncated.
     pub fn decode(source: &mut BytesMut) -> Result<Option<Self>, StorkvWireError> {
         let Some(frame_length) = read_frame_length(source)? else {
             return Ok(None);
@@ -165,86 +185,4 @@ fn decode_payload(
             other
         ))),
     }
-}
-
-pub(crate) fn put_bytes<B: AsRef<[u8]>>(destination: &mut BytesMut, data: B) {
-    let slice = data.as_ref();
-    destination.put_u32_le(slice.len() as u32);
-    destination.put_slice(slice);
-}
-
-pub(crate) fn put_opt_bytes<B: AsRef<[u8]>>(destination: &mut BytesMut, data: Option<B>) {
-    match data {
-        Some(slice) => {
-            destination.put_u8(1);
-            put_bytes(destination, slice);
-        }
-        None => destination.put_u8(0),
-    }
-}
-
-pub(crate) fn put_str(destination: &mut BytesMut, text: &str) {
-    put_bytes(destination, text.as_bytes());
-}
-
-pub(crate) fn get_u8(source: &mut BytesMut) -> Result<u8, StorkvWireError> {
-    if source.is_empty() {
-        return Err(StorkvWireError::Protocol(
-            "Unexpected EOF reading u8".into(),
-        ));
-    }
-    Ok(source.get_u8())
-}
-
-pub(crate) fn get_u32_le(source: &mut BytesMut) -> Result<u32, StorkvWireError> {
-    if source.len() < U32_SIZE {
-        return Err(StorkvWireError::Protocol(
-            "Unexpected EOF reading u32".into(),
-        ));
-    }
-    Ok(source.get_u32_le())
-}
-
-pub(crate) fn get_i64_le(source: &mut BytesMut) -> Result<i64, StorkvWireError> {
-    if source.len() < U64_SIZE {
-        return Err(StorkvWireError::Protocol(
-            "Unexpected EOF reading i64".into(),
-        ));
-    }
-    Ok(source.get_i64_le())
-}
-
-pub(crate) fn get_u64_le(source: &mut BytesMut) -> Result<u64, StorkvWireError> {
-    if source.len() < U64_SIZE {
-        return Err(StorkvWireError::Protocol(
-            "Unexpected EOF reading u64".into(),
-        ));
-    }
-    Ok(source.get_u64_le())
-}
-
-pub(crate) fn get_bytes(source: &mut BytesMut) -> Result<Bytes, StorkvWireError> {
-    let payload_length = get_u32_le(source)? as usize;
-    if source.len() < payload_length {
-        return Err(StorkvWireError::Protocol(
-            "Unexpected EOF reading bytes".into(),
-        ));
-    }
-    Ok(source.split_to(payload_length).freeze())
-}
-
-pub(crate) fn get_opt_bytes(source: &mut BytesMut) -> Result<Option<Bytes>, StorkvWireError> {
-    match get_u8(source)? {
-        0 => Ok(None),
-        1 => Ok(Some(get_bytes(source)?)),
-        _ => Err(StorkvWireError::Protocol(
-            "Invalid optional bytes tag".into(),
-        )),
-    }
-}
-
-pub(crate) fn get_str(source: &mut BytesMut) -> Result<String, StorkvWireError> {
-    let text_bytes = get_bytes(source)?;
-    String::from_utf8(text_bytes.to_vec())
-        .map_err(|error| StorkvWireError::Protocol(format!("Invalid UTF-8: {}", error)))
 }

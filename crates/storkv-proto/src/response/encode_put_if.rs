@@ -1,3 +1,7 @@
+//! Conditional write result encoding.
+//!
+//! The layout matches [`super::decode_put_if`].
+
 use bytes::{BufMut, BytesMut};
 
 use super::types::WirePutIfResult;

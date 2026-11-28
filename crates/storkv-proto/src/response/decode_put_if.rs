@@ -1,3 +1,7 @@
+//! Conditional write result decoding.
+//!
+//! The result is either an applied sequence number or a conflict report.
+
 use bytes::BytesMut;
 
 use super::types::WirePutIfResult;

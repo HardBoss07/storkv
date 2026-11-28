@@ -1,11 +1,17 @@
+//! Response opcode dispatch and common field decoding.
+//!
+//! The decoder reads one opcode byte and then the fields for that variant.
+//! Unknown opcodes fail with [`crate::StorkvWireError::Protocol`].
+
 use bytes::{Buf, BytesMut};
 
-use super::decode_admin::decode_admin_stats;
+use super::decode_admin::{
+    decode_admin_stats, decode_backup_list, decode_backup_report, decode_backup_status,
+    decode_backup_verify_report,
+};
 use super::decode_put_if;
 use super::types::{
-    Response, WireBackupEntry, WireBackupKind, WireBackupReport, WireBackupStatus,
-    WireBackupVerifyError, WireBackupVerifyReport, WireChangeEvent, WireKeyMeta, WireScopeHandle,
-    WireTelemetrySnapshot,
+    Response, WireChangeEvent, WireKeyMeta, WireScopeHandle, WireTelemetrySnapshot,
 };
 
 use crate::error::{StorkvWireError, decode_error};
@@ -122,104 +128,6 @@ fn decode_telemetry(source: &mut BytesMut) -> Result<WireTelemetrySnapshot, Stor
         snapshot.wal_segments_shipped_total = get_u64_le(source)?;
     }
     Ok(snapshot)
-}
-
-fn get_opt_str(source: &mut BytesMut) -> Result<Option<String>, StorkvWireError> {
-    match get_u8(source)? {
-        0 => Ok(None),
-        1 => Ok(Some(get_str(source)?)),
-        _ => Err(StorkvWireError::Protocol(
-            "Invalid optional string tag".into(),
-        )),
-    }
-}
-
-fn decode_backup_report(source: &mut BytesMut) -> Result<WireBackupReport, StorkvWireError> {
-    Ok(WireBackupReport {
-        generation_id: get_str(source)?,
-        sequence: get_u64_le(source)?,
-        files: get_u32_le(source)?,
-        bytes: get_u64_le(source)?,
-        generations_removed: get_u32_le(source)?,
-        wal_segments_removed: get_u32_le(source)?,
-        bytes_freed: get_u64_le(source)?,
-    })
-}
-
-fn decode_backup_status(source: &mut BytesMut) -> Result<WireBackupStatus, StorkvWireError> {
-    Ok(WireBackupStatus {
-        enabled: get_u8(source)? != 0,
-        backup_root: get_opt_str(source)?,
-        last_backup_timestamp_ms: get_u64_le(source)?,
-        last_backup_seq: get_u64_le(source)?,
-        backups_completed_total: get_u64_le(source)?,
-        backups_failed_total: get_u64_le(source)?,
-        wal_segments_shipped_total: get_u64_le(source)?,
-        next_full_backup_in_ms: get_u64_le(source)?,
-        last_error: get_opt_str(source)?,
-        sink: get_str(source)?,
-    })
-}
-
-fn decode_backup_verify_report(
-    source: &mut BytesMut,
-) -> Result<WireBackupVerifyReport, StorkvWireError> {
-    let generations_checked = get_u32_le(source)?;
-    let files_checked = get_u64_le(source)?;
-    let bytes_checked = get_u64_le(source)?;
-    let wal_segments_checked = get_u64_le(source)?;
-    let error_count = get_u32_le(source)? as usize;
-    if error_count > source.len() / 8 {
-        return Err(StorkvWireError::Protocol(
-            "Backup verification error count exceeds available payload".into(),
-        ));
-    }
-    let mut errors = Vec::with_capacity(error_count);
-    for _ in 0..error_count {
-        errors.push(WireBackupVerifyError {
-            path: get_str(source)?,
-            detail: get_str(source)?,
-        });
-    }
-    Ok(WireBackupVerifyReport {
-        generations_checked,
-        files_checked,
-        bytes_checked,
-        wal_segments_checked,
-        errors,
-    })
-}
-
-fn decode_backup_list(source: &mut BytesMut) -> Result<Vec<WireBackupEntry>, StorkvWireError> {
-    let entry_count = get_u32_le(source)? as usize;
-    // Each entry has at least two u32 string prefixes plus fixed fields.
-    if entry_count > source.len() / 24 {
-        return Err(StorkvWireError::Protocol(
-            "Backup entry count exceeds available payload".into(),
-        ));
-    }
-    let mut entries = Vec::with_capacity(entry_count);
-    for _ in 0..entry_count {
-        let generation_id = get_str(source)?;
-        let kind = match get_u8(source)? {
-            1 => WireBackupKind::Full,
-            2 => WireBackupKind::Wal,
-            _ => {
-                return Err(StorkvWireError::Protocol("Invalid backup kind".into()));
-            }
-        };
-        entries.push(WireBackupEntry {
-            generation_id,
-            kind,
-            created_at_ms: get_u64_le(source)?,
-            min_seq: get_u64_le(source)?,
-            max_seq: get_u64_le(source)?,
-            total_bytes: get_u64_le(source)?,
-            files: get_u32_le(source)?,
-            compression: get_str(source)?,
-        });
-    }
-    Ok(entries)
 }
 
 fn decode_key_meta(source: &mut BytesMut) -> Result<Response, StorkvWireError> {

@@ -1,6 +1,12 @@
+//! Request opcode dispatch and field encoding.
+//!
+//! Each request variant writes one opcode byte and then its fields in the
+//! order that [`super::decode`] reads them.
+
 use bytes::{BufMut, BytesMut};
 
 use super::encode_merge::encode_merge_op;
+use super::encode_scan::encode_scan_flags;
 use super::encode_tx;
 use super::types::{Request, WireCompactionStyle, WireDurability, WireRetention, WireScopeOptions};
 use crate::frame::{put_bytes, put_opt_bytes, put_str};
@@ -164,31 +170,6 @@ pub(crate) fn encode_request(destination: &mut BytesMut, request: &Request) {
             destination.put_u8(mode);
             destination.put_u64_le(max_lag_ms);
         }
-    }
-}
-
-fn encode_scan_flags(
-    destination: &mut BytesMut,
-    limit: Option<u32>,
-    reverse: bool,
-    keys_only: bool,
-) {
-    if limit.is_none() && !reverse && !keys_only {
-        return;
-    }
-    let mut flags = 0u8;
-    if limit.is_some() {
-        flags |= 1;
-    }
-    if reverse {
-        flags |= 2;
-    }
-    if keys_only {
-        flags |= 4;
-    }
-    destination.put_u8(flags);
-    if let Some(limit) = limit {
-        destination.put_u32_le(limit);
     }
 }
 

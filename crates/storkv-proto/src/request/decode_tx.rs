@@ -1,3 +1,8 @@
+//! Transaction commit request decoding.
+//!
+//! Read and write sets carry explicit counts. The decoder rejects counts that
+//! cannot fit in the remaining payload before it reserves memory.
+
 use bytes::{Bytes, BytesMut};
 
 use super::types::{Request, WireTxMutation};

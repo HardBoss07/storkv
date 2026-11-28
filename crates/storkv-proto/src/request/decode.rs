@@ -1,6 +1,12 @@
+//! Request opcode dispatch and common field decoding.
+//!
+//! The decoder reads one opcode byte and then the fields for that variant.
+//! Unknown opcodes fail with [`crate::StorkvWireError::Protocol`].
+
 use bytes::{Buf, BytesMut};
 use std::time::Duration;
 
+use super::decode_scan::{decode_scan_prefix_request, decode_scan_request};
 use super::decode_scope::decode_create_scope_request;
 use super::decode_tx::decode_tx_commit_request;
 use super::types::{Request, WireMergeOp, WirePutCondition};
@@ -199,46 +205,5 @@ fn decode_merge_request(source: &mut BytesMut) -> Result<Request, StorkvWireErro
         scope_id,
         key: user_key,
         op: merge_op,
-    })
-}
-
-fn decode_scan_flags(source: &mut BytesMut) -> Result<(Option<u32>, bool, bool), StorkvWireError> {
-    if source.remaining() == 0 {
-        return Ok((None, false, false));
-    }
-    let flags = get_u8(source)?;
-    let limit = if flags & 1 != 0 {
-        Some(get_u32_le(source)?)
-    } else {
-        None
-    };
-    Ok((limit, flags & 2 != 0, flags & 4 != 0))
-}
-
-fn decode_scan_request(source: &mut BytesMut) -> Result<Request, StorkvWireError> {
-    let scope_id = get_u32_le(source)?;
-    let start_key = get_opt_bytes(source)?;
-    let end_key = get_opt_bytes(source)?;
-    let (limit, reverse, keys_only) = decode_scan_flags(source)?;
-    Ok(Request::Scan {
-        scope_id,
-        start_key,
-        end_key,
-        limit,
-        reverse,
-        keys_only,
-    })
-}
-
-fn decode_scan_prefix_request(source: &mut BytesMut) -> Result<Request, StorkvWireError> {
-    let scope_id = get_u32_le(source)?;
-    let prefix = get_bytes(source)?;
-    let (limit, reverse, keys_only) = decode_scan_flags(source)?;
-    Ok(Request::ScanPrefix {
-        scope_id,
-        prefix,
-        limit,
-        reverse,
-        keys_only,
     })
 }

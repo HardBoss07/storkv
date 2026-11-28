@@ -1,3 +1,9 @@
+//! Consistency levels for data operations.
+//!
+//! The level controls which node serves a read. A primary always serves strong
+//! reads. A replica serves reads according to the configured level. The wire
+//! form is a mode tag plus a lag bound in milliseconds.
+
 /// Consistency level requested for data operations.
 ///
 /// The level selects which node serves a read and how much replication lag is

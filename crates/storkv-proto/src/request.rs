@@ -1,8 +1,12 @@
+//! Request wire types, encoders, and decoders.
+
 mod decode;
+mod decode_scan;
 mod decode_scope;
 mod decode_tx;
 mod encode;
 mod encode_merge;
+mod encode_scan;
 mod encode_tx;
 mod types;
 

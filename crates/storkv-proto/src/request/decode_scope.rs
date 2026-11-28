@@ -1,3 +1,8 @@
+//! Scope creation request and scope option decoding.
+//!
+//! Older peers omit the TTL guardrail trailer. The decoder keeps the default
+//! values when the trailer is absent.
+
 use bytes::{Buf, BytesMut};
 use std::time::Duration;
 

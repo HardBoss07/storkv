@@ -1,3 +1,8 @@
+//! Unix-domain socket address helpers.
+//!
+//! Detection is a heuristic. It does not resolve the address or touch the
+//! filesystem.
+
 /// Heuristic shared by server/client tooling: an address refers to a
 /// Unix-domain socket when it uses the `unix:` scheme or looks like a
 /// filesystem path rather than a `host:port` TCP endpoint.

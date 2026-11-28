@@ -1,7 +1,10 @@
+//! Response wire types, encoders, and decoders.
+
 mod decode;
 mod decode_admin;
 mod decode_put_if;
 mod encode;
+mod encode_admin;
 mod encode_put_if;
 mod types;
 
