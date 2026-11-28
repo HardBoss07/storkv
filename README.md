@@ -18,16 +18,20 @@ Operational tools come with the workspace: `storkvctl` for health, integrity, ba
 - **Scopes.** Each scope has its own memtable, SSTable levels, durability mode, retention policy, and storage mode. All scopes share one WAL.
 - **Storage modes.** Each scope can live on disk, in RAM only, or in RAM with a disk WAL and recovery snapshots. `Db::open_in_memory` opens a process-only database.
 - **MVCC and OCC transactions.** Snapshot reads, optimistic commit validation, and explicit write conflicts.
+- **Conditional writes.** `put_if` matches on absence, presence, sequence, or value in one round trip.
+- **Merge operators.** Atomic counters, bounded appends, min and max, bitwise OR and AND, and custom operators.
 - **Durable writes.** CRC32C-framed WAL with strict `fdatasync` or buffered group commit.
-- **LSM storage.** Prefix-compressed SSTables with Bloom filters and LZ4 blocks.
-- **TTL and FIFO retention.** Lazy expiry on reads and expiry-aware leveled or FIFO compaction.
+- **LSM storage.** Prefix-compressed SSTables with Bloom filters, LZ4 blocks, and a shared block cache (64 MiB default).
+- **Compaction control.** Manual full or range compaction, plus an optional background scheduler with rate limiting and write stalls.
+- **TTL and FIFO retention.** Lazy expiry on reads, expiry-aware leveled or FIFO compaction, and scope TTL guardrails.
 - **Watch streams.** One change event for each committed mutation, with a resumable sequence cursor.
 - **Primary and replica.** Asynchronous WAL streaming with strong, bounded-staleness, and eventual consistency levels.
 - **Client cache.** An opt-in, per-scope SDK read cache that watch events invalidate.
 - **Snapshots and checkpoints.** Pinned MVCC snapshots and hard-linked checkpoint images.
 - **Backup and point-in-time restore.** Autonomous backup generations, optional WAL shipping, retention, verification, and sequence-targeted restore.
 - **Multiple transports.** One engine behind native `STORKPRT`, REST, WebSocket, gRPC, Redis RESP2/RESP3, Memcached ASCII, and an etcd v3 gateway.
-- **Observability.** Process counters, per-scope statistics, level sizes, transport counters, write latency p99, and a TUI.
+- **Observability.** Process counters, per-scope statistics, level sizes, transport counters, write latency p99, a Prometheus `/metrics` route, and a TUI.
+- **Container deployment.** A multi-stage `Dockerfile`, `docker-compose.yml`, and multi-arch images on GHCR.
 
 ## Security boundaries
 
@@ -341,14 +345,14 @@ cargo xtask sandbox
 
 The command uses these loopback ports:
 
-| Port | Transport |
-| --- | --- |
+| Port | Transport  |
+| ---- | ---------- |
 | 7878 | Native TCP |
-| 7879 | HTTP |
-| 7880 | WebSocket |
-| 7881 | gRPC |
-| 7882 | Redis |
-| 7883 | Memcached |
+| 7879 | HTTP       |
+| 7880 | WebSocket  |
+| 7881 | gRPC       |
+| 7882 | Redis      |
+| 7883 | Memcached  |
 
 Pass options to change the access policy:
 

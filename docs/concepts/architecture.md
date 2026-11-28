@@ -95,12 +95,12 @@ The internal key adds an inverted sequence tag. This tag places the newest versi
 
 StorKV has two compaction styles.
 
-| Style     | Trigger                     | Action                               |
-| :-------- | :-------------------------- | :----------------------------------- |
-| `Leveled` | Four or more L0 files       | Merge all L0 files into one L1 file  |
-| `Fifo`    | An SSTable is fully expired | Drop the file without rewriting keys |
+| Style     | Trigger                                      | Action                               |
+| :-------- | :------------------------------------------- | :----------------------------------- |
+| `Leveled` | `l0_compaction_trigger` L0 files (default 4) | Merge all L0 files into one L1 file  |
+| `Fifo`    | An SSTable is fully expired                  | Drop the file without rewriting keys |
 
-Compaction runs when a caller invokes `Db::compact`, `POST /v1/admin/compact`, or the gRPC `Compact` method. The engine does not start a background compaction thread.
+Compaction runs when a caller invokes `Db::compact`, `Db::compact_range`, `POST /v1/admin/compact`, or the gRPC `Compact` method. The engine can also run compaction on a background thread. Set `DbOptions::enable_background_compaction` to `true` to start it. The scheduler waits for a MemTable flush and compacts the scopes that reached the L0 trigger. Read [Compaction and tuning](../operations/compaction-and-tuning.md).
 
 Compaction keeps versions that a reader or a pinned snapshot can still need. The safe sequence is the minimum of these values:
 

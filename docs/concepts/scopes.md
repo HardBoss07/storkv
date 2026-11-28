@@ -84,12 +84,19 @@ The REST body does not carry a storage mode. A scope created over REST uses `Sto
 
 ## Scope options
 
-| Option             | Default       | Values                                   | Effect                                 |
-| :----------------- | :------------ | :--------------------------------------- | :------------------------------------- |
-| `durability`       | `StrictFsync` | `StrictFsync`, `Buffered { interval }`   | Commit sync rule for the scope         |
-| `retention`        | `Permanent`   | `Permanent`, `Ttl { ttl, style }`        | Key lifetime rule and compaction style |
-| `prefix_bloom_len` | `None`        | Bytes per prefix key, or `None`          | Prefix Bloom filter size in SSTables   |
-| `storage_mode`     | `Disk`        | `Disk`, `InMemory`, `InMemoryPersistent` | Where the scope keeps its data         |
+| Option                | Default       | Values                                   | Effect                                     |
+| :-------------------- | :------------ | :--------------------------------------- | :----------------------------------------- |
+| `durability`          | `StrictFsync` | `StrictFsync`, `Buffered { interval }`   | Commit sync rule for the scope             |
+| `retention`           | `Permanent`   | `Permanent`, `Ttl { ttl, style }`        | Key lifetime rule and compaction style     |
+| `prefix_bloom_len`    | `None`        | Bytes per prefix key, or `None`          | Prefix Bloom filter size in SSTables       |
+| `storage_mode`        | `Disk`        | `Disk`, `InMemory`, `InMemoryPersistent` | Where the scope keeps its data             |
+| `default_ttl_ms`      | No default    | Milliseconds, inside `retention.ttl`     | Recorded default TTL, not applied on write |
+| `min_ttl`             | `None`        | A duration, or `None`                    | Rejects writes with a shorter TTL          |
+| `max_ttl`             | `None`        | A duration, or `None`                    | Rejects writes with a longer TTL           |
+| `allow_permanent`     | `true`        | `true` or `false`                        | Controls writes without an expiry          |
+| `active_ttl_tracking` | `false`       | `true` or `false`                        | Tracks deadlines and emits expiry events   |
+
+The `min_ttl`, `max_ttl`, `allow_permanent`, and `active_ttl_tracking` fields are part of `WireScopeOptions` and are available to network clients. A TTL guardrail returns `InvalidTtl` when a write breaks it.
 
 A scope cannot change its options after creation in v1. Create a new scope and copy the data when you need different options.
 
@@ -97,11 +104,11 @@ A scope cannot change its options after creation in v1. Create a new scope and c
 
 `StorageMode` sets where one scope keeps its data:
 
-| Mode                 | WAL            | Memtable and SSTables | Survives restart        |
-| :------------------- | :------------- | :-------------------- | :---------------------- |
-| `Disk`               | On disk        | On disk               | Yes                     |
-| `InMemory`           | Not written    | RAM only              | No                      |
-| `InMemoryPersistent` | On disk        | RAM only              | Yes, through WAL replay |
+| Mode                 | WAL         | Memtable and SSTables | Survives restart        |
+| :------------------- | :---------- | :-------------------- | :---------------------- |
+| `Disk`               | On disk     | On disk               | Yes                     |
+| `InMemory`           | Not written | RAM only              | No                      |
+| `InMemoryPersistent` | On disk     | RAM only              | Yes, through WAL replay |
 
 Use `InMemory` for a pure cache. Use `InMemoryPersistent` when you want RAM speed for reads and a durable copy in the WAL.
 

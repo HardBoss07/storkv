@@ -136,7 +136,19 @@ db.merge(&scope, b"page_views", MergeOp::CounterAdd(5))?;
 assert_eq!(db.get(&scope, b"page_views")?.as_deref(), Some(&b"15"[..]));
 ```
 
-`MergeOp::CounterAdd` stores the decimal delta as text. The default merge operator parses the base value as an integer.
+These operators are available:
+
+| Operator                                 | Result                                             |
+| :--------------------------------------- | :------------------------------------------------- |
+| `MergeOp::CounterAdd(i64)`               | Adds the delta to the current integer              |
+| `MergeOp::AppendBytes { data, max_len }` | Appends bytes and keeps the newest `max_len` bytes |
+| `MergeOp::MaxI64(i64)`                   | Keeps the larger integer                           |
+| `MergeOp::MinI64(i64)`                   | Keeps the smaller integer                          |
+| `MergeOp::BitOr(u64)`                    | Applies a bitwise OR to the current `u64`          |
+| `MergeOp::BitAnd(u64)`                   | Applies a bitwise AND to the current `u64`         |
+| `MergeOp::Custom(Bytes)`                 | Sends the operand to the configured merge operator |
+
+The integer operators store the result as decimal text. The default merge operator parses the base value as an integer. An unparsable base counts as zero. `CounterAdd` uses wrapping arithmetic.
 
 A custom merge receives the operand bytes. The default operator returns the operand when it cannot apply an integer add.
 

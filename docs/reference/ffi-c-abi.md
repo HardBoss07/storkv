@@ -10,11 +10,11 @@ The generated header is `bindings/c/storkv.h`. A build of `storkv-ffi` regenerat
 cargo build -p storkv-ffi
 ```
 
-| Platform | Shared library | Static library |
-| :--- | :--- | :--- |
-| Windows | `storkv_ffi.dll` | `storkv_ffi.lib` |
-| Linux | `libstorkv_ffi.so` | `libstorkv_ffi.a` |
-| macOS | `libstorkv_ffi.dylib` | `libstorkv_ffi.a` |
+| Platform | Shared library        | Static library    |
+| :------- | :-------------------- | :---------------- |
+| Windows  | `storkv_ffi.dll`      | `storkv_ffi.lib`  |
+| Linux    | `libstorkv_ffi.so`    | `libstorkv_ffi.a` |
+| macOS    | `libstorkv_ffi.dylib` | `libstorkv_ffi.a` |
 
 The files are in `target/debug` after a debug build. A release build writes them to `target/release`.
 
@@ -41,14 +41,14 @@ Do not reorder fields. Do not change a field type in place. A layout change requ
 
 ## Scalar types
 
-| C type | Rust type | Size | Alignment |
-| :--- | :--- | :--- | :--- |
-| `int32_t` | `i32` | 4 | 4 |
-| `uint32_t` | `u32` | 4 | 4 |
-| `uint64_t` | `u64` | 8 | 8 |
-| `uintptr_t` | `usize` | 8 on a 64-bit target | 8 |
-| `bool` | `bool` | 1 | 1 |
-| `char *` | `*mut c_char` | 8 on a 64-bit target | 8 |
+| C type      | Rust type     | Size                 | Alignment |
+| :---------- | :------------ | :------------------- | :-------- |
+| `int32_t`   | `i32`         | 4                    | 4         |
+| `uint32_t`  | `u32`         | 4                    | 4         |
+| `uint64_t`  | `u64`         | 8                    | 8         |
+| `uintptr_t` | `usize`       | 8 on a 64-bit target | 8         |
+| `bool`      | `bool`        | 1                    | 1         |
+| `char *`    | `*mut c_char` | 8 on a 64-bit target | 8         |
 
 All sizes in this page use a 64-bit target. A 32-bit target changes every pointer and `uintptr_t` field to 4 bytes.
 
@@ -59,8 +59,8 @@ All sizes in this page use a 64-bit target. A 32-bit target changes every pointe
 A status code. The type is `#[repr(i32)]`.
 
 | Field | Offset | Size |
-| :--- | :--- | :--- |
-| Value | 0 | 4 |
+| :---- | :----- | :--- |
+| Value | 0      | 4    |
 
 Size: 4. Alignment: 4.
 
@@ -69,8 +69,8 @@ Size: 4. Alignment: 4.
 A watch event kind. The type is `#[repr(i32)]`.
 
 | Field | Offset | Size |
-| :--- | :--- | :--- |
-| Value | 0 | 4 |
+| :---- | :----- | :--- |
+| Value | 0      | 4    |
 
 Size: 4. Alignment: 4.
 
@@ -78,10 +78,10 @@ Size: 4. Alignment: 4.
 
 An owned byte buffer.
 
-| Field | Offset | Size | Meaning |
-| :--- | :--- | :--- | :--- |
-| `data` | 0 | 8 | Pointer to the first byte, or null |
-| `len` | 8 | 8 | Number of bytes |
+| Field  | Offset | Size | Meaning                            |
+| :----- | :----- | :--- | :--------------------------------- |
+| `data` | 0      | 8    | Pointer to the first byte, or null |
+| `len`  | 8      | 8    | Number of bytes                    |
 
 Size: 16. Alignment: 8.
 
@@ -89,10 +89,10 @@ Size: 16. Alignment: 8.
 
 A borrowed byte slice.
 
-| Field | Offset | Size | Meaning |
-| :--- | :--- | :--- | :--- |
-| `data` | 0 | 8 | Pointer to the first byte, or null for an open bound |
-| `len` | 8 | 8 | Number of bytes |
+| Field  | Offset | Size | Meaning                                              |
+| :----- | :----- | :--- | :--------------------------------------------------- |
+| `data` | 0      | 8    | Pointer to the first byte, or null for an open bound |
+| `len`  | 8      | 8    | Number of bytes                                      |
 
 Size: 16. Alignment: 8.
 
@@ -100,10 +100,10 @@ Size: 16. Alignment: 8.
 
 An owned NUL-terminated string.
 
-| Field | Offset | Size | Meaning |
-| :--- | :--- | :--- | :--- |
-| `data` | 0 | 8 | Pointer to the first character |
-| `len` | 8 | 8 | Characters before the NUL terminator |
+| Field  | Offset | Size | Meaning                              |
+| :----- | :----- | :--- | :----------------------------------- |
+| `data` | 0      | 8    | Pointer to the first character       |
+| `len`  | 8      | 8    | Characters before the NUL terminator |
 
 Size: 16. Alignment: 8.
 
@@ -111,15 +111,15 @@ Size: 16. Alignment: 8.
 
 The pool configuration.
 
-| Field | Offset | Size | Meaning |
-| :--- | :--- | :--- | :--- |
-| `health_check` | 0 | 1 | Probe idle connections before reuse |
-| Padding | 1 | 3 | Alignment padding |
-| `max_connections` | 4 | 4 | Maximum simultaneous connections |
-| `min_connections` | 8 | 4 | Connections opened eagerly |
-| Padding | 12 | 4 | Alignment padding |
-| `acquire_timeout_ms` | 16 | 8 | Acquire timeout in milliseconds |
-| `idle_timeout_ms` | 24 | 8 | Idle timeout in milliseconds |
+| Field                | Offset | Size | Meaning                             |
+| :------------------- | :----- | :--- | :---------------------------------- |
+| `health_check`       | 0      | 1    | Probe idle connections before reuse |
+| Padding              | 1      | 3    | Alignment padding                   |
+| `max_connections`    | 4      | 4    | Maximum simultaneous connections    |
+| `min_connections`    | 8      | 4    | Connections opened eagerly          |
+| Padding              | 12     | 4    | Alignment padding                   |
+| `acquire_timeout_ms` | 16     | 8    | Acquire timeout in milliseconds     |
+| `idle_timeout_ms`    | 24     | 8    | Idle timeout in milliseconds        |
 
 Size: 32. Alignment: 8.
 
@@ -129,13 +129,13 @@ A zero `acquire_timeout_ms` selects the SDK default of 5 seconds. A zero `idle_t
 
 The retry settings for `storkv_tx_run`.
 
-| Field | Offset | Size | Meaning |
-| :--- | :--- | :--- | :--- |
-| `jitter` | 0 | 1 | Add random offset to each delay |
-| Padding | 1 | 3 | Alignment padding |
-| `max_retries` | 4 | 4 | Retries after the first attempt |
-| `base_delay_ms` | 8 | 8 | Delay before the first retry |
-| `max_delay_ms` | 16 | 8 | Maximum backoff delay |
+| Field           | Offset | Size | Meaning                         |
+| :-------------- | :----- | :--- | :------------------------------ |
+| `jitter`        | 0      | 1    | Add random offset to each delay |
+| Padding         | 1      | 3    | Alignment padding               |
+| `max_retries`   | 4      | 4    | Retries after the first attempt |
+| `base_delay_ms` | 8      | 8    | Delay before the first retry    |
+| `max_delay_ms`  | 16     | 8    | Maximum backoff delay           |
 
 Size: 24. Alignment: 8.
 
@@ -143,10 +143,10 @@ Size: 24. Alignment: 8.
 
 One scan entry.
 
-| Field | Offset | Size | Meaning |
-| :--- | :--- | :--- | :--- |
-| `key` | 0 | 16 | Owned key bytes |
-| `value` | 16 | 16 | Owned value bytes |
+| Field   | Offset | Size | Meaning           |
+| :------ | :----- | :--- | :---------------- |
+| `key`   | 0      | 16   | Owned key bytes   |
+| `value` | 16     | 16   | Owned value bytes |
 
 Size: 32. Alignment: 8.
 
@@ -154,10 +154,10 @@ Size: 32. Alignment: 8.
 
 An owned array of scan entries.
 
-| Field | Offset | Size | Meaning |
-| :--- | :--- | :--- | :--- |
-| `entries` | 0 | 8 | Pointer to the first entry |
-| `len` | 8 | 8 | Number of entries |
+| Field     | Offset | Size | Meaning                    |
+| :-------- | :----- | :--- | :------------------------- |
+| `entries` | 0      | 8    | Pointer to the first entry |
+| `len`     | 8      | 8    | Number of entries          |
 
 Size: 16. Alignment: 8.
 
@@ -165,53 +165,82 @@ Size: 16. Alignment: 8.
 
 One watch event.
 
-| Field | Offset | Size | Meaning |
-| :--- | :--- | :--- | :--- |
-| `kind` | 0 | 4 | Kind of change |
-| `scope_id` | 4 | 4 | Scope that changed |
-| `seq` | 8 | 8 | Commit sequence number |
-| `key` | 16 | 16 | Owned key bytes |
-| `value` | 32 | 16 | Owned value bytes |
+| Field      | Offset | Size | Meaning                |
+| :--------- | :----- | :--- | :--------------------- |
+| `kind`     | 0      | 4    | Kind of change         |
+| `scope_id` | 4      | 4    | Scope that changed     |
+| `seq`      | 8      | 8    | Commit sequence number |
+| `key`      | 16     | 16   | Owned key bytes        |
+| `value`    | 32     | 16   | Owned value bytes      |
 
 Size: 48. Alignment: 8.
 
 The field order in the Rust source is `kind`, `scope_id`, `seq`, `key`, then `value`. The order follows the smallest-field-first rule: 4-byte fields, then an 8-byte field, then 16-byte compounds.
 
+### `StorkvPutCondition`
+
+The condition for `storkv_put_if`.
+
+| Field            | Offset | Size | Meaning                                          |
+| :--------------- | :----- | :--- | :----------------------------------------------- |
+| `kind`           | 0      | 4    | Condition kind as `uint32_t`                     |
+| Padding          | 4      | 4    | Alignment padding                                |
+| `expected_seq`   | 8      | 8    | Expected sequence, used by `ExpectedSeq`         |
+| `expected_value` | 16     | 16   | Borrowed expected bytes, used by `ExpectedValue` |
+
+Size: 32. Alignment: 8.
+
+The condition kinds are `Absent` (0), `Present` (1), `ExpectedSeq` (2), and `ExpectedValue` (3). These numbers are stable.
+
+### `StorkvPutIfResult`
+
+The outcome of `storkv_put_if`.
+
+| Field     | Offset | Size | Meaning                                           |
+| :-------- | :----- | :--- | :------------------------------------------------ |
+| `applied` | 0      | 1    | `1` when the write was applied, `0` on a mismatch |
+| Padding   | 1      | 7    | Alignment padding                                 |
+| `seq`     | 8      | 8    | Sequence of the write or of the visible version   |
+
+Size: 16. Alignment: 8.
+
+A `seq` of `0` with `applied` of `0` means the key is absent. `StorkvPutIfResult_EMPTY` is the zero value.
+
 ## Opaque handles
 
-| Handle | Created by | Released by |
-| :--- | :--- | :--- |
-| `StorkvPoolHandle` | `storkv_pool_open` | `storkv_pool_close` |
-| `StorkvScopeHandle` | `storkv_scope_open` | `storkv_scope_close` |
-| `StorkvTxHandle` | `storkv_tx_begin` | `storkv_tx_commit` or `storkv_tx_rollback` |
-| `StorkvWatchHandle` | `storkv_watch_prefix` | `storkv_watch_close` |
+| Handle              | Created by            | Released by                                |
+| :------------------ | :-------------------- | :----------------------------------------- |
+| `StorkvPoolHandle`  | `storkv_pool_open`    | `storkv_pool_close`                        |
+| `StorkvScopeHandle` | `storkv_scope_open`   | `storkv_scope_close`                       |
+| `StorkvTxHandle`    | `storkv_tx_begin`     | `storkv_tx_commit` or `storkv_tx_rollback` |
+| `StorkvWatchHandle` | `storkv_watch_prefix` | `storkv_watch_close`                       |
 
 The header declares each handle as an incomplete struct. Do not dereference a handle. Do not allocate one in your code.
 
 ## Status codes
 
-| Name | Value | Meaning |
-| :--- | :--- | :--- |
-| `Ok` | 0 | Success |
-| `NullPointer` | 1 | A required pointer is null |
-| `InvalidArgument` | 2 | The caller supplied a malformed URI, option, or argument |
-| `Pool` | 3 | The pool cannot open or is closed |
-| `Scope` | 4 | The scope does not resolve |
-| `Transaction` | 5 | The transaction cannot start or commit |
-| `Serialization` | 6 | A value cannot encode or decode |
-| `Watch` | 7 | The watch stream ended or failed |
-| `Timeout` | 8 | The operation exceeded its deadline |
-| `Internal` | 9 | Another internal failure |
+| Name              | Value | Meaning                                                  |
+| :---------------- | :---- | :------------------------------------------------------- |
+| `Ok`              | 0     | Success                                                  |
+| `NullPointer`     | 1     | A required pointer is null                               |
+| `InvalidArgument` | 2     | The caller supplied a malformed URI, option, or argument |
+| `Pool`            | 3     | The pool cannot open or is closed                        |
+| `Scope`           | 4     | The scope does not resolve                               |
+| `Transaction`     | 5     | The transaction cannot start or commit                   |
+| `Serialization`   | 6     | A value cannot encode or decode                          |
+| `Watch`           | 7     | The watch stream ended or failed                         |
+| `Timeout`         | 8     | The operation exceeded its deadline                      |
+| `Internal`        | 9     | Another internal failure                                 |
 
 `storkv_watch_next` returns `Timeout` when no event arrives before the deadline. It returns `Watch` when the stream ends.
 
 ## Event kinds
 
-| Name | Value | Meaning |
-| :--- | :--- | :--- |
-| `Put` | 0 | A key received a new value |
-| `Delete` | 1 | A delete event for one key |
-| `DropScope` | 2 | A drop event for one scope |
+| Name        | Value | Meaning                    |
+| :---------- | :---- | :------------------------- |
+| `Put`       | 0     | A key received a new value |
+| `Delete`    | 1     | A delete event for one key |
+| `DropScope` | 2     | A drop event for one scope |
 
 ## Error retrieval
 
@@ -230,14 +259,14 @@ The message belongs to the calling thread. A successful data call clears the mes
 
 ## Ownership summary
 
-| Direction | Type | Owner | Release |
-| :--- | :--- | :--- | :--- |
-| Input | `StorkvSlice` | Caller | None, borrow only during the call |
-| Output | `StorkvBytes` | Caller | `storkv_bytes_free` |
-| Output | `StorkvEntries` | Caller | `storkv_entries_free` |
-| Output | `StorkvWatchEvent.key` | Caller | `storkv_bytes_free` |
-| Output | `StorkvWatchEvent.value` | Caller | `storkv_bytes_free` |
-| Output | `StorkvString` | Caller | `storkv_string_free` |
+| Direction | Type                     | Owner  | Release                           |
+| :-------- | :----------------------- | :----- | :-------------------------------- |
+| Input     | `StorkvSlice`            | Caller | None, borrow only during the call |
+| Output    | `StorkvBytes`            | Caller | `storkv_bytes_free`               |
+| Output    | `StorkvEntries`          | Caller | `storkv_entries_free`             |
+| Output    | `StorkvWatchEvent.key`   | Caller | `storkv_bytes_free`               |
+| Output    | `StorkvWatchEvent.value` | Caller | `storkv_bytes_free`               |
+| Output    | `StorkvString`           | Caller | `storkv_string_free`              |
 
 `storkv_entries_free` frees each key and each value in the array. Do not call `storkv_bytes_free` on an entry field after `storkv_entries_free`.
 
@@ -245,35 +274,36 @@ The message belongs to the calling thread. A successful data call clears the mes
 
 ### Pool functions
 
-| Function | Signature | Returns | Ownership |
-| :--- | :--- | :--- | :--- |
-| `storkv_pool_open` | `(const char *uri, const StorkvPoolConfig *config, StorkvPoolHandle **out)` | Status | Writes one handle |
-| `storkv_pool_close` | `(StorkvPoolHandle *pool)` | None | Releases the handle |
-| `storkv_pool_is_closed` | `(StorkvPoolHandle *pool, int32_t *out_closed)` | Status | Writes one flag |
+| Function                | Signature                                                                   | Returns | Ownership           |
+| :---------------------- | :-------------------------------------------------------------------------- | :------ | :------------------ |
+| `storkv_pool_open`      | `(const char *uri, const StorkvPoolConfig *config, StorkvPoolHandle **out)` | Status  | Writes one handle   |
+| `storkv_pool_close`     | `(StorkvPoolHandle *pool)`                                                  | None    | Releases the handle |
+| `storkv_pool_is_closed` | `(StorkvPoolHandle *pool, int32_t *out_closed)`                             | Status  | Writes one flag     |
 
 `config` may be null. A null config uses the default options.
 
 ### Scope functions
 
-| Function | Signature | Returns | Ownership |
-| :--- | :--- | :--- | :--- |
-| `storkv_scope_open` | `(StorkvPoolHandle *pool, const char *name, StorkvScopeHandle **out)` | Status | Writes one handle |
-| `storkv_scope_close` | `(StorkvScopeHandle *scope)` | None | Releases the handle |
+| Function             | Signature                                                             | Returns | Ownership           |
+| :------------------- | :-------------------------------------------------------------------- | :------ | :------------------ |
+| `storkv_scope_open`  | `(StorkvPoolHandle *pool, const char *name, StorkvScopeHandle **out)` | Status  | Writes one handle   |
+| `storkv_scope_close` | `(StorkvScopeHandle *scope)`                                          | None    | Releases the handle |
 
 A scope handle keeps a clone of the pool. The handle stays valid after `storkv_pool_close`, but close it first.
 
 ### Data functions
 
-| Function | Signature | Returns | Ownership |
-| :--- | :--- | :--- | :--- |
-| `storkv_get` | `(StorkvScopeHandle *scope, StorkvSlice key, StorkvBytes *out_value)` | Status | `out_value` needs `storkv_bytes_free` |
-| `storkv_put` | `(StorkvScopeHandle *scope, StorkvSlice key, StorkvSlice value)` | Status | No output |
-| `storkv_put_with_ttl` | `(StorkvScopeHandle *scope, StorkvSlice key, StorkvSlice value, uint64_t ttl_ms)` | Status | No output |
-| `storkv_get_and_touch` | `(StorkvScopeHandle *scope, StorkvSlice key, uint64_t ttl_ms, StorkvBytes *out_value)` | Status | `out_value` needs `storkv_bytes_free` |
-| `storkv_delete` | `(StorkvScopeHandle *scope, StorkvSlice key)` | Status | No output |
-| `storkv_exists` | `(StorkvScopeHandle *scope, StorkvSlice key, int32_t *out_exists)` | Status | Writes one flag |
-| `storkv_scan_prefix` | `(StorkvScopeHandle *scope, StorkvSlice prefix, StorkvEntries *out_entries)` | Status | `out_entries` needs `storkv_entries_free` |
-| `storkv_scan_range` | `(StorkvScopeHandle *scope, StorkvSlice start, StorkvSlice end, StorkvEntries *out_entries)` | Status | `out_entries` needs `storkv_entries_free` |
+| Function               | Signature                                                                                                                                             | Returns | Ownership                                 |
+| :--------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------- | :------ | :---------------------------------------- |
+| `storkv_get`           | `(StorkvScopeHandle *scope, StorkvSlice key, StorkvBytes *out_value)`                                                                                 | Status  | `out_value` needs `storkv_bytes_free`     |
+| `storkv_put`           | `(StorkvScopeHandle *scope, StorkvSlice key, StorkvSlice value)`                                                                                      | Status  | No output                                 |
+| `storkv_put_with_ttl`  | `(StorkvScopeHandle *scope, StorkvSlice key, StorkvSlice value, uint64_t ttl_ms)`                                                                     | Status  | No output                                 |
+| `storkv_put_if`        | `(StorkvScopeHandle *scope, StorkvSlice key, const StorkvPutCondition *condition, StorkvSlice value, uint64_t ttl_ms, StorkvPutIfResult *out_result)` | Status  | Writes one result                         |
+| `storkv_get_and_touch` | `(StorkvScopeHandle *scope, StorkvSlice key, uint64_t ttl_ms, StorkvBytes *out_value)`                                                                | Status  | `out_value` needs `storkv_bytes_free`     |
+| `storkv_delete`        | `(StorkvScopeHandle *scope, StorkvSlice key)`                                                                                                         | Status  | No output                                 |
+| `storkv_exists`        | `(StorkvScopeHandle *scope, StorkvSlice key, int32_t *out_exists)`                                                                                    | Status  | Writes one flag                           |
+| `storkv_scan_prefix`   | `(StorkvScopeHandle *scope, StorkvSlice prefix, StorkvEntries *out_entries)`                                                                          | Status  | `out_entries` needs `storkv_entries_free` |
+| `storkv_scan_range`    | `(StorkvScopeHandle *scope, StorkvSlice start, StorkvSlice end, StorkvEntries *out_entries)`                                                          | Status  | `out_entries` needs `storkv_entries_free` |
 
 A missing key returns `Ok` with an empty `StorkvBytes`. Check `len` before you read `data`.
 
@@ -281,16 +311,16 @@ A null slice pointer with a zero length means an empty value. In `storkv_scan_ra
 
 ### Transaction functions
 
-| Function | Signature | Returns | Ownership |
-| :--- | :--- | :--- | :--- |
-| `storkv_tx_begin` | `(StorkvPoolHandle *pool, StorkvTxHandle **out)` | Status | Writes one handle |
-| `storkv_tx_get` | `(StorkvTxHandle *tx, StorkvScopeHandle *scope, StorkvSlice key, StorkvBytes *out_value)` | Status | `out_value` needs `storkv_bytes_free` |
-| `storkv_tx_put` | `(StorkvTxHandle *tx, StorkvScopeHandle *scope, StorkvSlice key, StorkvSlice value)` | Status | No output |
-| `storkv_tx_put_with_ttl` | `(StorkvTxHandle *tx, StorkvScopeHandle *scope, StorkvSlice key, StorkvSlice value, uint64_t ttl_ms)` | Status | No output |
-| `storkv_tx_delete` | `(StorkvTxHandle *tx, StorkvScopeHandle *scope, StorkvSlice key)` | Status | No output |
-| `storkv_tx_commit` | `(StorkvTxHandle *tx)` | Status | Releases the handle |
-| `storkv_tx_rollback` | `(StorkvTxHandle *tx)` | None | Releases the handle |
-| `storkv_tx_run` | `(StorkvPoolHandle *pool, const StorkvRetryConfig *config, StorkvTxCallback callback, void *user, int32_t *out_committed)` | Status | Writes one flag |
+| Function                 | Signature                                                                                                                  | Returns | Ownership                             |
+| :----------------------- | :------------------------------------------------------------------------------------------------------------------------- | :------ | :------------------------------------ |
+| `storkv_tx_begin`        | `(StorkvPoolHandle *pool, StorkvTxHandle **out)`                                                                           | Status  | Writes one handle                     |
+| `storkv_tx_get`          | `(StorkvTxHandle *tx, StorkvScopeHandle *scope, StorkvSlice key, StorkvBytes *out_value)`                                  | Status  | `out_value` needs `storkv_bytes_free` |
+| `storkv_tx_put`          | `(StorkvTxHandle *tx, StorkvScopeHandle *scope, StorkvSlice key, StorkvSlice value)`                                       | Status  | No output                             |
+| `storkv_tx_put_with_ttl` | `(StorkvTxHandle *tx, StorkvScopeHandle *scope, StorkvSlice key, StorkvSlice value, uint64_t ttl_ms)`                      | Status  | No output                             |
+| `storkv_tx_delete`       | `(StorkvTxHandle *tx, StorkvScopeHandle *scope, StorkvSlice key)`                                                          | Status  | No output                             |
+| `storkv_tx_commit`       | `(StorkvTxHandle *tx)`                                                                                                     | Status  | Releases the handle                   |
+| `storkv_tx_rollback`     | `(StorkvTxHandle *tx)`                                                                                                     | None    | Releases the handle                   |
+| `storkv_tx_run`          | `(StorkvPoolHandle *pool, const StorkvRetryConfig *config, StorkvTxCallback callback, void *user, int32_t *out_committed)` | Status  | Writes one flag                       |
 
 `storkv_tx_get` adds the key to the read set. `storkv_tx_commit` validates that set and returns `Transaction` on a conflict. `storkv_tx_run` retries a conflict according to the policy.
 
@@ -298,22 +328,22 @@ A null slice pointer with a zero length means an empty value. In `storkv_scan_ra
 
 ### Watch functions
 
-| Function | Signature | Returns | Ownership |
-| :--- | :--- | :--- | :--- |
-| `storkv_watch_prefix` | `(StorkvScopeHandle *scope, StorkvSlice prefix, StorkvWatchHandle **out_watch)` | Status | Writes one handle |
-| `storkv_watch_next` | `(StorkvWatchHandle *watch, StorkvWatchEvent *out_event, uint64_t timeout_ms)` | Status | Event fields need `storkv_bytes_free` |
-| `storkv_watch_close` | `(StorkvWatchHandle *watch)` | None | Releases the handle |
+| Function              | Signature                                                                       | Returns | Ownership                             |
+| :-------------------- | :------------------------------------------------------------------------------ | :------ | :------------------------------------ |
+| `storkv_watch_prefix` | `(StorkvScopeHandle *scope, StorkvSlice prefix, StorkvWatchHandle **out_watch)` | Status  | Writes one handle                     |
+| `storkv_watch_next`   | `(StorkvWatchHandle *watch, StorkvWatchEvent *out_event, uint64_t timeout_ms)`  | Status  | Event fields need `storkv_bytes_free` |
+| `storkv_watch_close`  | `(StorkvWatchHandle *watch)`                                                    | None    | Releases the handle                   |
 
 A `timeout_ms` value of zero waits without a limit. The function returns `Timeout` on a deadline.
 
 ### Memory functions
 
-| Function | Signature | Returns | Ownership |
-| :--- | :--- | :--- | :--- |
-| `storkv_bytes_free` | `(StorkvBytes value)` | None | Releases one buffer |
-| `storkv_entries_free` | `(StorkvEntries entries)` | None | Releases one array and its fields |
-| `storkv_last_error_message` | `(void)` | `StorkvString` | Needs `storkv_string_free` |
-| `storkv_string_free` | `(StorkvString value)` | None | Releases one string |
+| Function                    | Signature                 | Returns        | Ownership                         |
+| :-------------------------- | :------------------------ | :------------- | :-------------------------------- |
+| `storkv_bytes_free`         | `(StorkvBytes value)`     | None           | Releases one buffer               |
+| `storkv_entries_free`       | `(StorkvEntries entries)` | None           | Releases one array and its fields |
+| `storkv_last_error_message` | `(void)`                  | `StorkvString` | Needs `storkv_string_free`        |
+| `storkv_string_free`        | `(StorkvString value)`    | None           | Releases one string               |
 
 A free function ignores a null pointer. Do not free one buffer twice.
 

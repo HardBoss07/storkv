@@ -6,35 +6,35 @@ You set every `storkvd` option with a command-line flag, an environment variable
 
 `storkvd` accepts these flags:
 
-| Flag                     | Default          | Purpose                                           |
-| :----------------------- | :--------------- | :------------------------------------------------ |
-| `--config`               | none             | Load settings from a TOML file                    |
-| `--data-dir`             | `./data/storkv`  | Directory that holds the database                 |
-| `--listen`               | `127.0.0.1:7878` | Native TCP listener                               |
-| `--tls-cert`             | none             | PEM certificate for the native TLS listener       |
-| `--tls-key`              | none             | PEM private key for the native TLS listener       |
-| `--admin-sock`           | none             | Native admin listener; accepts TCP or a Unix path |
-| `--http-listen`          | none             | HTTP REST and binary RPC listener                 |
-| `--ws-listen`            | none             | WebSocket listener                                |
-| `--grpc-listen`          | none             | gRPC listener                                     |
-| `--redis-listen`         | none             | Redis RESP listener                               |
-| `--redis-password`       | none             | Password for the Redis RESP listener              |
-| `--memcached-listen`     | none             | Memcached ASCII listener                          |
-| `--strict-admin`         | off              | Restrict admin-only requests                      |
-| `--admin-token`          | none             | Shared admin secret for auxiliary transports      |
-| `--admin-token-file`     | none             | Read the admin secret from this file              |
-| `--http-admin`           | off              | Treat every HTTP connection as admin              |
-| `--ws-admin`             | off              | Treat every WebSocket connection as admin         |
-| `--grpc-admin`           | off              | Treat every gRPC connection as admin              |
-| `--backup-dir`           | none             | Enable autonomous backup into this directory      |
-| `--backup-interval-secs` | 3600             | Seconds between full backups                      |
-| `--backup-retention`     | 7                | Number of full generations to keep                |
-| `--backup-ship-wal`      | off              | Ship sealed WAL segments between full backups     |
-| `--backup-pipe-cmd`      | none             | Send backup archives to a child process           |
-| `--backup-pipe-arg`      | none             | Repeatable argument for the pipe command          |
-| `--backup-compression`   | `none`           | Archive compression: `none`, `zstd`, or `lz4`     |
+| Flag                     | Default          | Purpose                                                 |
+| :----------------------- | :--------------- | :------------------------------------------------------ |
+| `--config`               | none             | Load settings from a TOML file                          |
+| `--data-dir`             | `./data/storkv`  | Directory that holds the database                       |
+| `--listen`               | `127.0.0.1:7878` | Native TCP listener                                     |
+| `--tls-cert`             | none             | PEM certificate for the native TLS listener             |
+| `--tls-key`              | none             | PEM private key for the native TLS listener             |
+| `--admin-sock`           | none             | Native admin listener; accepts TCP or a Unix path       |
+| `--http-listen`          | none             | HTTP REST and binary RPC listener                       |
+| `--ws-listen`            | none             | WebSocket listener                                      |
+| `--grpc-listen`          | none             | gRPC listener                                           |
+| `--redis-listen`         | none             | Redis RESP listener                                     |
+| `--redis-password`       | none             | Password for the Redis RESP listener                    |
+| `--memcached-listen`     | none             | Memcached ASCII listener                                |
+| `--strict-admin`         | off              | Restrict admin-only requests                            |
+| `--admin-token`          | none             | Shared admin secret for auxiliary transports            |
+| `--admin-token-file`     | none             | Read the admin secret from this file                    |
+| `--http-admin`           | off              | Treat every HTTP connection as admin                    |
+| `--ws-admin`             | off              | Treat every WebSocket connection as admin               |
+| `--grpc-admin`           | off              | Treat every gRPC connection as admin                    |
+| `--backup-dir`           | none             | Enable autonomous backup into this directory            |
+| `--backup-interval-secs` | 3600             | Seconds between full backups                            |
+| `--backup-retention`     | 7                | Number of full generations to keep                      |
+| `--backup-ship-wal`      | off              | Ship sealed WAL segments between full backups           |
+| `--backup-pipe-cmd`      | none             | Send backup archives to a child process                 |
+| `--backup-pipe-arg`      | none             | Repeatable argument for the pipe command                |
+| `--backup-compression`   | `none`           | Archive compression: `none`, `zstd`, or `lz4`           |
 | `--role`                 | `standalone`     | Replication role: `standalone`, `primary`, or `replica` |
-| `--primary-uri`          | none             | Primary URI that a replica streams from           |
+| `--primary-uri`          | none             | Primary URI that a replica streams from                 |
 
 Run `storkvd --help` to see the same list from the binary.
 
@@ -108,18 +108,18 @@ storage_mode = "disk"
 prefix_bloom_len = 1024
 ```
 
-| Key                    | Default        | Purpose                                      |
-| :--------------------- | :------------- | :------------------------------------------- |
-| `name`                 | none           | Unique scope name. Required.                 |
-| `durability`           | `strict_fsync` | `strict_fsync` or `buffered`.                |
-| `retention`            | `permanent`    | `permanent` or `ttl`.                        |
-| `default_ttl_ms`       | none           | Default lifetime for a `ttl` scope. Required for `ttl`. |
-| `min_ttl_ms`           | none           | Minimum allowed lifetime.                    |
-| `max_ttl_ms`           | none           | Maximum allowed lifetime.                    |
-| `allow_permanent`      | `true`         | Permit writes without an expiry.             |
-| `active_ttl_tracking`  | `false`        | Emit expiry events from a background tracker. |
-| `storage_mode`         | `disk`         | `disk`, `in_memory`, or `in_memory_persistent`. |
-| `prefix_bloom_len`     | none           | Prefix Bloom filter size in bytes.           |
+| Key                   | Default        | Purpose                                                 |
+| :-------------------- | :------------- | :------------------------------------------------------ |
+| `name`                | none           | Unique scope name. Required.                            |
+| `durability`          | `strict_fsync` | `strict_fsync` or `buffered`.                           |
+| `retention`           | `permanent`    | `permanent` or `ttl`.                                   |
+| `default_ttl_ms`      | none           | Default lifetime for a `ttl` scope. Required for `ttl`. |
+| `min_ttl_ms`          | none           | Minimum allowed lifetime.                               |
+| `max_ttl_ms`          | none           | Maximum allowed lifetime.                               |
+| `allow_permanent`     | `true`         | Permit writes without an expiry.                        |
+| `active_ttl_tracking` | `false`        | Emit expiry events from a background tracker.           |
+| `storage_mode`        | `disk`         | `disk`, `in_memory`, or `in_memory_persistent`.         |
+| `prefix_bloom_len`    | none           | Prefix Bloom filter size in bytes.                      |
 
 A `ttl` scope requires a positive `default_ttl_ms`. The default lifetime must stay between `min_ttl_ms` and `max_ttl_ms` when those limits are set. A `permanent` scope must not set `default_ttl_ms`.
 
@@ -295,11 +295,11 @@ The replica needs the same scopes as the primary. Create them on both nodes, or 
 
 A replica serves reads at its configured consistency level. The default for a replica is `Eventual`. A client can change the level with `AsyncClient::set_consistency` or `StorkvPoolOptions::consistency`:
 
-| Level                                     | Replica behavior                                              |
-| :---------------------------------------- | :----------------------------------------------------------- |
-| `Consistency::Strong`                     | Reject data reads and writes with `NotPrimary`                |
+| Level                                          | Replica behavior                                                       |
+| :--------------------------------------------- | :--------------------------------------------------------------------- |
+| `Consistency::Strong`                          | Reject data reads and writes with `NotPrimary`                         |
 | `Consistency::BoundedStaleness { max_lag_ms }` | Serve reads while lag stays at or below the bound; else `StaleReplica` |
-| `Consistency::Eventual`                   | Serve reads at any lag                                        |
+| `Consistency::Eventual`                        | Serve reads at any lag                                                 |
 
 The consistency level is per connection. Each connection starts from the server default. A `ConfigureConsistency` request changes only the connection that sent it. One client cannot change the read policy of another client.
 
@@ -382,15 +382,23 @@ The daemon always uses the default `DbOptions`.
 
 ## Tuning flags that do not exist
 
-StorKV has no runtime flags for these values:
+StorKV has no command line flags for these values:
 
 - WAL segment size. The fixed value is 32 MiB.
 - WAL seal interval. The fixed value is 300 seconds.
-- Leveled compaction trigger. The fixed value is four L0 files.
 - Sync interval for the default scope. It uses strict durability.
-- Background compaction. The engine has no background compaction thread.
 
-To change the first four values, change the source and rebuild. To remove expired data, run compaction as a manual step.
+To change these values, change the source and rebuild.
+
+The database options do control these values:
+
+- `l0_compaction_trigger` sets the L0 count that makes a scope due for compaction. The default is 4.
+- `enable_background_compaction` starts the background scheduler. The default is `false`.
+- `compaction_rate_limit_bytes_per_sec` paces background SSTable writes. The default is no limit.
+- `block_cache_bytes` sets the shared block cache budget. The default is 64 MiB.
+- `max_total_wal_bytes`, `l0_slowdown_writes_trigger`, and `l0_stop_writes_trigger` set the write backpressure limits. The defaults are 256 MiB, 8, and 12.
+
+Set these fields in `DbOptions` when you open the database.
 
 ## Dashboard flags
 

@@ -16,6 +16,7 @@ This page uses `http://127.0.0.1:8080` in every example.
 | GET    | `/v1/ping`                        | Ping                      |
 | GET    | `/v1/telemetry`                   | Global counters           |
 | GET    | `/v1/admin/stats`                 | Rich statistics           |
+| GET    | `/metrics`                        | Prometheus text metrics   |
 | POST   | `/v1/scopes`                      | Create a scope            |
 | DELETE | `/v1/scopes/{scope}`              | Drop a scope              |
 | GET    | `/v1/scopes/{scope}/keys/{key}`   | Read a key                |
@@ -161,14 +162,18 @@ curl -sS -X POST http://127.0.0.1:8080/v1/scopes \
 { "scope_id": 1, "name": "sessions" }
 ```
 
-| Field              | Required | Values                                                                               |
-| :----------------- | :------- | :----------------------------------------------------------------------------------- |
-| `name`             | yes      | Scope name                                                                           |
-| `durability`       | no       | `"strict_fsync"`, `"buffered"`, or `{"buffered":{"sync_interval_ms":N}}`             |
-| `retention`        | no       | `"permanent"` or `{"ttl":{"default_ttl_ms":N,"compaction_style":"leveled"\|"fifo"}}` |
-| `prefix_bloom_len` | no       | Bloom prefix length in bytes                                                         |
+| Field                 | Required | Values                                                                               |
+| :-------------------- | :------- | :----------------------------------------------------------------------------------- |
+| `name`                | yes      | Scope name                                                                           |
+| `durability`          | no       | `"strict_fsync"`, `"buffered"`, or `{"buffered":{"sync_interval_ms":N}}`             |
+| `retention`           | no       | `"permanent"` or `{"ttl":{"default_ttl_ms":N,"compaction_style":"leveled"\|"fifo"}}` |
+| `prefix_bloom_len`    | no       | Bloom prefix length in bytes                                                         |
+| `min_ttl_ms`          | no       | Rejects writes with a shorter TTL; `null` removes the limit                          |
+| `max_ttl_ms`          | no       | Rejects writes with a longer TTL; `null` removes the limit                           |
+| `allow_permanent`     | no       | Boolean; permits writes without an expiry. Default `true`                            |
+| `active_ttl_tracking` | no       | Boolean; tracks deadlines and emits expiry events. Default `false`                   |
 
-The defaults are `strict_fsync`, `permanent`, and no Bloom prefix override. `"buffered"` uses a 100 ms sync interval.
+The defaults are `strict_fsync`, `permanent`, no Bloom prefix override, no TTL bounds, `allow_permanent: true`, and `active_ttl_tracking: false`. `"buffered"` uses a 100 ms sync interval. A write that breaks a TTL guardrail fails with `invalid_ttl`.
 
 `default_ttl_ms` is stored in the scope options. It is not applied to writes that omit a TTL. Read [Watches and TTL](../concepts/watches-and-ttl.md#ttl-edge-cases).
 
@@ -234,6 +239,21 @@ curl -sS -X PUT \
 ```
 
 A write with `ttl_ms` stores an absolute expiry. A later write without `ttl_ms` removes the expiry.
+
+### Conditional write
+
+A conditional write stores a value only when the newest visible state matches a condition. The binary RPC carries this operation as `Request::PutIf`. The Rust client exposes it as `put_if`, the language clients expose the same operation, and the C FFI exposes `storkv_put_if`. The REST API has no put-if route.
+
+The conditions are:
+
+| Condition       | Match rule                                   |
+| :-------------- | :------------------------------------------- |
+| `Absent`        | The key is absent or expired                 |
+| `Present`       | The key is present and not expired           |
+| `ExpectedSeq`   | The visible version has this sequence number |
+| `ExpectedValue` | The visible value equals these bytes         |
+
+The result is `Applied { seq }` on a match. A mismatch returns `Conflict { current_seq, current_value }`, where both fields are `None` when the key is absent. A conflict is not an error. The caller can retry with the new state.
 
 ### Delete a key
 
@@ -560,16 +580,16 @@ Later events arrive as binary `STORKPRT` frames. Read [Watches and TTL](../conce
 
 The HTTP listener also mounts eight etcd v3 JSON routes:
 
-| Route                | etcd operation |
-| :------------------- | :------------- |
-| `/v3/kv/put`         | Put            |
-| `/v3/kv/range`       | Range read     |
-| `/v3/kv/deleterange` | Delete range   |
-| `/v3/kv/txn`         | Transaction    |
-| `/v3/lease/grant`    | Lease grant    |
-| `/v3/lease/keepalive`| Lease keepalive|
-| `/v3/lease/revoke`   | Lease revoke   |
-| `/v3/lease/timetolive`| Lease time to live |
+| Route                  | etcd operation     |
+| :--------------------- | :----------------- |
+| `/v3/kv/put`           | Put                |
+| `/v3/kv/range`         | Range read         |
+| `/v3/kv/deleterange`   | Delete range       |
+| `/v3/kv/txn`           | Transaction        |
+| `/v3/lease/grant`      | Lease grant        |
+| `/v3/lease/keepalive`  | Lease keepalive    |
+| `/v3/lease/revoke`     | Lease revoke       |
+| `/v3/lease/timetolive` | Lease time to live |
 
 Every key maps to the `etcd` scope. Request and response fields use base64 for keys and values. Lease identifiers are decimal strings. A transaction runs one compare list over the StorKV OCC read set and retries on a write conflict.
 

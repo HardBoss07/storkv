@@ -1,10 +1,12 @@
 # Compaction and tuning
 
-StorKV writes immutable SSTables and merges them in compaction. Version 1 has no background compaction thread. You control when compaction runs.
+StorKV writes immutable SSTables and merges them in compaction. Compaction can run in the foreground or on an optional background thread. You control both paths.
 
 ## When compaction runs
 
-Compaction is a manual action through one of these paths:
+Background compaction is off by default. Set `DbOptions::enable_background_compaction` to `true` to start the scheduler. The scheduler wakes after a MemTable flush and compacts at most `max_background_compactions` scopes for each wake. A scope is due when it has at least `l0_compaction_trigger` L0 files. The default trigger is 4 and the default limit is 2. Set `compaction_rate_limit_bytes_per_sec` to pace the new SSTable writes. The scheduler stops on `Db::close` or drop.
+
+You can also run compaction in the foreground through one of these paths:
 
 ```rust
 db.compact()?;
@@ -20,6 +22,14 @@ grpcurl -plaintext -import-path proto -proto storkv/v1/storkv.proto \
 ```
 
 One call compacts every scope in the database. It runs in the calling thread and returns after all scopes finish.
+
+Use `Db::compact_range` to compact one scope and one key range:
+
+```rust
+db.compact_range("events", Some(b"2026-01"), Some(b"2026-02"))?;
+```
+
+The method merges only SSTables that overlap `[start, end)`. Files outside the range stay unchanged. An empty bound means the start or the end of the key space. The method returns `InvalidOperation` when `start >= end` and `ScopeNotFound` when the scope is unknown.
 
 ## Flush before compaction
 
@@ -47,7 +57,7 @@ The trigger is four L0 files. One pass does this work:
 5. Write one L1 file.
 6. Delete the L0 files.
 
-Version 1 writes only to L0 and L1. Levels L2 to L6 exist in the manifest and in the dashboard, but no pass fills them.
+A regular leveled pass writes only to L0 and L1. Levels L2 to L6 exist in the manifest and in the dashboard. Only `compact_range` writes to L2 to L6. The range pass merges the selected files into the highest level it selected.
 
 A scope with one to three L0 files stays unchanged. Run `compact` again after more flushes to reach the trigger.
 
@@ -84,6 +94,22 @@ Reads filter expired keys at read time. Compaction removes the bytes.
 A key that is only overwritten can stay on disk until a leveled merge removes the old version.
 
 The scope `default_ttl_ms` value does not set an expiry on new writes. Use an explicit TTL on each write.
+
+## Write stalls and backpressure
+
+A large L0 backlog or a large un-flushed WAL slows or stops new writes. These limits control the backpressure:
+
+| Option                       | Default | Effect                                             |
+| :--------------------------- | :------ | :------------------------------------------------- |
+| `l0_slowdown_writes_trigger` | 8       | Adds a growing delay to each write                 |
+| `l0_stop_writes_trigger`     | 12      | Blocks foreground writes until the backlog shrinks |
+| `max_total_wal_bytes`        | 256 MiB | Blocks writes until the WAL flush catches up       |
+
+A value of `0` disables that limit. A blocked write sleeps and retries. Set `WriteOptions::non_blocking` to `true` to receive `StorkvError::WriteStalled` instead of blocking. A non-blocking write skips the slowdown delay and returns at once when a stop watermark is exceeded. Use this mode when a caller must not block, such as a network request with a deadline.
+
+## Block cache
+
+The engine keeps one shared block cache for SSTable reads. `DbOptions::block_cache_bytes` sets the total budget. The default is 64 MiB (`DEFAULT_BLOCK_CACHE_BYTES`). A larger cache reduces disk reads for point lookups and scans. The cache holds decoded data blocks and uses the scope ID and file number in its key.
 
 ## Storage tuning choices
 

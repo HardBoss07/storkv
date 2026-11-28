@@ -116,6 +116,27 @@ assert!(meta.is_some());
 
 `key_meta` returns `expires_at_ms` and `seq` for the visible version. An `expires_at_ms` value of 0 means the key never expires.
 
+## Conditional write
+
+`put_if` sends a condition with the write. The conditions are `WirePutCondition::Absent`, `Present`, `ExpectedSeq(u64)`, and `ExpectedValue(Bytes)`:
+
+```rust
+use storkv_proto::{WirePutCondition, WirePutIfResult};
+
+# async fn example(client: &storkv_client::AsyncClient, scope: &storkv_client::ScopeHandle) -> storkv_client::ClientResult<()> {
+let result = client
+    .put_if(scope, b"job:42", &WirePutCondition::Absent, b"worker-1", None)
+    .await?;
+match result {
+    WirePutIfResult::Applied { seq } => println!("applied at {seq}"),
+    WirePutIfResult::Conflict { current_seq, .. } => println!("conflict at {current_seq:?}"),
+}
+# Ok(())
+# }
+```
+
+A conflict is a normal result. The request does not fail.
+
 ## Delete a range and merge
 
 ```rust
@@ -129,6 +150,8 @@ client.merge(scope, b"page_views", WireMergeOp::CounterAdd(1)).await?;
 ```
 
 The range is half-open. The start key is included and the end key is excluded.
+
+`WireMergeOp` supports `CounterAdd(i64)`, `AppendBytes { data, max_len }`, `MaxI64(i64)`, `MinI64(i64)`, `BitOr(u64)`, `BitAnd(u64)`, and `Custom(Bytes)`. Read [Merge operators](../concepts/mvcc-and-transactions.md#merge-operators).
 
 ## Scan
 
@@ -154,7 +177,7 @@ for (key, value) in users {
 # }
 ```
 
-A scan returns `Vec<(Bytes, Bytes)>` in bytewise key order. The client does not page the result.
+A scan returns `Vec<(Bytes, Bytes)>` in bytewise key order. The client does not page the result. These client helpers send `limit: None`, `reverse: false`, and `keys_only: false`. The wire request supports these flags, so a custom `Request::Scan` can bound or reverse a scan. Read [HTTP and RPC API](../reference/http-and-rpc-api.md).
 
 ## Run a transaction
 

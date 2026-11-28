@@ -29,18 +29,18 @@ curl -sS http://127.0.0.1:8080/v1/admin/stats | jq
 curl -sS http://127.0.0.1:8080/metrics
 ```
 
-| Metric                                  | Type      | Meaning                                            |
-| :-------------------------------------- | :-------- | :------------------------------------------------- |
+| Metric                                  | Type      | Meaning                                                                  |
+| :-------------------------------------- | :-------- | :----------------------------------------------------------------------- |
 | `storkv_requests_total{op}`             | counter   | Requests handled for `get`, `put`, `put_if`, `delete`, `scan`, and `txn` |
-| `storkv_request_duration_seconds`       | histogram | Request latency for each operation, in seconds      |
-| `storkv_watch_subscribers`              | gauge     | Active watch subscribers                            |
-| `storkv_sst_files{level}`               | gauge     | SSTable file count for `L0` through `L6`            |
-| `storkv_sst_bytes{level}`               | gauge     | SSTable bytes for `L0` through `L6`                 |
-| `storkv_wal_pinned_bytes`               | gauge     | WAL bytes held by MemTables that are not flushed    |
-| `storkv_wal_total_bytes`                | gauge     | Total bytes of the WAL segment files                |
-| `storkv_compaction_bytes_written_total` | counter   | Bytes written by compaction                         |
-| `storkv_block_cache_hits_total`         | counter   | SSTable block cache hits                            |
-| `storkv_block_cache_misses_total`       | counter   | SSTable block cache misses                          |
+| `storkv_request_duration_seconds`       | histogram | Request latency for each operation, in seconds                           |
+| `storkv_watch_subscribers`              | gauge     | Active watch subscribers                                                 |
+| `storkv_sst_files{level}`               | gauge     | SSTable file count for `L0` through `L6`                                 |
+| `storkv_sst_bytes{level}`               | gauge     | SSTable bytes for `L0` through `L6`                                      |
+| `storkv_wal_pinned_bytes`               | gauge     | WAL bytes held by MemTables that are not flushed                         |
+| `storkv_wal_total_bytes`                | gauge     | Total bytes of the WAL segment files                                     |
+| `storkv_compaction_bytes_written_total` | counter   | Bytes written by compaction                                              |
+| `storkv_block_cache_hits_total`         | counter   | SSTable block cache hits                                                 |
+| `storkv_block_cache_misses_total`       | counter   | SSTable block cache misses                                               |
 
 A `put` counter includes `Put`, `PutWithTtl`, and `Merge` requests. A `delete` counter includes point and range deletes. A `scan` counter includes range and prefix scans. A `txn` counter includes transaction commits.
 
@@ -73,7 +73,7 @@ A failed backup increments `backups_failed_total`. It does not change `last_back
 ### Interpret the counters
 
 - `fsyncs_total` counts WAL sync calls. A `Buffered` scope can commit many writes per sync.
-- `compactions_total` increases only when a caller triggers compaction. StorKV has no background compaction thread.
+- `compactions_total` increases for each successful compaction. A manual `compact` or `compact_range` call increments it, and a background compaction also increments it when `enable_background_compaction` is `true`.
 - `write_conflicts_total` increases only for `TxCommit` validation failures. A failed commit does not apply its writes.
 
 ## Rich statistics

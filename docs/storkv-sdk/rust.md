@@ -21,11 +21,11 @@ The `storkv-core` engine keeps no mandatory dependencies. The SDK adds Tokio for
 
 ## Feature flags
 
-| Feature | Default | Effect |
-| :--- | :--- | :--- |
-| `json` | Yes | Typed collections encode values as JSON through `serde_json` |
-| `postcard` | No | Typed collections can encode values as Postcard |
-| `serde` | No | Enable the typed collection API without a default codec |
+| Feature    | Default | Effect                                                       |
+| :--------- | :------ | :----------------------------------------------------------- |
+| `json`     | Yes     | Typed collections encode values as JSON through `serde_json` |
+| `postcard` | No      | Typed collections can encode values as Postcard              |
+| `serde`    | No      | Enable the typed collection API without a default codec      |
 
 `json` enables `serde`. A build with `postcard` and without `json` uses Postcard as the collection codec.
 
@@ -81,16 +81,16 @@ let pool = StorkvPoolOptions::new()
 
 ## Pool options
 
-| Method | Default | Effect |
-| :--- | :--- | :--- |
-| `max_connections` | 10 | Maximum simultaneous connections |
-| `min_connections` | 1 | Connections opened during `connect` |
-| `acquire_timeout` | 5 seconds | Maximum wait for a free connection |
-| `idle_timeout` | 300 seconds | Age limit for an idle networked connection |
-| `health_check` | `true` | Probe a client before reuse |
-| `retry_policy` | `RetryPolicy::default` | Default retry policy for transactions |
-| `cache` | `CacheOptions::default()` | Optional client-side read cache |
-| `consistency` | `Consistency::Strong` | Consistency level that networked pools request |
+| Method            | Default                   | Effect                                         |
+| :---------------- | :------------------------ | :--------------------------------------------- |
+| `max_connections` | 10                        | Maximum simultaneous connections               |
+| `min_connections` | 1                         | Connections opened during `connect`            |
+| `acquire_timeout` | 5 seconds                 | Maximum wait for a free connection             |
+| `idle_timeout`    | 300 seconds               | Age limit for an idle networked connection     |
+| `health_check`    | `true`                    | Probe a client before reuse                    |
+| `retry_policy`    | `RetryPolicy::default`    | Default retry policy for transactions          |
+| `cache`           | `CacheOptions::default()` | Optional client-side read cache                |
+| `consistency`     | `Consistency::Strong`     | Consistency level that networked pools request |
 
 An embedded pool shares one database handle. The connection limit still controls concurrent callers.
 
@@ -117,10 +117,10 @@ let pool = StorkvPoolOptions::default()
 # }
 ```
 
-| Field | Default | Meaning |
-| :--- | :--- | :--- |
-| `enabled` | `false` | Turn the cache on |
-| `max_entries_per_scope` | `1024` | Maximum cached keys for each scope |
+| Field                   | Default | Meaning                            |
+| :---------------------- | :------ | :--------------------------------- |
+| `enabled`               | `false` | Turn the cache on                  |
+| `max_entries_per_scope` | `1024`  | Maximum cached keys for each scope |
 
 The cache stores point reads. A `put` or `delete` through the same pool updates the cache. A change from another client arrives through a watch subscription and invalidates the matching key. A scope drop clears the whole scope cache.
 
@@ -150,11 +150,11 @@ pool.set_consistency(Consistency::Eventual).await?;
 # }
 ```
 
-| Level | Effect |
-| :--- | :--- |
-| `Strong` | Send the request to a primary. A replica rejects data reads and writes with `NotPrimary` |
-| `BoundedStaleness { max_lag_ms }` | A replica serves reads while its lag is at or below the bound; otherwise `StaleReplica` |
-| `Eventual` | A replica serves reads at any lag |
+| Level                             | Effect                                                                                   |
+| :-------------------------------- | :--------------------------------------------------------------------------------------- |
+| `Strong`                          | Send the request to a primary. A replica rejects data reads and writes with `NotPrimary` |
+| `BoundedStaleness { max_lag_ms }` | A replica serves reads while its lag is at or below the bound; otherwise `StaleReplica`  |
+| `Eventual`                        | A replica serves reads at any lag                                                        |
 
 The default is `Strong`. A replica node switches its own default to `Eventual` when it starts with `--role replica`. The embedded backend ignores the setting.
 
@@ -177,12 +177,12 @@ let scopes = [
 
 A `ScopeDefinition` has these parts:
 
-| Field | Default | Meaning |
-| :--- | :--- | :--- |
-| `name` | Required | Unique scope name |
-| `durability` | `Durability::StrictFsync` | Commit durability policy |
-| `retention` | `Retention::Permanent` | Key retention policy |
-| `prefix_bloom_len` | `None` | Prefix Bloom filter size in bytes |
+| Field              | Default                   | Meaning                           |
+| :----------------- | :------------------------ | :-------------------------------- |
+| `name`             | Required                  | Unique scope name                 |
+| `durability`       | `Durability::StrictFsync` | Commit durability policy          |
+| `retention`        | `Retention::Permanent`    | Key retention policy              |
+| `prefix_bloom_len` | `None`                    | Prefix Bloom filter size in bytes |
 
 Call `provision_scopes` during startup:
 
@@ -222,19 +222,37 @@ users.delete("alice").await?;
 
 A raw scope has these methods:
 
-| Method | Result | Notes |
-| :--- | :--- | :--- |
-| `get` | `Option<Bytes>` | `None` means the key is absent |
-| `exists` | `bool` | A read that returns a flag |
-| `put` | `()` | Store one key/value pair |
-| `put_with_ttl` | `()` | Store a pair and set an expiry |
-| `get_and_touch` | `Option<Bytes>` | Read a value and restart its expiry |
-| `delete` | `()` | Remove one key |
-| `scan_prefix` | `Vec<(Bytes, Bytes)>` | Bytewise order, one prefix |
-| `scan_range` | `Vec<(Bytes, Bytes)>` | Half-open range, optional bounds |
-| `watch_prefix` | `WatchStream` | Changes for one key prefix |
+| Method          | Result                | Notes                                      |
+| :-------------- | :-------------------- | :----------------------------------------- |
+| `get`           | `Option<Bytes>`       | `None` means the key is absent             |
+| `exists`        | `bool`                | A read that returns a flag                 |
+| `put`           | `()`                  | Store one key/value pair                   |
+| `put_with_ttl`  | `()`                  | Store a pair and set an expiry             |
+| `put_if`        | `PutIfResult`         | Store a pair only when a condition matches |
+| `get_and_touch` | `Option<Bytes>`       | Read a value and restart its expiry        |
+| `delete`        | `()`                  | Remove one key                             |
+| `merge`         | `()`                  | Apply a `MergeOp` to one key               |
+| `scan_prefix`   | `Vec<(Bytes, Bytes)>` | Bytewise order, one prefix                 |
+| `scan_range`    | `Vec<(Bytes, Bytes)>` | Half-open range, optional bounds           |
+| `watch_prefix`  | `WatchStream`         | Changes for one key prefix                 |
 
 `get_and_touch` reads and rewrites the key in one transaction. The returned value and the new expiry always agree. The default policy retries a write conflict.
+
+`put_if` takes a `PutCondition` and an optional TTL. The conditions are `Absent`, `Present`, `ExpectedSeq`, and `ExpectedValue`. The result is `PutIfResult::Applied { seq }` or `PutIfResult::Conflict { .. }`. A conflict is a normal result, not an error.
+
+```rust
+use storkv_core::PutCondition;
+# use storkv_sdk::StorkvPool;
+# async fn example(pool: &StorkvPool) -> storkv_sdk::Result<()> {
+let locks = pool.scope("locks");
+let result = locks
+    .put_if("job:42", &PutCondition::Absent, b"worker-1", None)
+    .await?;
+# Ok(())
+# }
+```
+
+`merge` applies a `MergeOp`. The helper methods `counter_add`, `append_bytes`, `max_i64`, `min_i64`, `bit_or`, and `bit_and` build the common operators. The supported operators are `CounterAdd`, `AppendBytes`, `MaxI64`, `MinI64`, `BitOr`, `BitAnd`, and `Custom`. Read [Merge operators](../concepts/mvcc-and-transactions.md#merge-operators).
 
 A TTL write uses `Duration`:
 
@@ -267,7 +285,7 @@ let window = users
 # }
 ```
 
-The range includes the start key and excludes the end key. A `None` bound is open.
+The range includes the start key and excludes the end key. A `None` bound is open. These convenience methods return every match. The wire protocol also carries `limit`, `reverse`, and `keys_only` flags for a bounded scan. Use `storkv-core` `ScanOptions` for embedded scans with these flags.
 
 ## Typed collections
 
@@ -300,18 +318,18 @@ users.delete("1").await?;
 
 The collection methods are:
 
-| Method | Result |
-| :--- | :--- |
-| `get` | `Option<T>` |
-| `exists` | `bool` |
-| `put` | `()` |
-| `put_with_ttl` | `()` |
-| `get_and_touch` | `Option<T>` |
-| `delete` | `()` |
-| `scan_prefix` | `Vec<(Bytes, T)>` |
-| `scan` | `Vec<(Bytes, T)>` |
-| `scan_range` | `Vec<(Bytes, T)>` |
-| `watch_prefix` | `TypedWatchStream<T>` |
+| Method          | Result                |
+| :-------------- | :-------------------- |
+| `get`           | `Option<T>`           |
+| `exists`        | `bool`                |
+| `put`           | `()`                  |
+| `put_with_ttl`  | `()`                  |
+| `get_and_touch` | `Option<T>`           |
+| `delete`        | `()`                  |
+| `scan_prefix`   | `Vec<(Bytes, T)>`     |
+| `scan`          | `Vec<(Bytes, T)>`     |
+| `scan_range`    | `Vec<(Bytes, T)>`     |
+| `watch_prefix`  | `TypedWatchStream<T>` |
 
 The returned key is relative to the collection prefix. A scan removes the prefix before it returns the key.
 
@@ -349,12 +367,12 @@ The closure must return a boxed future. A borrowed `&mut Transaction` cannot cro
 
 `RetryPolicy` controls the loop:
 
-| Field | Default | Meaning |
-| :--- | :--- | :--- |
-| `jitter` | `true` | Add random offset to each delay |
-| `max_retries` | 5 | Attempts after the first failure |
-| `base_delay` | 2 milliseconds | Delay before the first retry |
-| `max_delay` | 250 milliseconds | Upper bound for one delay |
+| Field         | Default          | Meaning                          |
+| :------------ | :--------------- | :------------------------------- |
+| `jitter`      | `true`           | Add random offset to each delay  |
+| `max_retries` | 5                | Attempts after the first failure |
+| `base_delay`  | 2 milliseconds   | Delay before the first retry     |
+| `max_delay`   | 250 milliseconds | Upper bound for one delay        |
 
 Use `RetryPolicy::none()` to disable retries. Use `RetryPolicy::with_max_retries`, `with_base_delay`, `with_max_delay`, and `with_jitter` to change one field.
 
@@ -433,13 +451,13 @@ assert_eq!(event.key, bytes::Bytes::from_static(b"hot:key"));
 
 A `WatchEvent` has these fields:
 
-| Field | Type | Meaning |
-| :--- | :--- | :--- |
-| `kind` | `WatchEventKind` | `Put`, `Delete`, or `DropScope` |
-| `scope_id` | `u32` | Scope that changed |
-| `seq` | `u64` | Commit sequence number |
-| `key` | `Bytes` | Key that changed |
-| `value` | `Option<Bytes>` | New value for a put only |
+| Field      | Type             | Meaning                         |
+| :--------- | :--------------- | :------------------------------ |
+| `kind`     | `WatchEventKind` | `Put`, `Delete`, or `DropScope` |
+| `scope_id` | `u32`            | Scope that changed              |
+| `seq`      | `u64`            | Commit sequence number          |
+| `key`      | `Bytes`          | Key that changed                |
+| `value`    | `Option<Bytes>`  | New value for a put only        |
 
 `WatchEventKind::DropScope` appears only when the watched prefix is empty. The event carries no key.
 

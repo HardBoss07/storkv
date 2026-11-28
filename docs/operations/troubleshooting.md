@@ -247,7 +247,7 @@ Read [MVCC and transactions](../concepts/mvcc-and-transactions.md) for the valid
 | Frequent conflicts       | `write_conflicts_total`                     | Reduce transaction contention or retry      |
 | Slow scans               | `sst_files` and level sizes                 | Compact and narrow the scan range           |
 
-StorKV has no background compaction. Expired keys and old versions stay on disk until a compact call or a memtable flush rewrites them.
+Background compaction is off by default. Enable `DbOptions::enable_background_compaction` to let the scheduler compact scopes that reach the L0 trigger. With the default settings, expired keys and old versions stay on disk until a compact call or a memtable flush rewrites them.
 
 ```bash
 curl -sS -X POST http://127.0.0.1:8080/v1/admin/compact
