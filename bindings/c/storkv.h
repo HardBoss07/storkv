@@ -332,7 +332,11 @@ extern "C" {
 /**
  * Return the last error message recorded on the calling thread.
  *
- * Release the returned string with [`storkv_string_free`].
+ * # Safety
+ *
+ * The caller must release the returned [`StorkvString`] with
+ * [`storkv_string_free`]. Do not free the buffer any other way. The message is
+ * thread-local, so call this function on the thread that recorded the error.
  */
 struct StorkvString storkv_last_error_message(void);
 

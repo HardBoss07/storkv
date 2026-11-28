@@ -1,3 +1,9 @@
+//! Thread-local error recording and status conversion for the C ABI.
+//!
+//! Each exported call records its failure on the calling thread. The caller
+//! reads the message with `storkv_last_error_message` and releases it with
+//! `storkv_string_free`.
+
 use std::cell::RefCell;
 use std::ffi::CString;
 
@@ -72,7 +78,11 @@ pub(crate) fn fail_with(error: SdkError) -> StorkvStatus {
 
 /// Return the last error message recorded on the calling thread.
 ///
-/// Release the returned string with [`storkv_string_free`].
+/// # Safety
+///
+/// The caller must release the returned [`StorkvString`] with
+/// [`storkv_string_free`]. Do not free the buffer any other way. The message is
+/// thread-local, so call this function on the thread that recorded the error.
 #[unsafe(no_mangle)]
 pub extern "C" fn storkv_last_error_message() -> StorkvString {
     match std::panic::catch_unwind(|| {

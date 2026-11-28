@@ -1,3 +1,5 @@
+//! Watch stream entry points for the C ABI.
+
 use std::time::Duration;
 
 use storkv_sdk::WatchEventKind;

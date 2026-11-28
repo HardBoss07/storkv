@@ -1,3 +1,5 @@
+//! Pool and scope entry points for the C ABI.
+
 use std::ffi::{CStr, c_char};
 
 use crate::error::{clear_error, fail_with, failure, guard_status, guard_void};

@@ -1,3 +1,5 @@
+//! Opaque handle allocation and ownership helpers for the C ABI.
+
 use std::future::Future;
 use std::sync::Arc;
 

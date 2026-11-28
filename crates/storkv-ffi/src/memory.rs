@@ -1,3 +1,5 @@
+//! Owned buffer allocation and release helpers for the C ABI.
+
 use bytes::Bytes;
 
 use crate::error::guard_void;

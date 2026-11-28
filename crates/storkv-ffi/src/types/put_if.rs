@@ -1,3 +1,5 @@
+//! Conditional write types for the C ABI.
+
 use bytes::Bytes;
 
 use super::StorkvSlice;
