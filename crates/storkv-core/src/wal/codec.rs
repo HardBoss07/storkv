@@ -1,3 +1,4 @@
+//! WAL batch frame encoding and decoding.
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
 use crate::error::{Result, StorkvError};
@@ -42,6 +43,11 @@ impl WalBatchFrame {
         Ok(frame)
     }
 
+    ///
+    /// # Errors
+    ///
+    /// Returns `StorkvError::Corruption` when the header, checksum, or frame body is invalid.
+    /// Returns `StorkvError::Protocol` when a frame field is malformed.
     /// Decode frame from byte buffer. Returns (frame, bytes_consumed)
     pub fn decode(source: &[u8]) -> Result<(Self, usize)> {
         let (expected_crc, total_frame_len) = decode_frame_header(source)?;

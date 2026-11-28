@@ -1,3 +1,4 @@
+//! Internal key encoding and format constants.
 use bytes::{BufMut, Bytes, BytesMut};
 
 /// Maximum user key length in bytes.

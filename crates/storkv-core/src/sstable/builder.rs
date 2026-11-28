@@ -1,3 +1,4 @@
+//! SSTable writer construction.
 use super::block::{DataBlockBuilder, TARGET_BLOCK_SIZE};
 use super::bloom::BloomFilterBuilder;
 use super::footer::{

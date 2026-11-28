@@ -1,3 +1,4 @@
+//! SSTable Bloom filters.
 use crate::error::{Result, StorkvError};
 use crate::format::compute_crc32c;
 use bytes::Bytes;
@@ -72,7 +73,7 @@ impl BloomFilterReader {
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::Corruption`] on a short or invalid block.
+    /// Returns `StorkvError::Corruption` on a short or invalid block.
     pub fn new(data: Bytes) -> Result<Self> {
         if data.len() < FILTER_HEADER_SIZE {
             return Err(StorkvError::Corruption("Filter block too short".into()));

@@ -1,3 +1,4 @@
+//! Fault-injecting virtual filesystem for tests.
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

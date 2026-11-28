@@ -1,3 +1,4 @@
+//! WAL replay during database recovery.
 use std::path::Path;
 use std::sync::Arc;
 
@@ -15,7 +16,7 @@ impl WalRecovery {
     /// Read every complete batch from one WAL segment.
     ///
     /// A torn tail on the last segment is truncated and ignored. A checksum
-    /// failure in a non-last segment returns [`StorkvError::Corruption`].
+    /// failure in a non-last segment returns `StorkvError::Corruption`.
     ///
     /// # Errors
     ///

@@ -1,3 +1,4 @@
+//! Leveled L0 to L1 compaction policy.
 use crate::error::Result;
 use crate::format::{InternalKey, ValueType};
 use crate::manifest::{EditRecord, SstFileMeta, VersionEdit};

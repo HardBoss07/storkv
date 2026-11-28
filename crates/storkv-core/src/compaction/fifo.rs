@@ -1,3 +1,4 @@
+//! FIFO expiry compaction policy.
 use crate::error::Result;
 use crate::manifest::{EditRecord, VersionEdit};
 use crate::scope::Scope;

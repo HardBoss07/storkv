@@ -1,3 +1,4 @@
+//! Per-scope in-memory write buffer.
 use crate::format::{InternalKey, ValueType};
 use bytes::Bytes;
 use crossbeam_skiplist::SkipMap;

@@ -1,3 +1,4 @@
+//! POSIX virtual filesystem implementation.
 use std::fs::File as StdFile;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};

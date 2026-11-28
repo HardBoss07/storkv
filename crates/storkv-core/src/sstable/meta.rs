@@ -1,3 +1,4 @@
+//! SSTable metadata block codec.
 use super::footer::{BLOCK_HANDLE_SIZE, BlockHandle};
 use crate::error::{Result, StorkvError};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
@@ -56,7 +57,7 @@ impl MetaBlock {
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::Corruption`] when fewer than [`META_BLOCK_SIZE`]
+    /// Returns `StorkvError::Corruption` when fewer than `META_BLOCK_SIZE`
     /// bytes are present.
     pub fn decode(mut data: &[u8]) -> Result<Self> {
         if data.remaining() < META_BLOCK_SIZE {
@@ -131,7 +132,7 @@ impl IndexBlockReader {
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::Corruption`] on a truncated or inconsistent block.
+    /// Returns `StorkvError::Corruption` on a truncated or inconsistent block.
     pub fn decode(mut data: &[u8]) -> Result<Self> {
         if data.remaining() < INDEX_ENTRY_COUNT_SIZE {
             return Err(StorkvError::Corruption("Index block too short".into()));

@@ -1,3 +1,4 @@
+//! SSTable data and index blocks.
 use crate::error::{Result, StorkvError};
 use bytes::{BufMut, Bytes, BytesMut};
 
@@ -85,7 +86,7 @@ impl DataBlockReader {
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::Corruption`] on a truncated or invalid block.
+    /// Returns `StorkvError::Corruption` on a truncated or invalid block.
     pub fn new(data: Bytes) -> Result<Self> {
         if data.len() < 4 {
             return Err(StorkvError::Corruption("Data block too short".into()));
@@ -132,7 +133,7 @@ impl DataBlockReader {
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::Corruption`] when the entry stream is invalid.
+    /// Returns `StorkvError::Corruption` when the entry stream is invalid.
     pub fn entries(&self) -> Result<Vec<(Bytes, Bytes)>> {
         let entry_start = *self.restarts.first().ok_or_else(|| {
             StorkvError::Corruption("Data block contains no restart points".into())
@@ -216,7 +217,7 @@ impl DataBlockReader {
     ///
     /// # Errors
     ///
-    /// Returns [`StorkvError::Corruption`] when the block cannot be decoded.
+    /// Returns `StorkvError::Corruption` when the block cannot be decoded.
     pub fn seek_ge(&self, target_internal_key: &[u8]) -> Result<Option<(Bytes, Bytes)>> {
         for (key, value) in self.entries()? {
             if key.as_ref() >= target_internal_key {

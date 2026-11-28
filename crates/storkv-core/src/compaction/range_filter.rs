@@ -1,3 +1,4 @@
+//! Compaction range selection and entry filtering.
 use crate::format::{InternalKey, ValueType};
 use crate::manifest::SstFileMeta;
 use crate::scope::Scope;

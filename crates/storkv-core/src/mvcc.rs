@@ -1,3 +1,4 @@
+//! MVCC visibility, merge operators, and conditional writes.
 use std::collections::{BTreeMap, HashSet};
 
 use bytes::Bytes;

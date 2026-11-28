@@ -1,3 +1,4 @@
+//! Virtual filesystem traits and shared types.
 use std::io::{Read, Seek, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

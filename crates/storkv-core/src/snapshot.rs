@@ -1,3 +1,4 @@
+//! Pinned MVCC snapshot types.
 use crate::db::DbInner;
 use crate::format::{InternalKey, ValueType};
 use crate::scope::{Scope, StorageMode};

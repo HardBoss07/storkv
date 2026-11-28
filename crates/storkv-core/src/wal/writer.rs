@@ -1,3 +1,4 @@
+//! WAL segment writer.
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -66,6 +67,11 @@ impl<FS: FileSystem> WalSegment<FS> {
         })
     }
 
+    ///
+    /// # Errors
+    ///
+    /// Returns `StorkvError::Io` when the segment cannot be opened or read.
+    /// Returns `Ok(None)` when the segment is missing or has no valid header.
     /// Attach to an existing segment instead of truncating it.
     ///
     /// Returns `Ok(None)` when the file is missing, too short to hold a header,
