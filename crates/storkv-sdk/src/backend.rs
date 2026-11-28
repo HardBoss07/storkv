@@ -1,3 +1,5 @@
+//! Backend connections for embedded and networked pools.
+
 use std::collections::HashMap;
 use std::time::Instant;
 

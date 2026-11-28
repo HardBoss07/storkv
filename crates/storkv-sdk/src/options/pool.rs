@@ -1,3 +1,5 @@
+//! Pool options and connection settings.
+
 use std::time::Duration;
 
 use storkv_proto::Consistency;

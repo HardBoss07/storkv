@@ -94,6 +94,10 @@ impl WatchStream {
     }
 
     /// Receive the next event.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Some(Err(..))` when the backend reports a watch failure.
     pub async fn next(&mut self) -> Option<Result<WatchEvent>> {
         self.wait_ready().await;
         self.receiver.recv().await

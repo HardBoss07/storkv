@@ -1,3 +1,5 @@
+//! Retry, cache, and scope configuration types.
+
 use std::time::Duration;
 
 use storkv_core::{CompactionStyle, Durability, Retention};

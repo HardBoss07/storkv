@@ -1,3 +1,5 @@
+//! SDK error type and retry classification helpers.
+
 use storkv_client::ClientError;
 use storkv_core::StorkvError;
 use storkv_proto::StorkvWireError;

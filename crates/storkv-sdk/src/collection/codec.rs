@@ -70,6 +70,10 @@ pub struct TypedWatchStream<T> {
 
 impl<T> TypedWatchStream<T> {
     /// Receive the next decoded event.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Some(Err(..))` when the watch stream or the value decode fails.
     pub async fn next(&mut self) -> Option<Result<TypedWatchEvent<T>>>
     where
         T: DeserializeOwned,

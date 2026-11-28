@@ -1,3 +1,5 @@
+//! Connection pool, checkout, and transaction helpers.
+
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
