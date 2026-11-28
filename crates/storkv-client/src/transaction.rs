@@ -1,3 +1,4 @@
+//! Client-side optimistic transaction state.
 use std::collections::{BTreeMap, HashSet};
 use std::time::Duration;
 
@@ -32,6 +33,12 @@ impl AsyncTransaction {
         }
     }
 
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::ClientError::Server`] when the scope is unknown.
+    /// Returns [`crate::ClientError::Protocol`] when the reply is not a value.
+    /// Returns [`crate::ClientError::Io`] or [`crate::ClientError::Http`] when the send fails.
     /// Read one key and add the key to the OCC read set.
     pub async fn get<K: AsRef<[u8]>>(
         &mut self,
@@ -48,6 +55,12 @@ impl AsyncTransaction {
         self.client.get(scope, key).await
     }
 
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::ClientError::Server`] when the scope is unknown.
+    /// Returns [`crate::ClientError::Protocol`] when the reply is not a scan.
+    /// Returns [`crate::ClientError::Io`] or [`crate::ClientError::Http`] when the send fails.
     /// Read an ordered key range and add every returned key to the OCC read set.
     pub async fn scan<K: AsRef<[u8]>>(
         &mut self,
@@ -60,6 +73,12 @@ impl AsyncTransaction {
         Ok(entries)
     }
 
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::ClientError::Server`] when the scope is unknown.
+    /// Returns [`crate::ClientError::Protocol`] when the reply is not a scan.
+    /// Returns [`crate::ClientError::Io`] or [`crate::ClientError::Http`] when the send fails.
     /// Read every key with `prefix` and add every returned key to the OCC read set.
     pub async fn scan_prefix<K: AsRef<[u8]>>(
         &mut self,
@@ -159,6 +178,12 @@ impl AsyncTransaction {
         );
     }
 
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::ClientError::Server`] when the commit is rejected.
+    /// Returns [`crate::ClientError::Protocol`] when the reply is not empty.
+    /// Returns [`crate::ClientError::Io`] or [`crate::ClientError::Http`] when the send fails.
     /// Send the write set and read set to the server.
     pub async fn commit(self) -> ClientResult<()> {
         let read_set = self.read_set.into_iter().collect();

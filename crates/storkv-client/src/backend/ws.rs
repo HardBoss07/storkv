@@ -1,3 +1,4 @@
+//! WebSocket transport backend.
 use bytes::BytesMut;
 use futures_util::{SinkExt, StreamExt};
 use storkv_proto::{Message, MessagePayload, Request, Response, WireChangeEvent};

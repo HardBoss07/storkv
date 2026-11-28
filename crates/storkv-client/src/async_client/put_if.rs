@@ -1,3 +1,7 @@
+//! Conditional one-round-trip writes for the asynchronous client.
+//!
+//! The server evaluates the condition and the write as one operation.
+
 use std::time::Duration;
 
 use bytes::Bytes;

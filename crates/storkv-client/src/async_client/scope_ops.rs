@@ -1,9 +1,11 @@
-use std::time::Duration;
+//! Scope, snapshot, checkpoint, and compaction calls for the asynchronous client.
+//!
+//! Scope handles carry the server scope identifier. Reuse one handle for one
+//! scope for the life of the connection.
 
 use bytes::Bytes;
 use storkv_proto::{
-    Request, Response, WireDurability, WireMergeOp, WireRetention, WireScopeHandle,
-    WireScopeOptions,
+    Request, Response, WireDurability, WireRetention, WireScopeHandle, WireScopeOptions,
 };
 
 use crate::transport::{ClientResult, ScopeHandle};
@@ -12,6 +14,12 @@ use super::{AsyncClient, expect_empty, unexpected_response};
 
 impl AsyncClient {
     /// Create a scope and return its handle.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::ClientError::Server`] when the scope name already exists.
+    /// Returns [`crate::ClientError::Protocol`] when the reply is not a scope handle.
+    /// Returns [`crate::ClientError::Io`] or [`crate::ClientError::Http`] when the send fails.
     pub async fn create_scope<S: Into<String>>(
         &self,
         name: S,
@@ -32,6 +40,12 @@ impl AsyncClient {
     }
 
     /// Create a scope from a complete wire option set.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::ClientError::Server`] when the scope name already exists.
+    /// Returns [`crate::ClientError::Protocol`] when the reply is not a scope handle.
+    /// Returns [`crate::ClientError::Io`] or [`crate::ClientError::Http`] when the send fails.
     pub async fn create_scope_with_options<S: Into<String>>(
         &self,
         name: S,
@@ -52,6 +66,12 @@ impl AsyncClient {
     }
 
     /// Drop a scope and delete its data.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::ClientError::Server`] when the scope does not exist.
+    /// Returns [`crate::ClientError::Protocol`] when the reply is not empty.
+    /// Returns [`crate::ClientError::Io`] or [`crate::ClientError::Http`] when the send fails.
     pub async fn drop_scope<S: AsRef<str>>(&self, name: S) -> ClientResult<()> {
         expect_empty(
             self.send_request(Request::DropScope {
@@ -61,150 +81,13 @@ impl AsyncClient {
         )
     }
 
-    /// Read one key. `None` means the key does not exist.
-    pub async fn get<K: AsRef<[u8]>>(
-        &self,
-        scope: &ScopeHandle,
-        key: K,
-    ) -> ClientResult<Option<Bytes>> {
-        match self
-            .send_request(Request::Get {
-                scope_id: scope.scope_id,
-                key: Bytes::copy_from_slice(key.as_ref()),
-            })
-            .await?
-        {
-            Response::Value(value) => Ok(value),
-            other => Err(unexpected_response(other)),
-        }
-    }
-
-    /// Store one key/value pair.
-    pub async fn put<K: AsRef<[u8]>, V: AsRef<[u8]>>(
-        &self,
-        scope: &ScopeHandle,
-        key: K,
-        val: V,
-    ) -> ClientResult<()> {
-        expect_empty(
-            self.send_request(Request::Put {
-                scope_id: scope.scope_id,
-                key: Bytes::copy_from_slice(key.as_ref()),
-                val: Bytes::copy_from_slice(val.as_ref()),
-            })
-            .await?,
-        )
-    }
-
-    /// Store one key/value pair with a time to live.
-    pub async fn put_with_ttl<K: AsRef<[u8]>, V: AsRef<[u8]>>(
-        &self,
-        scope: &ScopeHandle,
-        key: K,
-        val: V,
-        ttl: Duration,
-    ) -> ClientResult<()> {
-        expect_empty(
-            self.send_request(Request::PutWithTtl {
-                scope_id: scope.scope_id,
-                key: Bytes::copy_from_slice(key.as_ref()),
-                val: Bytes::copy_from_slice(val.as_ref()),
-                ttl,
-            })
-            .await?,
-        )
-    }
-
-    /// Delete one key.
-    pub async fn delete<K: AsRef<[u8]>>(&self, scope: &ScopeHandle, key: K) -> ClientResult<()> {
-        expect_empty(
-            self.send_request(Request::Delete {
-                scope_id: scope.scope_id,
-                key: Bytes::copy_from_slice(key.as_ref()),
-            })
-            .await?,
-        )
-    }
-
-    /// Delete a half-open key range.
-    pub async fn delete_range<K: AsRef<[u8]>>(
-        &self,
-        scope: &ScopeHandle,
-        start_key: K,
-        end_key: K,
-    ) -> ClientResult<()> {
-        expect_empty(
-            self.send_request(Request::DeleteRange {
-                scope_id: scope.scope_id,
-                start_key: Bytes::copy_from_slice(start_key.as_ref()),
-                end_key: Bytes::copy_from_slice(end_key.as_ref()),
-            })
-            .await?,
-        )
-    }
-
-    /// Apply a merge operand to one key.
-    pub async fn merge<K: AsRef<[u8]>>(
-        &self,
-        scope: &ScopeHandle,
-        key: K,
-        op: WireMergeOp,
-    ) -> ClientResult<()> {
-        expect_empty(
-            self.send_request(Request::Merge {
-                scope_id: scope.scope_id,
-                key: Bytes::copy_from_slice(key.as_ref()),
-                op,
-            })
-            .await?,
-        )
-    }
-
-    /// Read an ordered key range. `None` bounds are open.
-    pub async fn scan<K: AsRef<[u8]>>(
-        &self,
-        scope: &ScopeHandle,
-        start_key: Option<K>,
-        end_key: Option<K>,
-    ) -> ClientResult<Vec<(Bytes, Bytes)>> {
-        match self
-            .send_request(Request::Scan {
-                scope_id: scope.scope_id,
-                start_key: start_key.map(|bound| Bytes::copy_from_slice(bound.as_ref())),
-                end_key: end_key.map(|bound| Bytes::copy_from_slice(bound.as_ref())),
-                limit: None,
-                reverse: false,
-                keys_only: false,
-            })
-            .await?
-        {
-            Response::Scan(entries) => Ok(entries),
-            other => Err(unexpected_response(other)),
-        }
-    }
-
-    /// Read every key with the given prefix.
-    pub async fn scan_prefix<K: AsRef<[u8]>>(
-        &self,
-        scope: &ScopeHandle,
-        prefix: K,
-    ) -> ClientResult<Vec<(Bytes, Bytes)>> {
-        match self
-            .send_request(Request::ScanPrefix {
-                scope_id: scope.scope_id,
-                prefix: Bytes::copy_from_slice(prefix.as_ref()),
-                limit: None,
-                reverse: false,
-                keys_only: false,
-            })
-            .await?
-        {
-            Response::Scan(entries) => Ok(entries),
-            other => Err(unexpected_response(other)),
-        }
-    }
-
     /// Pin a snapshot at the current sequence number.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::ClientError::Server`] when the snapshot name is in use.
+    /// Returns [`crate::ClientError::Protocol`] when the reply is not empty.
+    /// Returns [`crate::ClientError::Io`] or [`crate::ClientError::Http`] when the send fails.
     pub async fn create_snapshot<S: Into<String>>(&self, name: S) -> ClientResult<()> {
         expect_empty(
             self.send_request(Request::CreateSnapshot { name: name.into() })
@@ -213,6 +96,12 @@ impl AsyncClient {
     }
 
     /// Release a pinned snapshot.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::ClientError::Server`] when the snapshot does not exist.
+    /// Returns [`crate::ClientError::Protocol`] when the reply is not empty.
+    /// Returns [`crate::ClientError::Io`] or [`crate::ClientError::Http`] when the send fails.
     pub async fn unpin_snapshot<S: AsRef<str>>(&self, name: S) -> ClientResult<()> {
         expect_empty(
             self.send_request(Request::UnpinSnapshot {
@@ -223,6 +112,12 @@ impl AsyncClient {
     }
 
     /// Copy a consistent database image to a directory.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::ClientError::Server`] when the checkpoint fails.
+    /// Returns [`crate::ClientError::Protocol`] when the reply is not empty.
+    /// Returns [`crate::ClientError::Io`] or [`crate::ClientError::Http`] when the send fails.
     pub async fn checkpoint<S: Into<String>>(&self, dest_dir: S) -> ClientResult<()> {
         expect_empty(
             self.send_request(Request::Checkpoint {
@@ -233,6 +128,12 @@ impl AsyncClient {
     }
 
     /// Run compaction immediately.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::ClientError::Server`] when the compaction fails.
+    /// Returns [`crate::ClientError::Protocol`] when the reply is not empty.
+    /// Returns [`crate::ClientError::Io`] or [`crate::ClientError::Http`] when the send fails.
     pub async fn compact(&self) -> ClientResult<()> {
         expect_empty(self.send_request(Request::Compact).await?)
     }
@@ -240,6 +141,12 @@ impl AsyncClient {
     /// Compact only the SSTables that overlap `[start, end)` in one scope.
     ///
     /// `None` bounds are open. SSTables outside the range stay untouched.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::ClientError::Server`] when the scope is unknown.
+    /// Returns [`crate::ClientError::Protocol`] when the reply is not empty.
+    /// Returns [`crate::ClientError::Io`] or [`crate::ClientError::Http`] when the send fails.
     pub async fn compact_range(
         &self,
         scope: &str,

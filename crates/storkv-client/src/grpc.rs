@@ -1,3 +1,4 @@
+//! gRPC transport types and request conversion.
 #[allow(
     clippy::all,
     clippy::pedantic,

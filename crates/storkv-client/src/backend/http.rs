@@ -1,3 +1,4 @@
+//! HTTP JSON transport backend.
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full};
 use hyper::Request as HttpRequest;

@@ -1,15 +1,19 @@
-use std::time::Duration;
+//! Blocking client wrapper that owns a current-thread Tokio runtime.
+//!
+//! Do not call a method from inside another Tokio runtime. The nested runtime
+//! blocks the current thread.
 
-use bytes::Bytes;
 use storkv_proto::{
     WireAdminStats, WireBackupEntry, WireBackupReport, WireBackupStatus, WireBackupVerifyReport,
-    WireDurability, WireMergeOp, WireRetention, WireTelemetrySnapshot,
+    WireTelemetrySnapshot,
 };
 
 use crate::async_client::AsyncClient;
 use crate::transport::{ClientResult, ScopeHandle};
 
-/// Synchronous wrapper around AsyncClient for blocking environments
+mod data;
+
+/// Synchronous wrapper around [`AsyncClient`] for blocking callers.
 pub struct SyncClient {
     runtime: tokio::runtime::Runtime,
     inner: AsyncClient,
@@ -17,6 +21,10 @@ pub struct SyncClient {
 
 impl SyncClient {
     /// Connect over TCP (`host:port`).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::ClientError::Io`] when the runtime cannot start or the socket fails.
     pub fn connect(address: &str) -> ClientResult<Self> {
         let runtime = build_runtime()?;
         let inner = runtime.block_on(AsyncClient::connect(address))?;
@@ -24,14 +32,28 @@ impl SyncClient {
     }
 
     /// Connect to either a TCP endpoint or a Unix-domain socket path.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::ClientError::Protocol`] when the address is invalid.
+    /// Returns [`crate::ClientError::Unsupported`] when the platform has no Unix sockets.
+    /// Returns [`crate::ClientError::Io`] when the runtime cannot start or the socket fails.
     pub fn connect_any(address: &str) -> ClientResult<Self> {
         let runtime = build_runtime()?;
         let inner = runtime.block_on(AsyncClient::connect_any(address))?;
         Ok(Self { runtime, inner })
     }
 
-    /// Connect using any supported URI scheme (`storkv://`, `unix://`,
-    /// `http://`, `ws://`, or `grpc://`).
+    /// Connect using any supported URI scheme.
+    ///
+    /// The schemes are `storkv://`, `unix://`, `http://`, `ws://`, and `grpc://`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::ClientError::Protocol`] when the URI is invalid.
+    /// Returns [`crate::ClientError::Unsupported`] when the platform has no Unix sockets.
+    /// Returns [`crate::ClientError::Io`], [`crate::ClientError::Http`], [`crate::ClientError::Grpc`],
+    /// or [`crate::ClientError::GrpcConnect`] when the connection fails.
     pub fn connect_uri(uri: &str) -> ClientResult<Self> {
         let runtime = build_runtime()?;
         let inner = runtime.block_on(AsyncClient::connect_uri(uri))?;
@@ -39,16 +61,31 @@ impl SyncClient {
     }
 
     /// Send a ping and require a pong reply.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::ClientError::Protocol`] when the reply is not a pong.
+    /// Returns [`crate::ClientError::Io`] or [`crate::ClientError::Http`] when the send fails.
     pub fn ping(&self) -> ClientResult<()> {
         self.runtime.block_on(self.inner.ping())
     }
 
     /// Run a health check.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::ClientError::Protocol`] when the reply is not healthy.
+    /// Returns [`crate::ClientError::Io`] or [`crate::ClientError::Http`] when the send fails.
     pub fn health_check(&self) -> ClientResult<()> {
         self.runtime.block_on(self.inner.health_check())
     }
 
     /// Read visible-version metadata of a key.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::ClientError::Protocol`] when the reply is not key metadata.
+    /// Returns [`crate::ClientError::Io`] or [`crate::ClientError::Http`] when the send fails.
     pub fn key_meta<K: AsRef<[u8]>>(
         &self,
         scope: &ScopeHandle,
@@ -58,132 +95,65 @@ impl SyncClient {
     }
 
     /// Read runtime counters.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::ClientError::Protocol`] when the reply is not telemetry.
+    /// Returns [`crate::ClientError::Io`] or [`crate::ClientError::Http`] when the send fails.
     pub fn telemetry(&self) -> ClientResult<WireTelemetrySnapshot> {
         self.runtime.block_on(self.inner.telemetry())
     }
 
     /// Read rich admin statistics.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::ClientError::Protocol`] when the reply is not admin statistics.
+    /// Returns [`crate::ClientError::Io`] or [`crate::ClientError::Http`] when the send fails.
     pub fn admin_stats(&self) -> ClientResult<WireAdminStats> {
         self.runtime.block_on(self.inner.admin_stats())
     }
 
     /// Run a full backup now.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::ClientError::Server`] when the backup fails.
+    /// Returns [`crate::ClientError::Protocol`] when the reply is not a backup report.
+    /// Returns [`crate::ClientError::Io`] or [`crate::ClientError::Http`] when the send fails.
     pub fn trigger_backup(&self, wait: bool) -> ClientResult<WireBackupReport> {
         self.runtime.block_on(self.inner.trigger_backup(wait))
     }
 
     /// Read the live backup worker status.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::ClientError::Protocol`] when the reply is not a backup status.
+    /// Returns [`crate::ClientError::Io`] or [`crate::ClientError::Http`] when the send fails.
     pub fn backup_status(&self) -> ClientResult<WireBackupStatus> {
         self.runtime.block_on(self.inner.backup_status())
     }
 
     /// Verify archived backup generations.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::ClientError::Server`] when the verification fails.
+    /// Returns [`crate::ClientError::Protocol`] when the reply is not a verify report.
+    /// Returns [`crate::ClientError::Io`] or [`crate::ClientError::Http`] when the send fails.
     pub fn verify_backup(&self, target_seq: Option<u64>) -> ClientResult<WireBackupVerifyReport> {
         self.runtime.block_on(self.inner.verify_backup(target_seq))
     }
 
     /// List archived backup generations.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::ClientError::Protocol`] when the reply is not a backup catalog.
+    /// Returns [`crate::ClientError::Io`] or [`crate::ClientError::Http`] when the send fails.
     pub fn list_backups(&self) -> ClientResult<Vec<WireBackupEntry>> {
         self.runtime.block_on(self.inner.list_backups())
-    }
-
-    /// Create a scope and return its handle.
-    pub fn create_scope<S: Into<String>>(
-        &self,
-        name: S,
-        durability: WireDurability,
-        retention: WireRetention,
-        prefix_bloom_len: Option<usize>,
-    ) -> ClientResult<ScopeHandle> {
-        self.runtime.block_on(self.inner.create_scope(
-            name,
-            durability,
-            retention,
-            prefix_bloom_len,
-        ))
-    }
-
-    /// Drop a scope and delete its data.
-    pub fn drop_scope<S: AsRef<str>>(&self, name: S) -> ClientResult<()> {
-        self.runtime.block_on(self.inner.drop_scope(name))
-    }
-
-    /// Read one key. `None` means the key does not exist.
-    pub fn get<K: AsRef<[u8]>>(&self, scope: &ScopeHandle, key: K) -> ClientResult<Option<Bytes>> {
-        self.runtime.block_on(self.inner.get(scope, key))
-    }
-
-    /// Store one key/value pair.
-    pub fn put<K: AsRef<[u8]>, V: AsRef<[u8]>>(
-        &self,
-        scope: &ScopeHandle,
-        key: K,
-        val: V,
-    ) -> ClientResult<()> {
-        self.runtime.block_on(self.inner.put(scope, key, val))
-    }
-
-    /// Store one key/value pair with a time to live.
-    pub fn put_with_ttl<K: AsRef<[u8]>, V: AsRef<[u8]>>(
-        &self,
-        scope: &ScopeHandle,
-        key: K,
-        val: V,
-        ttl: Duration,
-    ) -> ClientResult<()> {
-        self.runtime
-            .block_on(self.inner.put_with_ttl(scope, key, val, ttl))
-    }
-
-    /// Delete one key.
-    pub fn delete<K: AsRef<[u8]>>(&self, scope: &ScopeHandle, key: K) -> ClientResult<()> {
-        self.runtime.block_on(self.inner.delete(scope, key))
-    }
-
-    /// Delete a half-open key range.
-    pub fn delete_range<K: AsRef<[u8]>>(
-        &self,
-        scope: &ScopeHandle,
-        start_key: K,
-        end_key: K,
-    ) -> ClientResult<()> {
-        self.runtime
-            .block_on(self.inner.delete_range(scope, start_key, end_key))
-    }
-
-    /// Apply a merge operand to one key.
-    pub fn merge<K: AsRef<[u8]>>(
-        &self,
-        scope: &ScopeHandle,
-        key: K,
-        op: WireMergeOp,
-    ) -> ClientResult<()> {
-        self.runtime.block_on(self.inner.merge(scope, key, op))
-    }
-
-    /// Read an ordered key range. `None` bounds are open.
-    pub fn scan<K: AsRef<[u8]>>(
-        &self,
-        scope: &ScopeHandle,
-        start_key: Option<K>,
-        end_key: Option<K>,
-    ) -> ClientResult<Vec<(Bytes, Bytes)>> {
-        self.runtime
-            .block_on(self.inner.scan(scope, start_key, end_key))
-    }
-
-    /// Read every key with the given prefix.
-    pub fn scan_prefix<K: AsRef<[u8]>>(
-        &self,
-        scope: &ScopeHandle,
-        prefix: K,
-    ) -> ClientResult<Vec<(Bytes, Bytes)>> {
-        self.runtime.block_on(self.inner.scan_prefix(scope, prefix))
-    }
-
-    /// Copy a consistent database image to a directory.
-    pub fn checkpoint<S: Into<String>>(&self, dest_dir: S) -> ClientResult<()> {
-        self.runtime.block_on(self.inner.checkpoint(dest_dir))
     }
 }
 

@@ -1,3 +1,4 @@
+//! Native STORKPRT transport backend.
 use bytes::BytesMut;
 use storkv_proto::{Message, MessagePayload, Request, Response, WireChangeEvent};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};

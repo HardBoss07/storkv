@@ -1,3 +1,4 @@
+//! Backend transport selection and shared connection state.
 use storkv_proto::{Message, MessagePayload, Request, Response};
 
 use crate::transport::{ClientError, ClientResult};

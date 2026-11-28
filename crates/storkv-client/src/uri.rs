@@ -1,3 +1,4 @@
+//! Connection URI parsing and transport selection.
 use crate::transport::{ClientError, ClientResult};
 
 /// Connection transport selected from a `storkv://`, `unix://`, `http://`,
@@ -17,6 +18,11 @@ pub enum TransportKind {
 }
 
 impl TransportKind {
+    ///
+    /// # Errors
+    ///
+    /// Returns `ClientError::Protocol` when the URI is empty or has an unsupported scheme.
+    /// Returns `ClientError::Protocol` when the URI has no target after the scheme.
     /// Split a URI into its transport kind and the backend-specific target.
     ///
     /// Bare `host:port` addresses and filesystem-like paths keep their

@@ -1,3 +1,4 @@
+//! Client error, result, and scope handle types.
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
